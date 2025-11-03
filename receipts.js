@@ -179,6 +179,13 @@ function renderTable() {
   const nextBtn = document.getElementById('nextPageBtn');
   if (prevBtn) prevBtn.disabled = currentPage <= 1;
   if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+  // Reflect disabled state on Bootstrap pagination list items for styling
+  try {
+    const prevLi = prevBtn ? prevBtn.closest('li.page-item') : null;
+    const nextLi = nextBtn ? nextBtn.closest('li.page-item') : null;
+    if (prevLi && prevBtn) prevLi.classList.toggle('disabled', !!prevBtn.disabled);
+    if (nextLi && nextBtn) nextLi.classList.toggle('disabled', !!nextBtn.disabled);
+  } catch (_) { }
 
   pageRows.forEach(r => {
     const rawId = String(r.id || r.number || '').trim();
@@ -873,5 +880,4 @@ async function openReceiptWindow(r, opts = {}) {
   w.document.close();
   return w;
 }
-
 

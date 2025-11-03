@@ -126,12 +126,18 @@
                         <option value="100">100</option>
                     </select>
                 </div>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
-                    <button class="btn btn-outline-primary" id="prevPageBtn">Prev</button>
-                    <span class="btn btn-outline-light disabled" id="pageInfo" style="pointer-events:none">Page 1 of 1</span>
-                    <button class="btn btn-outline-primary" id="nextPageBtn">Next</button>
-                </div>
-                <button class="btn btn-outline-secondary btn-sm" id="exportBtn">Export CSV</button>
+                <ul class="pagination pagination-sm mb-0" aria-label="Pagination">
+                    <li class="page-item">
+                        <button class="page-link" id="prevPageBtn" type="button" aria-label="Previous">&laquo;</button>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link" id="pageInfo" style="pointer-events:none">Page 1 of 1</span>
+                    </li>
+                    <li class="page-item">
+                        <button class="page-link" id="nextPageBtn" type="button" aria-label="Next">&raquo;</button>
+                    </li>
+                </ul>
+                <button type="button" class="btn btn-primary btn-sm" id="exportBtn">Export CSV</button>
                 <!-- <button class="btn btn-outline-secondary btn-sm" id="debugBtn">Debug Info</button> -->
             </div>
         </div>
