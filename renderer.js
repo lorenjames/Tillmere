@@ -146,6 +146,8 @@ function forceFocusOnInputs() {
 // Aggressively remove any full-screen overlay elements that might capture input
 function nukeBlockingOverlays() {
   try {
+    // Never remove overlays while a Bootstrap modal is open
+    if (document.querySelector('.modal.show')) return;
     const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
     const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
     const bigEnough = (el) => {
@@ -161,6 +163,11 @@ function nukeBlockingOverlays() {
       if (!(z >= 1000)) return false;
       // ignore Bootstrap navbars
       if (el.closest('nav.navbar')) return false;
+      // ignore Bootstrap modals and their backdrops/contents
+      if (el.classList.contains('modal') || el.classList.contains('modal-backdrop') || el.closest('.modal')) return false;
+      // ignore Bootstrap offcanvas and dropdown menus
+      if (el.classList.contains('offcanvas') || el.closest('.offcanvas')) return false;
+      if (el.classList.contains('dropdown-menu') || el.closest('.dropdown-menu')) return false;
       return bigEnough(el);
     };
     document.querySelectorAll('body *').forEach(el => {
@@ -1104,9 +1111,23 @@ window.addEventListener('load', async () => {
     document.addEventListener('click', (e) => {
       const btn = e.target instanceof Element ? e.target.closest('button') : null;
       if (!btn) return;
+      // If this click is intended to open the Edit Item modal, don't refocus
+      try {
+        const oc = String(btn.getAttribute('onclick') || '');
+        if (oc.includes('openEditModal(')) return;
+      } catch (_) { }
+      // Do not refocus while interacting within any modal
+      if (btn.closest('.modal')) return;
       const nameEl = document.getElementById('itemName');
       if (!nameEl) return; // not on POS page
-      setTimeout(() => { try { nameEl.focus(); } catch (_) { } }, 0);
+      // Do not steal focus if a modal is opening or open (e.g., editing cart items)
+      setTimeout(() => {
+        try {
+          const hasOpenModal = !!document.querySelector('.modal.show');
+          if (hasOpenModal) return;
+          nameEl.focus();
+        } catch (_) { }
+      }, 0);
     });
   } catch (_) { }
 });

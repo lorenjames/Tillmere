@@ -103,6 +103,36 @@
                     </table>
                 </div>
 
+                <!-- Edit Vendor Modal -->
+                <div class="modal fade" id="vendorEditModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Edit Vendor</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label" for="edit_vendor_code">Vendor Code (unique, optional)</label>
+                                    <input id="edit_vendor_code" class="form-control" placeholder="e.g., JDE">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" for="edit_vendor_name">Vendor Name</label>
+                                    <input id="edit_vendor_name" class="form-control" placeholder="e.g., Jane Doe">
+                                </div>
+                                <div class="mb-0">
+                                    <label class="form-label" for="edit_vendor_phone">Phone</label>
+                                    <input id="edit_vendor_phone" class="form-control" placeholder="e.g., 402-555-1212">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="vendor_edit_save_btn">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     </main>

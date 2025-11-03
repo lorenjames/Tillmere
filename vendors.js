@@ -4,6 +4,7 @@ const { ipcRenderer } = require('electron');
 function escapeHtml(s) { return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
 
 let cache = [];
+let __vendorEditIndex = -1;
 let sortField = 'name';
 const SORT_LABELS = { name: 'Name (A-Z)', code: 'Vendor Code (A-Z)' };
 
@@ -52,11 +53,16 @@ async function renderTable(options = {}) {
     cache.forEach((v, idx) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-        <td><input type="text" class="form-control" value="${escapeHtml(v.code || '')}" onchange="editVendor(${idx}, 'code', this.value)"></td>
-      <td><input type="text" class="form-control" value="${escapeHtml(v.name || '')}" onchange="editVendor(${idx}, 'name', this.value)"></td>
-      <td><input type="text" class="form-control" value="${escapeHtml(v.phone || '')}" onchange="editVendor(${idx}, 'phone', this.value)"></td>
-      <td><button class="btn btn-outline-danger btn-sm" onclick="deleteVendor(${idx})">Delete</button></td>
-    `;
+        <td>${escapeHtml(v.code || '')}</td>
+        <td>${escapeHtml(v.name || '')}</td>
+        <td>${escapeHtml(v.phone || '')}</td>
+        <td>
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-primary" onclick="openVendorEdit(${idx})">Edit</button>
+            <button class="btn btn-outline-danger" onclick="deleteVendor(${idx})">Delete</button>
+          </div>
+        </td>
+      `;
         tbody.appendChild(tr);
     });
 }
@@ -75,17 +81,52 @@ window.addVendor = async function () {
     nameEl.value = ''; phoneEl.value = ''; codeEl.value = '';
     renderTable();
 };
-window.editVendor = async function (i, field, value) {
+window.openVendorEdit = async function (i) {
     await loadFromDisk();
     if (!cache[i]) return;
-    const val = String(value || '').trim();
-    if (field === 'name' && !val) return alert('Vendor name cannot be empty.');
-    if (field === 'code' && val) {
-        const lower = val.toLowerCase();
+    __vendorEditIndex = i;
+    try {
+        document.getElementById('edit_vendor_code').value = cache[i].code || '';
+        document.getElementById('edit_vendor_name').value = cache[i].name || '';
+        document.getElementById('edit_vendor_phone').value = cache[i].phone || '';
+    } catch (_) { }
+    try {
+        const el = document.getElementById('vendorEditModal');
+        if (el && window.bootstrap && window.bootstrap.Modal) {
+            const m = window.bootstrap.Modal.getOrCreateInstance(el, { backdrop: 'static' });
+            m.show();
+        } else {
+            el?.classList.add('show');
+            el?.setAttribute('style', 'display:block');
+        }
+    } catch (_) { }
+};
+window.saveVendorEdit = async function () {
+    if (__vendorEditIndex < 0) return;
+    await loadFromDisk();
+    const i = __vendorEditIndex;
+    if (!cache[i]) return;
+    const code = String(document.getElementById('edit_vendor_code')?.value || '').trim();
+    const name = String(document.getElementById('edit_vendor_name')?.value || '').trim();
+    const phone = String(document.getElementById('edit_vendor_phone')?.value || '').trim();
+    if (!name) return alert('Vendor name cannot be empty.');
+    if (code) {
+        const lower = code.toLowerCase();
         if (cache.some((v, idx) => idx !== i && (v.code || '').toLowerCase() === lower)) return alert('Vendor code must be unique.');
     }
-    cache[i][field] = val;
+    cache[i] = { name, phone, code };
     await saveToDisk();
+    try {
+        const el = document.getElementById('vendorEditModal');
+        if (el && window.bootstrap && window.bootstrap.Modal) {
+            const m = window.bootstrap.Modal.getOrCreateInstance(el);
+            m.hide();
+        } else {
+            el?.classList.remove('show');
+            el?.setAttribute('style', 'display:none');
+        }
+    } catch (_) { }
+    __vendorEditIndex = -1;
     renderTable();
 };
 window.deleteVendor = async function (i) {
@@ -104,4 +145,7 @@ window.setVendorSort = function (field) {
 };
 // (admin auth removed - rollback)
 
-window.onload = renderTable;
+window.onload = function(){
+  try { document.getElementById('vendor_edit_save_btn')?.addEventListener('click', () => { try { saveVendorEdit(); } catch(_){} }); } catch(_){}
+  renderTable();
+};

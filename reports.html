@@ -46,8 +46,9 @@
 
     <main class="container py-4">
         <div class="d-flex justify-content-end mb-3 gap-2">
-            <button id="backupBtn" class="btn btn-outline-secondary btn-sm">Backup Data</button>
-            <button id="restoreBtn" class="btn btn-outline-secondary btn-sm">Restore Data</button>
+            <!-- Hidden by default to avoid flash; shown when Developer Mode is enabled -->
+            <button id="backupBtn" type="button" class="btn btn-dark btn-sm d-none">Backup Data</button>
+            <button id="restoreBtn" type="button" class="btn btn-dark btn-sm d-none">Restore Data</button>
         </div>
         <div class="card shadow-sm mb-3">
             <div class="card-body">

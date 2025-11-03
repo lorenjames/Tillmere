@@ -2,7 +2,6 @@
 const { ipcRenderer } = require('electron');
 
 let cache = [];
-let __cashierEditIndex = -1;
 function escapeHtml(s) { return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
 
 async function load() { const list = await ipcRenderer.invoke('cashiers:load'); cache = Array.isArray(list) ? list : []; cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
@@ -15,13 +14,8 @@ async function render() {
     cache.forEach((c, i) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-      <td>${escapeHtml(c.name || '')}</td>
-      <td>
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openCashierEdit(${i})">Edit</button>
-          <button class="btn btn-outline-danger" onclick="deleteCashier(${i})">Delete</button>
-        </div>
-      </td>
+      <td><input type="text" class="form-control" value="${escapeHtml(c.name || '')}" onchange="editCashier(${i}, this.value)"></td>
+      <td><button class="btn btn-outline-danger btn-sm" onclick="deleteCashier(${i})">Delete</button></td>
     `;
         tbody.appendChild(tr);
     });
@@ -37,43 +31,14 @@ window.addCashier = async function () {
     inp.value = '';
     render();
 };
-window.openCashierEdit = async function (i) {
+window.editCashier = async function (i, val) {
     await load();
     if (!cache[i]) return;
-    __cashierEditIndex = i;
-    try { document.getElementById('edit_cashier_name').value = cache[i].name || ''; } catch (_) { }
-    try {
-        const el = document.getElementById('cashierEditModal');
-        if (el && window.bootstrap && window.bootstrap.Modal) {
-            const m = window.bootstrap.Modal.getOrCreateInstance(el, { backdrop: 'static' });
-            m.show();
-        } else {
-            el?.classList.add('show');
-            el?.setAttribute('style', 'display:block');
-        }
-    } catch (_) { }
-};
-window.saveCashierEdit = async function () {
-    if (__cashierEditIndex < 0) return;
-    await load();
-    const i = __cashierEditIndex;
-    if (!cache[i]) return;
-    const name = String(document.getElementById('edit_cashier_name')?.value || '').trim();
+    const name = (val || '').trim();
     if (!name) return alert('Name cannot be empty.');
     if (cache.some((c, idx) => idx !== i && (c.name || '').toLowerCase() === name.toLowerCase())) return alert('Cashier already exists.');
     cache[i].name = name;
     await save();
-    try {
-        const el = document.getElementById('cashierEditModal');
-        if (el && window.bootstrap && window.bootstrap.Modal) {
-            const m = window.bootstrap.Modal.getOrCreateInstance(el);
-            m.hide();
-        } else {
-            el?.classList.remove('show');
-            el?.setAttribute('style', 'display:none');
-        }
-    } catch (_) { }
-    __cashierEditIndex = -1;
     render();
 };
 window.deleteCashier = async function (i) {
@@ -86,7 +51,6 @@ window.deleteCashier = async function (i) {
 };
 // (admin auth removed - rollback)
 
-window.onload = function(){
-  try { document.getElementById('cashier_edit_save_btn')?.addEventListener('click', () => { try { saveCashierEdit(); } catch(_){} }); } catch(_){}
-  render();
-};
+window.onload = render;
+
+

@@ -877,6 +877,25 @@ window.addEventListener('DOMContentLoaded', () => {
     const todayBtn = document.getElementById('todayBtn');
     const monthBtn = document.getElementById('currentMonthBtn');
 
+    // Developer-mode visibility toggle for backup/restore buttons
+    const setDevVisibility = (isDev) => {
+        const on = !!isDev;
+        try {
+            if (bkpBtn) bkpBtn.classList.toggle('d-none', !on);
+        } catch (_) { }
+        try {
+            if (rstBtn) rstBtn.classList.toggle('d-none', !on);
+        } catch (_) { }
+    };
+    // Initial settings fetch
+    try {
+        ipcRenderer.invoke('settings:load').then(s => setDevVisibility(!!s?.developerMode)).catch(() => {});
+    } catch (_) { }
+    // Live updates
+    try {
+        ipcRenderer.on('settings:changed', (_evt, payload) => setDevVisibility(!!payload?.developerMode));
+    } catch (_) { }
+
     if (runBtn) {
         const onClickRun = () => { console.log('[reports] Run button clicked'); try { runReport(); } catch (e) { console.error(e); alert('Run failed: ' + (e?.message || e)); } };
         runBtn.addEventListener('click', onClickRun);
