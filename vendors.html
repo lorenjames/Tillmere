@@ -35,7 +35,8 @@
                 <a class="nav-link" href="receipts.html">Receipts</a>
                 <a class="nav-link" href="reports.html">Reports</a>
                 <div class="nav-item dropdown me-2">
-                    <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Configuration</a>
+                    <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown"
+                        aria-expanded="false">Configuration</a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
                         <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
@@ -67,6 +68,11 @@
 
                 <div class="form-grid">
                     <div>
+                        <label for="newVendorCode" class="form-label">Vendor Code <span class="text-muted">(unique,
+                                optional)</span></label>
+                        <input type="text" id="newVendorCode" class="form-control" placeholder="e.g., JDE">
+                    </div>
+                    <div>
                         <label for="newVendorName" class="form-label">Vendor Name</label>
                         <input type="text" id="newVendorName" class="form-control" placeholder="e.g., Jane Doe">
                     </div>
@@ -74,11 +80,7 @@
                         <label for="newVendorPhone" class="form-label">Phone</label>
                         <input type="text" id="newVendorPhone" class="form-control" placeholder="e.g., 402-555-1212">
                     </div>
-                    <div>
-                        <label for="newVendorCode" class="form-label">Vendor Code <span class="text-muted">(unique,
-                                optional)</span></label>
-                        <input type="text" id="newVendorCode" class="form-control" placeholder="e.g., JDE">
-                    </div>
+
                     <div class="d-grid">
                         <label class="form-label invisible">Add</label>
                         <button class="btn btn-primary" onclick="addVendor()">Add Vendor</button>
@@ -91,9 +93,9 @@
                     <table id="vendorTable" class="table table-striped align-middle mb-0">
                         <thead class="table-light">
                             <tr>
+                                <th style="width:20%">Code</th>
                                 <th style="width:40%">Name</th>
                                 <th style="width:25%">Phone</th>
-                                <th style="width:20%">Code</th>
                                 <th style="width:15%">Actions</th>
                             </tr>
                         </thead>

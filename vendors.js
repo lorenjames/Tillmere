@@ -52,9 +52,9 @@ async function renderTable(options = {}) {
     cache.forEach((v, idx) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
+        <td><input type="text" class="form-control" value="${escapeHtml(v.code || '')}" onchange="editVendor(${idx}, 'code', this.value)"></td>
       <td><input type="text" class="form-control" value="${escapeHtml(v.name || '')}" onchange="editVendor(${idx}, 'name', this.value)"></td>
       <td><input type="text" class="form-control" value="${escapeHtml(v.phone || '')}" onchange="editVendor(${idx}, 'phone', this.value)"></td>
-      <td><input type="text" class="form-control" value="${escapeHtml(v.code || '')}" onchange="editVendor(${idx}, 'code', this.value)"></td>
       <td><button class="btn btn-outline-danger btn-sm" onclick="deleteVendor(${idx})">Delete</button></td>
     `;
         tbody.appendChild(tr);
