@@ -42,19 +42,19 @@ function showToast(message, opts = {}) {
     el.style.fontSize = '14px';
     host.appendChild(el);
     const ms = Math.max(1000, Number(opts.duration || 2500));
-    setTimeout(() => { try { el.remove(); } catch (_) {} }, ms);
-  } catch (_) {}
+    setTimeout(() => { try { el.remove(); } catch (_) { } }, ms);
+  } catch (_) { }
 }
 function cleanupStrayBackdrops() {
   try {
     const anyOpenModal = !!document.querySelector('.modal.show');
     if (anyOpenModal) return;
     document.querySelectorAll('.modal-backdrop').forEach(el => {
-      try { el.remove(); } catch (_) {}
+      try { el.remove(); } catch (_) { }
     });
     // Also ensure body is not stuck in modal-open state
-    try { document.body.classList.remove('modal-open'); } catch (_) {}
-  } catch (_) {}
+    try { document.body.classList.remove('modal-open'); } catch (_) { }
+  } catch (_) { }
 }
 
 // Ensure inputs can regain focus after UI interactions
@@ -63,9 +63,9 @@ function forceFocusOnInputs() {
     document.addEventListener('mousedown', (e) => {
       const el = e.target instanceof Element ? e.target.closest('input, textarea, select') : null;
       if (!el) return;
-      setTimeout(() => { try { el.focus(); } catch (_) {} }, 0);
+      setTimeout(() => { try { el.focus(); } catch (_) { } }, 0);
     }, true);
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // Aggressively remove any full-screen overlay elements that might capture input
@@ -89,9 +89,9 @@ function nukeBlockingOverlays() {
       return bigEnough(el);
     };
     document.querySelectorAll('body *').forEach(el => {
-      try { if (isOverlay(el)) el.remove(); } catch (_) {}
+      try { if (isOverlay(el)) el.remove(); } catch (_) { }
     });
-  } catch (_) {}
+  } catch (_) { }
 }
 function escapeHtml(s) {
   return String(s)
@@ -365,7 +365,7 @@ async function normalizeVendorInput(el) {
     __vendorsCache = list;
     const v = findVendorLoose(list, val);
     if (v?.code) el.value = v.code;
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // ---------- Cashiers ----------
@@ -396,13 +396,13 @@ async function addItem() {
   const price = parseFloat(priceEl.value);
   const vendorName = (vendorEl.value || '').trim();
   const comment = (commentEl?.value || '').trim();
-  if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { nameEl?.focus(); } catch (_) {} return; }
+  if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { nameEl?.focus(); } catch (_) { } return; }
   const originalPrice = toMoneyNumber(price);
   const typeVal = discountTypeEl?.value || 'none';
   const discountValueRaw = discountValueEl?.value;
   const discountReasonRaw = (discountReasonEl?.value || '').trim();
   const discount = computeDiscount(originalPrice, typeVal, discountValueRaw, discountReasonRaw);
-  if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { discountReasonEl?.focus(); } catch (_) {} return; }
+  if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { discountReasonEl?.focus(); } catch (_) { } return; }
   const finalPrice = finalPriceFrom(originalPrice, discount.amount);
 
   let vendorFinal = vendorName;
@@ -411,7 +411,7 @@ async function addItem() {
     __vendorsCache = list;
     const v = findVendorLoose(list, vendorName);
     vendorFinal = v?.code || vendorName;
-  } catch (_) {}
+  } catch (_) { }
 
   items.push({
     name,
@@ -434,7 +434,7 @@ async function addItem() {
   if (discountReasonEl) discountReasonEl.value = '';
   renderTable();
   // Return focus to the first entry field for rapid entry
-  try { nameEl.focus(); } catch (_) {}
+  try { nameEl.focus(); } catch (_) { }
 }
 function removeItem(i) { items.splice(i, 1); renderTable(); }
 
@@ -485,7 +485,7 @@ async function saveEditFromModal() {
   const price = parseFloat(document.getElementById('edit_price').value);
   const vendorName = (document.getElementById('edit_vendor').value || '').trim();
   const comment = (document.getElementById('edit_comment').value || '').trim();
-  if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { document.getElementById('edit_name')?.focus(); } catch (_) {} return; }
+  if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { document.getElementById('edit_name')?.focus(); } catch (_) { } return; }
   const originalPrice = toMoneyNumber(price);
   const typeEl = document.getElementById('edit_discountType');
   const valueEl = document.getElementById('edit_discountValue');
@@ -494,7 +494,7 @@ async function saveEditFromModal() {
   const discountValue = valueEl?.value;
   const discountReason = (reasonEl?.value || '').trim();
   const discount = computeDiscount(originalPrice, discountType, discountValue, discountReason);
-  if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { document.getElementById('edit_discountReason')?.focus(); } catch (_) {} return; }
+  if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { document.getElementById('edit_discountReason')?.focus(); } catch (_) { } return; }
   const finalPrice = finalPriceFrom(originalPrice, discount.amount);
 
   let vendorFinal = vendorName;
@@ -504,7 +504,7 @@ async function saveEditFromModal() {
     const v = findVendorLoose(list, vendorName);
     if (v?.code) vendorFinal = v.code;
     else vendorFinal = vendorName;
-  } catch (_) {}
+  } catch (_) { }
 
   items[idx] = {
     ...items[idx],
@@ -560,7 +560,7 @@ function renderTable() {
   set('tax', money(tax));
   set('total', money(total));
   __lastTotal = toMoneyNumber(total);
-  try { updateCashChange(); } catch (_) {}
+  try { updateCashChange(); } catch (_) { }
 }
 
 // ---------- Sound ----------
@@ -569,35 +569,35 @@ function playCashRegisterSound() {
   try {
     if (typeof __cashAudio === 'object' && __cashAudio) {
       __cashAudio.currentTime = 0;
-      __cashAudio.play().catch(() => {});
+      __cashAudio.play().catch(() => { });
       return;
     }
     const audio = new Audio('assets/cash-register-kaching-sound-effect-125042.mp3');
     audio.volume = 0.8;
-    audio.play().catch(() => {});
-  } catch (_) {}
+    audio.play().catch(() => { });
+  } catch (_) { }
 }
 
 // ---------- Print & save ----------
 async function printReceipt() {
   // Prevent printing/saving when cart is empty
-  try { if (!cartHasItems()) { showToast('Please add at least one item before printing & saving.', { type: 'error' }); try { document.getElementById('itemName')?.focus(); } catch (_) {} return; } } catch (_) { }
+  try { if (!cartHasItems()) { showToast('Please add at least one item before printing & saving.', { type: 'error' }); try { document.getElementById('itemName')?.focus(); } catch (_) { } return; } } catch (_) { }
 
   const cashierSelect = document.getElementById('cashierSelect');
   const paymentSelect = document.getElementById('paymentSelect');
   const cashier = cashierSelect?.value || '';
   const payment = paymentSelect?.value || '';
-  if (!cashier) { showToast('Please select a cashier.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) {} return; }
-  if (!payment) { showToast('Please select a payment type.', { type: 'error' }); try { paymentSelect?.focus(); } catch (_) {} return; }
+  if (!cashier) { showToast('Please select a cashier.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) { } return; }
+  if (!payment) { showToast('Please select a payment type.', { type: 'error' }); try { paymentSelect?.focus(); } catch (_) { } return; }
   // If Cash is selected, require a cash tendered amount
   if ((payment || '') === 'Cash') {
     const cashEl = document.getElementById('cashReceived');
     const raw = String(cashEl?.value ?? '').trim();
-    if (!raw) { showToast('Enter the cash received from the customer.', { type: 'error' }); try { cashEl?.focus(); } catch (_) {} return; }
+    if (!raw) { showToast('Enter the cash received from the customer.', { type: 'error' }); try { cashEl?.focus(); } catch (_) { } return; }
     const cashNum = toMoneyNumber(raw);
-    if (isNaN(cashNum) || cashNum < 0) { showToast('Enter a valid non-negative cash amount.', { type: 'error' }); try { cashEl?.focus(); } catch (_) {} return; }
+    if (isNaN(cashNum) || cashNum < 0) { showToast('Enter a valid non-negative cash amount.', { type: 'error' }); try { cashEl?.focus(); } catch (_) { } return; }
   }
-  try { playCashRegisterSound(); } catch (_) {}
+  try { playCashRegisterSound(); } catch (_) { }
 
   const numEl = document.getElementById('rcpt-number');
   const dateEl = document.getElementById('rcpt-date');
@@ -641,30 +641,30 @@ async function printReceipt() {
   // Persist receipt so it appears on the Receipts page
   try {
     const savedItems = items.map(it => {
-        const v = findVendorLoose(vendors, it.vendorName);
-        const code = v?.code || '';
-        const priceFinal = toMoneyNumber(it.price || 0);
-        const originalPrice = deriveOriginalPrice(it);
-        const discountAmount = toMoneyNumber(it.discountAmount || (originalPrice - priceFinal));
-        const hasDiscount = discountAmount > 0;
-        const discountType = hasDiscount ? (it.discountType === 'percent' ? 'percent' : 'amount') : 'none';
-        const discountValue = hasDiscount
-          ? (discountType === 'percent' ? toMoneyNumber(it.discountValue || 0) : discountAmount)
-          : 0;
-        const discountReason = hasDiscount ? String(it.discountReason || '').trim() : '';
-        return {
-          name: it.name,
-          price: priceFinal,
-          originalPrice,
-          vendorCode: code,
-          vendor: it.vendorName || '',
-          comment: it.comment || '',
-          discountType,
-          discountValue,
-          discountAmount,
-          discountReason
-        };
-      });
+      const v = findVendorLoose(vendors, it.vendorName);
+      const code = v?.code || '';
+      const priceFinal = toMoneyNumber(it.price || 0);
+      const originalPrice = deriveOriginalPrice(it);
+      const discountAmount = toMoneyNumber(it.discountAmount || (originalPrice - priceFinal));
+      const hasDiscount = discountAmount > 0;
+      const discountType = hasDiscount ? (it.discountType === 'percent' ? 'percent' : 'amount') : 'none';
+      const discountValue = hasDiscount
+        ? (discountType === 'percent' ? toMoneyNumber(it.discountValue || 0) : discountAmount)
+        : 0;
+      const discountReason = hasDiscount ? String(it.discountReason || '').trim() : '';
+      return {
+        name: it.name,
+        price: priceFinal,
+        originalPrice,
+        vendorCode: code,
+        vendor: it.vendorName || '',
+        comment: it.comment || '',
+        discountType,
+        discountValue,
+        discountAmount,
+        discountReason
+      };
+    });
     await ipcRenderer.invoke('receipts:add', {
       datetime: new Date(now.getTime()).toISOString(),
       number,
@@ -689,7 +689,7 @@ async function printReceipt() {
       .invoice{max-width:8.5in;margin:0 auto}
       /* extra bottom padding to avoid overlap with QR block */
       .sheet{position:relative;background:#fff;padding:32px 40px 200px 40px}
-      .bgmark{position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:70%; height:auto; opacity:.04; pointer-events:none; filter: blur(0.8px);
+      .bgmark{position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:70%; height:auto; opacity:.10; pointer-events:none; filter: blur(0.8px);
         -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
                 mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
         -webkit-mask-size: 100% 100%; mask-size:100% 100% }
@@ -845,9 +845,9 @@ async function printReceipt() {
       document.body.appendChild(alertEl);
 
       let proceeded = false;
-      const removeAlert = () => { try { alertEl.remove(); } catch (_) {} };
-      const proceedOnce = () => { if (proceeded) return; proceeded = true; try { removeAlert(); } catch (_) {}; try { completePrintWithHtml(html); } catch (_) {} };
-      try { alertEl.addEventListener('closed.bs.alert', proceedOnce, { once: true }); } catch (_) {}
+      const removeAlert = () => { try { alertEl.remove(); } catch (_) { } };
+      const proceedOnce = () => { if (proceeded) return; proceeded = true; try { removeAlert(); } catch (_) { }; try { completePrintWithHtml(html); } catch (_) { } };
+      try { alertEl.addEventListener('closed.bs.alert', proceedOnce, { once: true }); } catch (_) { }
       const closeBtn = alertEl.querySelector('.btn-close');
       if (closeBtn) closeBtn.addEventListener('click', () => setTimeout(proceedOnce, 0), { once: true });
       const okBtn = alertEl.querySelector('.btn.btn-primary');
@@ -856,10 +856,10 @@ async function printReceipt() {
       try {
         const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); proceedOnce(); document.removeEventListener('keydown', onKey, true); } };
         document.addEventListener('keydown', onKey, true);
-      } catch (_) {}
+      } catch (_) { }
       return; // Wait for dismissal before printing
     }
-  } catch (_) {}
+  } catch (_) { }
 
   completePrintWithHtml(html);
 }
@@ -875,7 +875,7 @@ async function completePrintWithHtml(html) {
         content = content
           .replace(/window\.print\(\);?/g, '')
           .replace(/window\.close\(\);?/g, '');
-      } catch (_) {}
+      } catch (_) { }
       // Ask main process to print silently to default/specified printer
       printed = await ipcRenderer.invoke('print:silent', content);
     } catch (e) {
@@ -888,7 +888,7 @@ async function completePrintWithHtml(html) {
     try {
       const w = window.open('', '', 'width=960,height=900');
       if (w) { w.document.write(html); w.document.close(); }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // Reset POS
@@ -910,11 +910,11 @@ async function completePrintWithHtml(html) {
     const changeEl = document.getElementById('changeDue');
     if (changeEl) changeEl.textContent = money(0);
     // Return focus to the first entry field
-    try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) {}
-  } catch (_) {}
+    try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
+  } catch (_) { }
 }
 
-function preparePaymentSelect(){ const sel=document.getElementById('paymentSelect'); if(!sel) return; ensurePlaceholder(sel); sel.value=''; }
+function preparePaymentSelect() { const sel = document.getElementById('paymentSelect'); if (!sel) return; ensurePlaceholder(sel); sel.value = ''; }
 
 // ---------- Cash change helpers ----------
 function isCashPaymentSelected() {
@@ -938,7 +938,7 @@ function updateCashChange() {
 
 // ---------- Init ----------
 window.addEventListener('load', async () => {
-  try { const s = await ipcRenderer.invoke('settings:load'); const tr = Number(s?.taxRate); if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr; __silentPrint = !!s?.silentPrint; } catch (_) {}
+  try { const s = await ipcRenderer.invoke('settings:load'); const tr = Number(s?.taxRate); if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr; __silentPrint = !!s?.silentPrint; } catch (_) { }
   await loadCashiersIntoSelect();
   preparePaymentSelect();
   setupEntryDiscountControls();
@@ -947,23 +947,23 @@ window.addEventListener('load', async () => {
   updateTaxRateLabel();
   installNavigationGuards(); // no-op (disabled)
   // Clean up any stray overlays after startup
-  try { cleanupStrayBackdrops(); } catch (_) {}
+  try { cleanupStrayBackdrops(); } catch (_) { }
   // Ensure input focus behavior is resilient
-  try { forceFocusOnInputs(); } catch (_) {}
+  try { forceFocusOnInputs(); } catch (_) { }
 
   const addrEl = document.getElementById('rcpt-address');
   if (addrEl) addrEl.textContent = '1615 S 17th St, Lincoln, NE 68502 · 531-500-0135';
 
   const itemVendorEl = document.getElementById('itemVendor');
   if (itemVendorEl) {
-    function normalizeVendorLocal(el){
+    function normalizeVendorLocal(el) {
       try {
         const s = norm(el.value || '');
         if (!s) return;
         const list = Array.isArray(__vendorsCache) && __vendorsCache.length ? __vendorsCache : [];
         const v = bestVendorMatch(list, s) || findVendorLoose(list, s);
         if (v && v.code) el.value = v.code;
-      } catch (_) {}
+      } catch (_) { }
     }
     itemVendorEl.addEventListener('input', () => updateVendorDatalistForValue(itemVendorEl.value || ''));
     itemVendorEl.addEventListener('focus', () => updateVendorDatalistForValue(itemVendorEl.value || ''));
@@ -974,7 +974,7 @@ window.addEventListener('load', async () => {
         // Synchronously pick the best match from cache so Tab completes to a code
         normalizeVendorLocal(itemVendorEl);
         // Also kick off async normalization as a fallback (no need to wait)
-        try { normalizeVendorInput(itemVendorEl); } catch(_) {}
+        try { normalizeVendorInput(itemVendorEl); } catch (_) { }
       }
     });
   }
@@ -982,14 +982,14 @@ window.addEventListener('load', async () => {
   // Edit modal vendor field: mirror the same Tab/Enter completion behavior
   const editVendorEl = document.getElementById('edit_vendor');
   if (editVendorEl) {
-    function normalizeEditVendorLocal(el){
+    function normalizeEditVendorLocal(el) {
       try {
         const s = norm(el.value || '');
         if (!s) return;
         const list = Array.isArray(__vendorsCache) && __vendorsCache.length ? __vendorsCache : [];
         const v = bestVendorMatch(list, s) || findVendorLoose(list, s);
         if (v && v.code) el.value = v.code;
-      } catch (_) {}
+      } catch (_) { }
     }
     editVendorEl.addEventListener('keydown', (e) => {
       if (e.key === 'Tab' || e.key === 'Enter') {
@@ -1006,7 +1006,7 @@ window.addEventListener('load', async () => {
     __cashAudio = new Audio('assets/cash-register-kaching-sound-effect-125042.mp3');
     __cashAudio.preload = 'auto';
     __cashAudio.volume = 0.8;
-  } catch (_) {}
+  } catch (_) { }
 
   // Cash helpers
   try {
@@ -1016,9 +1016,9 @@ window.addEventListener('load', async () => {
     if (cashEl) cashEl.addEventListener('input', updateCashChange);
     toggleCashFields();
     updateCashChange();
-  } catch (_) {}
+  } catch (_) { }
   // Periodically ensure the UI isn't blocked by stale overlays
-  try { setInterval(() => { cleanupStrayBackdrops(); nukeBlockingOverlays(); }, 1500); } catch (_) {}
+  try { setInterval(() => { cleanupStrayBackdrops(); nukeBlockingOverlays(); }, 1500); } catch (_) { }
 
   // POS-specific: after any button click on this page, refocus the Item field
   try {
@@ -1027,9 +1027,9 @@ window.addEventListener('load', async () => {
       if (!btn) return;
       const nameEl = document.getElementById('itemName');
       if (!nameEl) return; // not on POS page
-      setTimeout(() => { try { nameEl.focus(); } catch (_) {} }, 0);
+      setTimeout(() => { try { nameEl.focus(); } catch (_) { } }, 0);
     });
-  } catch (_) {}
+  } catch (_) { }
 });
 
 // live tax updates
@@ -1039,9 +1039,9 @@ try {
     if (!isNaN(tr) && tr >= 0 && tr <= 1) { TAX_RATE = tr; renderTable(); updateTaxRateLabel(); }
     if (typeof payload?.silentPrint === 'boolean') { __silentPrint = !!payload.silentPrint; }
     // After settings changes, clear any leftover overlays that might capture input
-    try { setTimeout(() => cleanupStrayBackdrops(), 0); } catch (_) {}
+    try { setTimeout(() => cleanupStrayBackdrops(), 0); } catch (_) { }
   });
-} catch (_) {}
+} catch (_) { }
 
 // Expose
 window.addItem = addItem;
