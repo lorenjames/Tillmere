@@ -3,6 +3,7 @@ const { ipcRenderer } = require('electron');
 
 // ---------- Globals ----------
 let TAX_RATE = 0.0725;
+let __silentPrint = true;
 let items = []; // { name, price, vendorName, comment }
 let __vendorsCache = [];
 let __editModal = null;
@@ -12,6 +13,86 @@ let __lastTotal = 0;
 
 // ---------- Utils ----------
 function money(n) { return Number(n || 0).toFixed(2); }
+function showToast(message, opts = {}) {
+  try {
+    const hostId = 'toast-host';
+    let host = document.getElementById(hostId);
+    if (!host) {
+      host = document.createElement('div');
+      host.id = hostId;
+      host.style.position = 'fixed';
+      host.style.zIndex = '5000';
+      host.style.right = '16px';
+      host.style.bottom = '16px';
+      host.style.display = 'flex';
+      host.style.flexDirection = 'column';
+      host.style.gap = '8px';
+      host.style.pointerEvents = 'none';
+      document.body.appendChild(host);
+    }
+    const el = document.createElement('div');
+    const tone = (opts.type === 'error') ? '#dc3545' : (opts.type === 'success') ? '#198754' : '#0d6efd';
+    el.textContent = String(message || '');
+    el.style.pointerEvents = 'none';
+    el.style.color = '#fff';
+    el.style.background = tone;
+    el.style.borderRadius = '8px';
+    el.style.padding = '10px 12px';
+    el.style.boxShadow = '0 6px 18px rgba(0,0,0,.18)';
+    el.style.fontSize = '14px';
+    host.appendChild(el);
+    const ms = Math.max(1000, Number(opts.duration || 2500));
+    setTimeout(() => { try { el.remove(); } catch (_) {} }, ms);
+  } catch (_) {}
+}
+function cleanupStrayBackdrops() {
+  try {
+    const anyOpenModal = !!document.querySelector('.modal.show');
+    if (anyOpenModal) return;
+    document.querySelectorAll('.modal-backdrop').forEach(el => {
+      try { el.remove(); } catch (_) {}
+    });
+    // Also ensure body is not stuck in modal-open state
+    try { document.body.classList.remove('modal-open'); } catch (_) {}
+  } catch (_) {}
+}
+
+// Ensure inputs can regain focus after UI interactions
+function forceFocusOnInputs() {
+  try {
+    document.addEventListener('mousedown', (e) => {
+      const el = e.target instanceof Element ? e.target.closest('input, textarea, select') : null;
+      if (!el) return;
+      setTimeout(() => { try { el.focus(); } catch (_) {} }, 0);
+    }, true);
+  } catch (_) {}
+}
+
+// Aggressively remove any full-screen overlay elements that might capture input
+function nukeBlockingOverlays() {
+  try {
+    const vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    const vh = Math.max(document.documentElement.clientHeight || 0, window.innerHeight || 0);
+    const bigEnough = (el) => {
+      const r = el.getBoundingClientRect();
+      const w = r.width, h = r.height;
+      return (w >= vw * 0.8) && (h >= vh * 0.8);
+    };
+    const isOverlay = (el) => {
+      const st = window.getComputedStyle(el);
+      if (!st) return false;
+      if (!(st.position === 'fixed' || st.position === 'absolute')) return false;
+      const z = parseInt(st.zIndex || '0', 10);
+      if (!(z >= 1000)) return false;
+      // ignore Bootstrap navbars
+      if (el.closest('nav.navbar')) return false;
+      return bigEnough(el);
+    };
+    document.querySelectorAll('body *').forEach(el => {
+      try { if (isOverlay(el)) el.remove(); } catch (_) {}
+    });
+  } catch (_) {}
+}
 function escapeHtml(s) {
   return String(s)
     .replaceAll('&', '&amp;')
@@ -182,38 +263,8 @@ function setupEntryDiscountControls() {
   syncState();
 }
 function installNavigationGuards() {
-  const confirmMessage = 'Items are still in the cart. If you leave this page, all sale details will be lost. Continue?';
-  const shouldWarn = () => cartHasItems();
-
-  window.addEventListener('beforeunload', (event) => {
-    if (__allowNavigation || !shouldWarn()) return;
-    event.preventDefault();
-    event.returnValue = confirmMessage;
-    return confirmMessage;
-  });
-
-  document.addEventListener('click', (event) => {
-    const anchor = event.target instanceof Element ? event.target.closest('a') : null;
-    if (!anchor) return;
-    if (!anchor.matches('.nav-link, .dropdown-item')) return;
-    const href = anchor.getAttribute('href') || '';
-    if (!href || href.startsWith('#') || href.startsWith('javascript:')) return;
-    if (anchor.target && anchor.target.toLowerCase() !== '_self') return;
-    if (!shouldWarn()) return;
-    const ok = window.confirm(confirmMessage);
-    if (!ok) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      return;
-    }
-    const destination = anchor.href || href;
-    if (!destination) return;
-    __allowNavigation = true;
-    event.preventDefault();
-    try { window.location.assign(destination); } finally {
-      setTimeout(() => { __allowNavigation = false; }, 2000);
-    }
-  }, true);
+  // Navigation guard disabled to avoid focus interference
+  // Intentionally left blank
 }
 
 // ---------- Data ----------
@@ -345,13 +396,13 @@ async function addItem() {
   const price = parseFloat(priceEl.value);
   const vendorName = (vendorEl.value || '').trim();
   const comment = (commentEl?.value || '').trim();
-  if (!name || isNaN(price)) return alert('Enter a valid item name and price.');
+  if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { nameEl?.focus(); } catch (_) {} return; }
   const originalPrice = toMoneyNumber(price);
   const typeVal = discountTypeEl?.value || 'none';
   const discountValueRaw = discountValueEl?.value;
   const discountReasonRaw = (discountReasonEl?.value || '').trim();
   const discount = computeDiscount(originalPrice, typeVal, discountValueRaw, discountReasonRaw);
-  if (discount.amount > 0 && !discount.reason) return alert('Please enter a discount reason.');
+  if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { discountReasonEl?.focus(); } catch (_) {} return; }
   const finalPrice = finalPriceFrom(originalPrice, discount.amount);
 
   let vendorFinal = vendorName;
@@ -382,6 +433,8 @@ async function addItem() {
   if (discountValueEl) discountValueEl.value = '';
   if (discountReasonEl) discountReasonEl.value = '';
   renderTable();
+  // Return focus to the first entry field for rapid entry
+  try { nameEl.focus(); } catch (_) {}
 }
 function removeItem(i) { items.splice(i, 1); renderTable(); }
 
@@ -432,7 +485,7 @@ async function saveEditFromModal() {
   const price = parseFloat(document.getElementById('edit_price').value);
   const vendorName = (document.getElementById('edit_vendor').value || '').trim();
   const comment = (document.getElementById('edit_comment').value || '').trim();
-  if (!name || isNaN(price)) return alert('Enter a valid item name and price.');
+  if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { document.getElementById('edit_name')?.focus(); } catch (_) {} return; }
   const originalPrice = toMoneyNumber(price);
   const typeEl = document.getElementById('edit_discountType');
   const valueEl = document.getElementById('edit_discountValue');
@@ -441,7 +494,7 @@ async function saveEditFromModal() {
   const discountValue = valueEl?.value;
   const discountReason = (reasonEl?.value || '').trim();
   const discount = computeDiscount(originalPrice, discountType, discountValue, discountReason);
-  if (discount.amount > 0 && !discount.reason) return alert('Please enter a discount reason.');
+  if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { document.getElementById('edit_discountReason')?.focus(); } catch (_) {} return; }
   const finalPrice = finalPriceFrom(originalPrice, discount.amount);
 
   let vendorFinal = vendorName;
@@ -527,19 +580,22 @@ function playCashRegisterSound() {
 
 // ---------- Print & save ----------
 async function printReceipt() {
+  // Prevent printing/saving when cart is empty
+  try { if (!cartHasItems()) { showToast('Please add at least one item before printing & saving.', { type: 'error' }); try { document.getElementById('itemName')?.focus(); } catch (_) {} return; } } catch (_) { }
+
   const cashierSelect = document.getElementById('cashierSelect');
   const paymentSelect = document.getElementById('paymentSelect');
   const cashier = cashierSelect?.value || '';
   const payment = paymentSelect?.value || '';
-  if (!cashier) return alert('Please select a cashier.');
-  if (!payment) return alert('Please select a payment type.');
+  if (!cashier) { showToast('Please select a cashier.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) {} return; }
+  if (!payment) { showToast('Please select a payment type.', { type: 'error' }); try { paymentSelect?.focus(); } catch (_) {} return; }
   // If Cash is selected, require a cash tendered amount
   if ((payment || '') === 'Cash') {
     const cashEl = document.getElementById('cashReceived');
     const raw = String(cashEl?.value ?? '').trim();
-    if (!raw) { alert('Please enter the cash received from the customer.'); try { cashEl?.focus(); } catch (_) {} return; }
+    if (!raw) { showToast('Enter the cash received from the customer.', { type: 'error' }); try { cashEl?.focus(); } catch (_) {} return; }
     const cashNum = toMoneyNumber(raw);
-    if (isNaN(cashNum) || cashNum < 0) { alert('Please enter a valid non-negative cash amount.'); try { cashEl?.focus(); } catch (_) {} return; }
+    if (isNaN(cashNum) || cashNum < 0) { showToast('Enter a valid non-negative cash amount.', { type: 'error' }); try { cashEl?.focus(); } catch (_) {} return; }
   }
   try { playCashRegisterSound(); } catch (_) {}
 
@@ -789,12 +845,18 @@ async function printReceipt() {
       document.body.appendChild(alertEl);
 
       let proceeded = false;
-      const proceedOnce = () => { if (proceeded) return; proceeded = true; try { completePrintWithHtml(html); } catch (_) {} };
+      const removeAlert = () => { try { alertEl.remove(); } catch (_) {} };
+      const proceedOnce = () => { if (proceeded) return; proceeded = true; try { removeAlert(); } catch (_) {}; try { completePrintWithHtml(html); } catch (_) {} };
       try { alertEl.addEventListener('closed.bs.alert', proceedOnce, { once: true }); } catch (_) {}
       const closeBtn = alertEl.querySelector('.btn-close');
       if (closeBtn) closeBtn.addEventListener('click', () => setTimeout(proceedOnce, 0), { once: true });
       const okBtn = alertEl.querySelector('.btn.btn-primary');
       if (okBtn) okBtn.addEventListener('click', () => setTimeout(proceedOnce, 0), { once: true });
+      // Also allow Escape key to dismiss
+      try {
+        const onKey = (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); proceedOnce(); document.removeEventListener('keydown', onKey, true); } };
+        document.addEventListener('keydown', onKey, true);
+      } catch (_) {}
       return; // Wait for dismissal before printing
     }
   } catch (_) {}
@@ -802,9 +864,32 @@ async function printReceipt() {
   completePrintWithHtml(html);
 }
 
-function completePrintWithHtml(html) {
-  const w = window.open('', '', 'width=960,height=900');
-  if (w) { w.document.write(html); w.document.close(); }
+async function completePrintWithHtml(html) {
+  let printed = false;
+  if (__silentPrint) {
+    try {
+      // Remove auto-print/auto-close scripts from the HTML so the hidden
+      // printing window does NOT trigger its own preview/dialog.
+      let content = String(html || '');
+      try {
+        content = content
+          .replace(/window\.print\(\);?/g, '')
+          .replace(/window\.close\(\);?/g, '');
+      } catch (_) {}
+      // Ask main process to print silently to default/specified printer
+      printed = await ipcRenderer.invoke('print:silent', content);
+    } catch (e) {
+      console.error('Silent print failed, will fall back to preview:', e);
+    }
+  }
+
+  // Fallback to preview window if silent print is disabled or failed
+  if (!printed) {
+    try {
+      const w = window.open('', '', 'width=960,height=900');
+      if (w) { w.document.write(html); w.document.close(); }
+    } catch (_) {}
+  }
 
   // Reset POS
   try {
@@ -824,6 +909,8 @@ function completePrintWithHtml(html) {
     if (cashEl) cashEl.value = '';
     const changeEl = document.getElementById('changeDue');
     if (changeEl) changeEl.textContent = money(0);
+    // Return focus to the first entry field
+    try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) {}
   } catch (_) {}
 }
 
@@ -851,14 +938,18 @@ function updateCashChange() {
 
 // ---------- Init ----------
 window.addEventListener('load', async () => {
-  try { const s = await ipcRenderer.invoke('settings:load'); const tr = Number(s?.taxRate); if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr; } catch (_) {}
+  try { const s = await ipcRenderer.invoke('settings:load'); const tr = Number(s?.taxRate); if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr; __silentPrint = !!s?.silentPrint; } catch (_) {}
   await loadCashiersIntoSelect();
   preparePaymentSelect();
   setupEntryDiscountControls();
   await loadVendorsIntoDatalist();
   renderTable();
   updateTaxRateLabel();
-  installNavigationGuards();
+  installNavigationGuards(); // no-op (disabled)
+  // Clean up any stray overlays after startup
+  try { cleanupStrayBackdrops(); } catch (_) {}
+  // Ensure input focus behavior is resilient
+  try { forceFocusOnInputs(); } catch (_) {}
 
   const addrEl = document.getElementById('rcpt-address');
   if (addrEl) addrEl.textContent = '1615 S 17th St, Lincoln, NE 68502 · 531-500-0135';
@@ -926,6 +1017,19 @@ window.addEventListener('load', async () => {
     toggleCashFields();
     updateCashChange();
   } catch (_) {}
+  // Periodically ensure the UI isn't blocked by stale overlays
+  try { setInterval(() => { cleanupStrayBackdrops(); nukeBlockingOverlays(); }, 1500); } catch (_) {}
+
+  // POS-specific: after any button click on this page, refocus the Item field
+  try {
+    document.addEventListener('click', (e) => {
+      const btn = e.target instanceof Element ? e.target.closest('button') : null;
+      if (!btn) return;
+      const nameEl = document.getElementById('itemName');
+      if (!nameEl) return; // not on POS page
+      setTimeout(() => { try { nameEl.focus(); } catch (_) {} }, 0);
+    });
+  } catch (_) {}
 });
 
 // live tax updates
@@ -933,6 +1037,9 @@ try {
   ipcRenderer.on('settings:changed', (_evt, payload) => {
     const tr = Number(payload?.taxRate);
     if (!isNaN(tr) && tr >= 0 && tr <= 1) { TAX_RATE = tr; renderTable(); updateTaxRateLabel(); }
+    if (typeof payload?.silentPrint === 'boolean') { __silentPrint = !!payload.silentPrint; }
+    // After settings changes, clear any leftover overlays that might capture input
+    try { setTimeout(() => cleanupStrayBackdrops(), 0); } catch (_) {}
   });
 } catch (_) {}
 

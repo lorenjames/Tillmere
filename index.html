@@ -20,6 +20,8 @@
         .table th {
             vertical-align: middle;
         }
+        /* Safety: prevent stray Bootstrap backdrops from blocking input focus */
+        .modal-backdrop, .offcanvas-backdrop { pointer-events: none !important; }
     </style>
 
 </head>

@@ -35,7 +35,7 @@ function writeJson(file, data) {
 }
 
 function readSettings() {
-    const def = { taxRate: 0.0725, developerMode: false, backupDir: '' };
+    const def = { taxRate: 0.0725, developerMode: false, backupDir: '', silentPrint: true, printerName: '' };
     try {
         const cur = readJson(SETTINGS_FILE, def);
         // Ensure defaults for missing keys without dropping extras
@@ -242,6 +242,76 @@ ipcMain.handle('settings:saveDev', (_evt, incoming) => {
 
 // (auth handlers removed - rollback per request)
 
+// ---------- Silent Printing ----------
+// Prints provided HTML to the default printer without showing a dialog/preview.
+ipcMain.handle('print:silent', async (_evt, html) => {
+    const win = new BrowserWindow({ show: false });
+    try {
+        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(String(html || ''));
+        // Provide a base path so relative assets like ./assets/* resolve when using a data: URL
+        const baseForData = 'file://' + path.join(__dirname, '/');
+        await win.loadURL(dataUrl, { baseURLForDataURL: baseForData });
+        return await new Promise((resolve, reject) => {
+            try {
+                const s = readSettings();
+                const deviceName = String(s?.printerName || '').trim();
+                const opts = { silent: true, printBackground: true };
+                if (deviceName) opts.deviceName = deviceName;
+                win.webContents.print(opts, (success, failureReason) => {
+                    try { win.destroy(); } catch (_) { }
+                    try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus(); } catch (_) { }
+                    if (!success) return reject(new Error(failureReason || 'Silent print failed'));
+                    resolve(true);
+                });
+            } catch (e) {
+                try { win.destroy(); } catch (_) { }
+                try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus(); } catch (_) { }
+                reject(e);
+            }
+        });
+    } catch (e) {
+        try { win.destroy(); } catch (_) { }
+        try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.focus(); } catch (_) { }
+        throw e;
+    }
+});
+
+// Save only silent printing toggle
+ipcMain.handle('settings:saveSilent', (_evt, incoming) => {
+    const current = readSettings();
+    const safe = {
+        taxRate: Number(current?.taxRate ?? 0.0725),
+        developerMode: !!current?.developerMode,
+        backupDir: String(current?.backupDir || ''),
+        silentPrint: !!incoming?.silentPrint,
+        printerName: String((incoming?.printerName ?? current?.printerName) || '')
+    };
+    const saved = saveSettings(safe);
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
+// List available printers (from any existing window)
+ipcMain.handle('print:listPrinters', async () => {
+    try {
+        const { BrowserWindow } = require('electron');
+        const win = BrowserWindow.getAllWindows()[0];
+        if (!win || !win.webContents) return [];
+        const wc = win.webContents;
+        if (typeof wc.getPrintersAsync === 'function') {
+            return await wc.getPrintersAsync();
+        }
+        return wc.getPrinters();
+    } catch (e) {
+        return [];
+    }
+});
+
 // ---------- Backup/Restore Data ----------
 function formatLocalDate(date = new Date()) {
     const y = date.getFullYear();
@@ -380,6 +450,12 @@ app.whenReady().then(() => { ensureDataFiles(); createWindow(); });
 // Expose app version to renderers
 ipcMain.handle('app:getVersion', () => {
     try { return app.getVersion(); } catch (_) { return ''; }
+});
+
+// Focus the main window on request (helps recover after hidden windows/dialogs)
+ipcMain.handle('app:focus', () => {
+    try { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.focus(); return true; } } catch (_) {}
+    return false;
 });
 
 // Allow splash to request window resize to fit logo exactly
