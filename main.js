@@ -243,9 +243,26 @@ ipcMain.handle('settings:saveDev', (_evt, incoming) => {
 // (auth handlers removed - rollback per request)
 
 // ---------- Backup/Restore Data ----------
+function formatLocalDate(date = new Date()) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+function nextAvailablePath(dir, baseNameNoExt) {
+    const base = path.join(dir, `${baseNameNoExt}.json`);
+    if (!fs.existsSync(base)) return base;
+    let i = 1;
+    while (true) {
+        const candidate = path.join(dir, `${baseNameNoExt}-${String(i).padStart(2,'0')}.json`);
+        if (!fs.existsSync(candidate)) return candidate;
+        i++;
+    }
+}
+
 ipcMain.handle('data:export', async () => {
     try {
-        const defaultPath = `middletons-backup-${new Date().toISOString().slice(0,10)}.json`;
+        const defaultPath = `middletons-backup-${formatLocalDate()}.json`;
         const current = readSettings();
         const { canceled, filePath } = await dialog.showSaveDialog({
             title: 'Save Backup',
@@ -309,10 +326,10 @@ function performAutoBackup() {
         // Overwrite same filename each time
         const latestPath = path.join(backupDir, 'middletons-backup-latest.json');
         fs.writeFileSync(latestPath, JSON.stringify(data, null, 2), 'utf-8');
-        // Also write a dated snapshot (optional, non-blocking)
+        // Also write a dated snapshot using local date; do not overwrite existing files
         try {
-            const dated = `middletons-backup-${new Date().toISOString().slice(0,10)}.json`;
-            const datedPath = path.join(backupDir, dated);
+            const baseName = `middletons-backup-${formatLocalDate()}`;
+            const datedPath = nextAvailablePath(backupDir, baseName);
             fs.writeFileSync(datedPath, JSON.stringify(data, null, 2), 'utf-8');
         } catch (_) { }
         return true;
