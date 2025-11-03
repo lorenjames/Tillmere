@@ -22,7 +22,24 @@ function escapeHtml(s) {
 }
 function norm(s) { return String(s || '').trim().toLowerCase(); }
 function toMoneyNumber(n) {
-  const num = Number(n);
+  if (typeof n === 'number') {
+    return isFinite(n) ? Math.round(n * 100) / 100 : 0;
+  }
+  let s = String(n ?? '').trim();
+  if (!s) return 0;
+  // Treat parentheses as negative, e.g., (12.34)
+  if (/^\(.*\)$/.test(s)) s = '-' + s.slice(1, -1);
+  // Normalize common currency formatting: remove currency symbols, spaces, thousands separators
+  s = s.replace(/[\$€£¥₩₽₹]/g, '');
+  // If there is no dot but there is a single comma, interpret comma as decimal (basic EU-style support)
+  if (!s.includes('.') && (s.match(/,/g) || []).length === 1) {
+    s = s.replace(',', '.');
+  }
+  s = s.replace(/,/g, ''); // strip any remaining commas
+  s = s.replace(/\s+/g, '');
+  // Keep digits, first dot and minus
+  const cleaned = s.replace(/[^0-9+\-.]/g, '');
+  const num = parseFloat(cleaned);
   if (!isFinite(num)) return 0;
   return Math.round(num * 100) / 100;
 }
@@ -516,6 +533,14 @@ async function printReceipt() {
   const payment = paymentSelect?.value || '';
   if (!cashier) return alert('Please select a cashier.');
   if (!payment) return alert('Please select a payment type.');
+  // If Cash is selected, require a cash tendered amount
+  if ((payment || '') === 'Cash') {
+    const cashEl = document.getElementById('cashReceived');
+    const raw = String(cashEl?.value ?? '').trim();
+    if (!raw) { alert('Please enter the cash received from the customer.'); try { cashEl?.focus(); } catch (_) {} return; }
+    const cashNum = toMoneyNumber(raw);
+    if (isNaN(cashNum) || cashNum < 0) { alert('Please enter a valid non-negative cash amount.'); try { cashEl?.focus(); } catch (_) {} return; }
+  }
   try { playCashRegisterSound(); } catch (_) {}
 
   const numEl = document.getElementById('rcpt-number');
