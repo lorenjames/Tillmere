@@ -13,6 +13,81 @@ let __lastTotal = 0;
 
 // ---------- Utils ----------
 function money(n) { return Number(n || 0).toFixed(2); }
+// Lightweight status bar shown during async operations (e.g., silent print)
+function showStatusBar(message) {
+  try {
+    const id = 'pos-status-bar';
+    let bar = document.getElementById(id);
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = id;
+      bar.style.position = 'fixed';
+      bar.style.left = '0';
+      bar.style.right = '0';
+      bar.style.bottom = '0';
+      bar.style.zIndex = '5000';
+      bar.style.background = 'rgba(255,255,255,.98)';
+      bar.style.color = '#212529';
+      bar.style.padding = '8px 14px 12px 14px';
+      bar.style.boxShadow = '0 -6px 18px rgba(0,0,0,.18)';
+      bar.style.borderTop = '1px solid rgba(0,0,0,.08)';
+      bar.style.display = 'none';
+
+      const content = document.createElement('div');
+      content.style.margin = '0 auto';
+      content.style.maxWidth = '720px';
+
+      const label = document.createElement('div');
+      label.id = 'pos-status-text';
+      label.className = 'text-center fw-semibold';
+      label.style.marginBottom = '6px';
+
+      const progress = document.createElement('div');
+      progress.className = 'progress';
+      progress.style.height = '6px';
+
+      const progBar = document.createElement('div');
+      progBar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+      progBar.id = 'pos-status-progress';
+      progBar.setAttribute('role', 'progressbar');
+      progBar.setAttribute('aria-valuenow', '0');
+      progBar.setAttribute('aria-valuemin', '0');
+      progBar.setAttribute('aria-valuemax', '100');
+      // Start empty; we animate to 100% on show
+      progBar.style.width = '0%';
+      progBar.style.transition = 'width 2s linear';
+
+      progress.appendChild(progBar);
+      content.appendChild(label);
+      content.appendChild(progress);
+      bar.appendChild(content);
+      document.body.appendChild(bar);
+    }
+    const txt = bar.querySelector('#pos-status-text');
+    if (txt) txt.textContent = String(message || '');
+    bar.style.display = 'block';
+    // Animate progress from 0% to 100% over 2 seconds
+    try {
+      const p = bar.querySelector('#pos-status-progress');
+      if (p) {
+        // reset to 0% without animation, then animate
+        p.style.transition = 'none';
+        p.style.width = '0%';
+        p.setAttribute('aria-valuenow', '0');
+        // force reflow to apply the width reset before animating
+        void p.offsetWidth;
+        p.style.transition = 'width 2s linear';
+        requestAnimationFrame(() => {
+          p.style.width = '100%';
+          p.setAttribute('aria-valuenow', '100');
+        });
+      }
+    } catch (_) { }
+  } catch (_) { }
+}
+function hideStatusBar() {
+  try { const el = document.getElementById('pos-status-bar'); if (el) el.style.display = 'none'; } catch (_) { }
+}
 function showToast(message, opts = {}) {
   try {
     const hostId = 'toast-host';
@@ -867,6 +942,8 @@ async function printReceipt() {
 async function completePrintWithHtml(html) {
   let printed = false;
   if (__silentPrint) {
+    // Show a brief status bar on the POS screen during silent print
+    showStatusBar('Printing Sales Receipt');
     try {
       // Remove auto-print/auto-close scripts from the HTML so the hidden
       // printing window does NOT trigger its own preview/dialog.
@@ -880,6 +957,8 @@ async function completePrintWithHtml(html) {
       printed = await ipcRenderer.invoke('print:silent', content);
     } catch (e) {
       console.error('Silent print failed, will fall back to preview:', e);
+    } finally {
+      hideStatusBar();
     }
   }
 
