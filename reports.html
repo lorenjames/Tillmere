@@ -1,0 +1,161 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Reports - Middleton's</title>
+    <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"> -->
+    <link href="./css/bootstrap.css" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body {
+            background: #f8f9fa;
+        }
+
+        .filters .form-label {
+            font-size: .85rem;
+        }
+
+        .table td,
+        .table th {
+            vertical-align: middle;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg bg-primary" data-bs-theme="dark">
+        <div class="container-fluid">
+            <span class="navbar-brand">Middleton’s Antiques & Uniques</span>
+            <div class="navbar-nav">
+                <a class="nav-link" href="index.html">POS</a>
+                <a class="nav-link" href="receipts.html">Receipts</a>
+                <a class="nav-link active" href="reports.html">Reports</a>
+                <div class="nav-item dropdown me-2">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
+                        aria-expanded="false">Configuration</a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
+                        <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
+                        <li><a class="dropdown-item" href="settings.html">Settings</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container py-4">
+        <div class="d-flex justify-content-end mb-3 gap-2">
+            <button id="backupBtn" class="btn btn-outline-secondary btn-sm">Backup Data</button>
+            <button id="restoreBtn" class="btn btn-outline-secondary btn-sm">Restore Data</button>
+        </div>
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Sales per Vendor</h5>
+                <div class="row g-3">
+                    <div class="col-6 col-lg-3">
+                        <label class="form-label">From (date)</label>
+                        <input id="fromDate" type="date" class="form-control">
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <label class="form-label">To (date)</label>
+                        <input id="toDate" type="date" class="form-control">
+                    </div>
+                    <div class="col-12 col-lg-3 d-grid">
+                        <label class="form-label invisible">Apply</label>
+                        <button id="runBtn" class="btn btn-primary">Run Report</button>
+                    </div>
+                    <div class="col-12 col-lg-3 d-grid">
+                        <label class="form-label invisible">Quick Filters</label>
+                        <div class="d-flex gap-2">
+                            <button id="todayBtn" class="btn btn-outline-primary">Today</button>
+                            <button id="currentMonthBtn" class="btn btn-outline-primary">Current Month</button>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-3 d-grid">
+                        <label class="form-label invisible">Actions</label>
+                        <div class="d-flex gap-2">
+                            <button id="exportBtn" class="btn btn-outline-secondary">Export CSV</button>
+                            <button id="printBtn" class="btn btn-outline-primary">Print</button>
+                            <button id="printDetailBtn" class="btn btn-outline-primary">Print Detailed</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                        <thead class="table-light sticky">
+                            <tr>
+                                <th>Vendor Code</th>
+                                <th>Vendor Name</th>
+                                <th class="text-end">Cash ($)</th>
+                                <th class="text-end">Card ($)</th>
+                                <th class="text-end">Check ($)</th>
+                                <th class="text-end">Gift Card ($)</th>
+                                <th class="text-end">Other ($)</th>
+                                <th class="text-end">Gross ($)</th>
+                                <th class="text-end"># Items</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportBody"></tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <th colspan="2" class="text-end">Totals</th>
+                                <th class="text-end" id="totCash">$0.00</th>
+                                <th class="text-end" id="totCard">$0.00</th>
+                                <th class="text-end" id="totCheck">$0.00</th>
+                                <th class="text-end" id="totGift">$0.00</th>
+                                <th class="text-end" id="totOther">$0.00</th>
+                                <th class="text-end" id="grandTotal">$0.00</th>
+                                <th class="text-end" id="grandCount">0</th>
+                            </tr>
+                        </tfoot>
+
+
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Credit card fee section (5% of gross card sales) -->
+        <div class="card shadow-sm mt-3">
+            <div class="card-body">
+                <h6 class="card-title mb-2">Credit Card Processing Fee (5% of Gross Card Sales)</h6>
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Vendor Code</th>
+                                <th>Vendor Name</th>
+                                <th class="text-end">Card ($)</th>
+                                <th class="text-end">5% Fee ($)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cardFeeBody"></tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <th colspan="2" class="text-end">Totals</th>
+                                <th class="text-end" id="feeTotCard">$0.00</th>
+                                <th class="text-end" id="feeTotAmount">$0.00</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="card shadow-sm mt-3">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Detailed Sales by Vendor</h5>
+                <div id="detailedReport" class="vstack gap-3"></div>
+            </div>
+        </div>
+    </main>
+
+    <script src="reports.js"></script>
+</body>
+
+</html>

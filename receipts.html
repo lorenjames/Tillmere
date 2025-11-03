@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Receipts - Middleton’s</title>
+    <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"> -->
+    <link href="./css/bootstrap.css" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        body {
+            background: #f8f9fa;
+        }
+
+        .filters .form-label {
+            font-size: .85rem;
+        }
+
+        .table td,
+        .table th {
+            vertical-align: middle;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg bg-primary" data-bs-theme="dark">
+        <div class="container-fluid">
+            <span class="navbar-brand">Middleton’s Antiques & Uniques</span>
+            <div class="navbar-nav">
+                <a class="nav-link" href="index.html">POS</a>
+                <a class="nav-link active" href="receipts.html">Receipts</a>
+                <a class="nav-link" href="reports.html">Reports</a>
+                <div class="nav-item dropdown me-2">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Configuration</a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
+                        <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
+                        <li><a class="dropdown-item" href="settings.html">Settings</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container py-4">
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h5 class="card-title mb-3">All Sales / Receipts</h5>
+
+                <div class="row g-3 filters">
+                    <div class="col-12 col-lg-3">
+                        <label class="form-label">Search (number / item / vendor / cashier)</label>
+                        <input id="q" class="form-control" placeholder='e.g., MID-2025… or "lamp"'>
+                    </div>
+                    <div class="col-6 col-lg-2">
+                        <label class="form-label">From (date)</label>
+                        <input id="fromDate" type="date" class="form-control">
+                    </div>
+                    <div class="col-6 col-lg-2">
+                        <label class="form-label">To (date)</label>
+                        <input id="toDate" type="date" class="form-control">
+                    </div>
+                    <div class="col-6 col-lg-2">
+                        <label class="form-label">Cashier</label>
+                        <select id="cashierFilter" class="form-select">
+                            <option value="">All</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-lg-2">
+                        <label class="form-label">Payment</label>
+                        <select id="paymentFilter" class="form-select">
+                            <option value="">All</option>
+                            <option>Cash</option>
+                            <option>Card</option>
+                            <option>Check</option>
+                            <option>Gift Card</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-lg-2 d-grid">
+                        <label class="form-label invisible">Today</label>
+                        <button class="btn btn-info" id="todayBtn">Today</button>
+                    </div>
+                    <div class="col-6 col-lg-2 d-grid">
+                        <label class="form-label invisible">Yesterday</label>
+                        <button class="btn btn-info" id="yesterdayBtn">Yesterday</button>
+                    </div>
+                    
+                    <div class="col-6 col-lg-2">
+                        <label class="form-label">Voids</label>
+                        <select id="voidFilter" class="form-select">
+                            <option value="hide" selected>Hide voided</option>
+                            <option value="show">Show all</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-lg-2 d-grid">
+                        <label class="form-label invisible">Reindex</label>
+                        <button class="btn btn-outline-secondary" id="reindexBtn">Reindex IDs</button>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-end gap-2 mt-2">
+                    <button class="btn btn-outline-secondary" id="clearBtn">Clear Filters</button>
+                    <button class="btn btn-primary" id="applyBtn">Apply</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Vendor subtotals across current filter -->
+        <div class="card shadow-sm mb-3">
+            <div class="card-body">
+                <h6 class="card-title mb-2">Vendor Subtotals (Current Filter)</h6>
+                <div id="vendorSubtotals" class="row g-2"></div>
+                <div id="vendorSubtotalsTotal" class="mt-2 fw-semibold text-end"></div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-2 gap-2">
+            <div class="text-muted" id="countLabel">0 receipts</div>
+            <div class="d-flex align-items-center gap-2">
+                <div class="d-flex align-items-center gap-1">
+                    <label for="pageSizeSelect" class="form-label m-0 me-1 small text-muted">Per page</label>
+                    <select id="pageSizeSelect" class="form-select form-select-sm" style="width:auto">
+                        <option value="10" selected>10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                    </select>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
+                    <button class="btn btn-outline-primary" id="prevPageBtn">Prev</button>
+                    <span class="btn btn-outline-light disabled" id="pageInfo" style="pointer-events:none">Page 1 of 1</span>
+                    <button class="btn btn-outline-primary" id="nextPageBtn">Next</button>
+                </div>
+                <button class="btn btn-outline-secondary btn-sm" id="exportBtn">Export CSV</button>
+                <!-- <button class="btn btn-outline-secondary btn-sm" id="debugBtn">Debug Info</button> -->
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="table-responsive">
+                <table class="table table-striped align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 160px;">Date/Time</th>
+                            <th style="width: 160px;">Receipt #</th>
+                            <th>Cashier</th>
+                            <th>Payment</th>
+                            <th class="text-end" style="width:100px;">Subtotal</th>
+                            <th class="text-end" style="width:100px;">Tax</th>
+                            <th class="text-end" style="width:110px;">Total</th>
+                            <th style="width:200px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="receiptsTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script src="receipts.js"></script>
+    <!-- Void Reason Modal -->
+    <div class="modal fade" id="voidModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title">Void Receipt</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"
+                        id="voidCloseX"></button>
+                </div>
+                <div class="modal-body">
+                    <label for="voidCashierSelect" class="form-label">Cashier</label>
+                    <select id="voidCashierSelect" class="form-select mb-3"></select>
+
+                    <label for="voidReasonInput" class="form-label">Reason</label>
+                    <textarea id="voidReasonInput" class="form-control" rows="3"
+                        placeholder="e.g., wrong item, duplicate sale"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="voidCancelBtn"
+                        data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="voidConfirmBtn">Void</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+</body>
+
+</html>

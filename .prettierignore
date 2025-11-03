@@ -1,0 +1,17 @@
+# Build outputs
+/dist
+/out
+
+# Dependencies
+/node_modules
+
+# OS/IDE
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+
+# Generated or large assets
+*.min.js
+*.min.css
+*.map

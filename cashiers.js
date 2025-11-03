@@ -1,0 +1,54 @@
+// cashiers.js
+const { ipcRenderer } = require('electron');
+
+let cache = [];
+function escapeHtml(s) { return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
+
+async function load() { const list = await ipcRenderer.invoke('cashiers:load'); cache = Array.isArray(list) ? list : []; cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
+async function save() { cache = await ipcRenderer.invoke('cashiers:save', cache); cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
+
+async function render() {
+    await load();
+    const tbody = document.getElementById('cashierTable');
+    tbody.innerHTML = '';
+    cache.forEach((c, i) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+      <td><input type="text" class="form-control" value="${escapeHtml(c.name || '')}" onchange="editCashier(${i}, this.value)"></td>
+      <td><button class="btn btn-outline-danger btn-sm" onclick="deleteCashier(${i})">Delete</button></td>
+    `;
+        tbody.appendChild(tr);
+    });
+}
+window.addCashier = async function () {
+    const inp = document.getElementById('newCashier');
+    const name = (inp.value || '').trim();
+    if (!name) return alert('Cashier name required.');
+    await load();
+    if (cache.some(c => (c.name || '').toLowerCase() === name.toLowerCase())) return alert('Cashier already exists.');
+    cache.push({ name });
+    await save();
+    inp.value = '';
+    render();
+};
+window.editCashier = async function (i, val) {
+    await load();
+    if (!cache[i]) return;
+    const name = (val || '').trim();
+    if (!name) return alert('Name cannot be empty.');
+    if (cache.some((c, idx) => idx !== i && (c.name || '').toLowerCase() === name.toLowerCase())) return alert('Cashier already exists.');
+    cache[i].name = name;
+    await save();
+    render();
+};
+window.deleteCashier = async function (i) {
+    await load();
+    if (!cache[i]) return;
+    if (!confirm(`Delete cashier "${cache[i].name}"?`)) return;
+    cache.splice(i, 1);
+    await save();
+    render();
+};
+// (admin auth removed - rollback)
+
+window.onload = render;

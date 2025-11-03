@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Starting…</title>
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: #ffffff;
+      overflow: hidden;
+      /* prevent scrollbars */
+    }
+
+    .wrap {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      width: 440px;
+      padding: 28px;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .08), 0 6px 12px rgba(0, 0, 0, .06);
+      text-align: center;
+    }
+
+    img {
+      width: 160px;
+      height: 160px;
+      border-radius: 16px;
+    }
+
+    h1 {
+      margin: 14px 0 8px;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: .2px;
+    }
+
+    .muted {
+      color: #6b7280;
+      font-size: 12px;
+      margin-bottom: 14px;
+    }
+
+    .bar {
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      width: 0%;
+      background: #2563eb;
+      border-radius: 999px;
+      animation: load 1200ms ease-out forwards;
+    }
+
+    @keyframes load {
+      from {
+        width: 0%
+      }
+
+      to {
+        width: 100%
+      }
+    }
+  </style>
+  <style>
+    /* Minimal layout sized to the logo image; no scrollbars and centered status */
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: #000;
+      overflow: hidden;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    .wrap {
+      height: 100%;
+      display: grid;
+      place-items: center;
+    }
+
+    .frame {
+      position: fixed;
+      inset: 0;
+    }
+
+    #logo {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+
+    .status {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 3vh;
+      padding: 10px 14px;
+      box-sizing: border-box;
+    }
+
+    .muted {
+      color: #f3f4f6;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, .6);
+      font-size: 14px;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .bar {
+      height: 10px;
+      background: rgba(0, 0, 0, .35);
+      border-radius: 999px;
+      overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0, 0, 0, .35);
+      width: 80%;
+      margin: 0 auto;
+    }
+
+    .fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #22c55e, #3b82f6);
+      box-shadow: 0 0 10px rgba(59, 130, 246, .5);
+      animation: load 1800ms ease-out forwards;
+    }
+
+    @keyframes load {
+      from {
+        width: 0%
+      }
+
+      to {
+        width: 100%
+      }
+    }
+  </style>
+  <script>    // Optional: if the main window takes a bit longer, loop the bar once more.    setTimeout(() => {      const f = document.querySelector('.fill');      if (f && getComputedStyle(f).width === '0px') f.style.animation = 'load 1200ms ease-out forwards';    }, 1500);  </script>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="frame" id="frame"> <img id="logo" src="assets/MiddletonsStoreFrontLogo.png" alt="Storefront" />
+      <div class="status">
+        <div class="muted">Getting ready to play...</div>
+        <div class="bar">
+          <div class="fill"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>
