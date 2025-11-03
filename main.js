@@ -360,6 +360,11 @@ function createWindow() {
 }
 app.whenReady().then(() => { ensureDataFiles(); createWindow(); });
 
+// Expose app version to renderers
+ipcMain.handle('app:getVersion', () => {
+    try { return app.getVersion(); } catch (_) { return ''; }
+});
+
 // Allow splash to request window resize to fit logo exactly
 ipcMain.handle('splash:resize', (_evt, size) => {
     try {

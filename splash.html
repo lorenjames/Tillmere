@@ -112,6 +112,19 @@
       box-sizing: border-box;
     }
 
+    .version-badge {
+      display: inline-block;
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 12px;
+      line-height: 1;
+      margin: 0 auto 10px auto;
+      text-align: center;
+      position: absolute;
+    }
+
     .muted {
       color: #f3f4f6;
       text-shadow: 0 2px 6px rgba(0, 0, 0, .6);
@@ -148,13 +161,33 @@
       }
     }
   </style>
-  <script>    // Optional: if the main window takes a bit longer, loop the bar once more.    setTimeout(() => {      const f = document.querySelector('.fill');      if (f && getComputedStyle(f).width === '0px') f.style.animation = 'load 1200ms ease-out forwards';    }, 1500);  </script>
+  <script>
+    // Optional: if the main window takes a bit longer, loop the bar once more.
+    setTimeout(() => {
+      const f = document.querySelector('.fill');
+      if (f && getComputedStyle(f).width === '0px') f.style.animation = 'load 1200ms ease-out forwards';
+    }, 1500);
+  </script>
+  <script>
+    // Inject app version into splash badge
+    (function () {
+      try {
+        const { ipcRenderer } = require('electron');
+        ipcRenderer.invoke('app:getVersion').then(v => {
+          const el = document.getElementById('splashVersion');
+          if (el) el.textContent = 'v' + (v || '');
+        }).catch(() => { /* ignore */ });
+      } catch (_) { /* ignore */ }
+    })();
+  </script>
 </head>
 
 <body>
   <div class="wrap">
-    <div class="frame" id="frame"> <img id="logo" src="assets/MiddletonsStoreFrontLogo.png" alt="Storefront" />
+    <div class="frame" id="frame">
+      <img id="logo" src="assets/MiddletonsStoreFrontLogo.png" alt="Storefront" />
       <div class="status">
+        <div class="version-badge" id="splashVersion">v</div>
         <div class="muted">Getting ready to play...</div>
         <div class="bar">
           <div class="fill"></div>

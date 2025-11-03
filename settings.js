@@ -41,5 +41,11 @@ async function saveDevSettings() {
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('saveBtn')?.addEventListener('click', saveTaxSettings);
   document.getElementById('saveDevBtn')?.addEventListener('click', saveDevSettings);
+  try {
+    ipcRenderer.invoke('app:getVersion').then(v => {
+      const el = document.getElementById('appVersion');
+      if (el) el.textContent = 'v' + (v || '');
+    }).catch(() => {});
+  } catch (_) {}
 });
 window.addEventListener('load', loadSettings);
