@@ -8,7 +8,9 @@
     <link href="./css/bootstrap.css" rel="stylesheet">
     <!-- Experimental wallpaper (remove this link to rollback) -->
     <link href="./css/brickwall.css" rel="stylesheet">
-    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Preload wallpaper to avoid visible reloads on navigation -->
+    <link rel="preload" as="image" href="./assets/brickwall.jpg">
+    <script defer src="./node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <style>
         /* body background is provided by css/brickwall.css; keep minimal overrides here */
     </style>

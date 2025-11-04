@@ -186,50 +186,48 @@ function renderTable() {
     if (prevLi && prevBtn) prevLi.classList.toggle('disabled', !!prevBtn.disabled);
     if (nextLi && nextBtn) nextLi.classList.toggle('disabled', !!nextBtn.disabled);
   } catch (_) { }
-
-  pageRows.forEach(r => {
+  
+  let html = '';
+  for (const r of pageRows) {
     const rawId = String(r.id || r.number || '').trim();
     const comments = (r.items || []).map(i => (i.comment || '').trim()).filter(Boolean);
     const commentPreview = comments.length
-      ? (comments.length > 2
-        ? comments.slice(0, 2).join('; ') + '…'
-        : comments.join('; '))
+      ? (comments.length > 2 ? comments.slice(0, 2).join('; ') + '…' : comments.join('; '))
       : '';
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${r.displayDate ? esc(r.displayDate) : (r.datetime ? new Date(r.datetime).toLocaleString() : '')}</td>
-      <td>
-        ${esc(r.number || r.id || '')}
-        ${r.voided ? `<div class="text-danger small">VOIDED ${r.voidInfo?.when ? '(' + new Date(r.voidInfo.when).toLocaleString() + ')' : ''}</div>` : ''}
-        ${commentPreview ? `<div class="text-muted small">Notes: ${esc(commentPreview)}</div>` : ''}
-      </td>
-      <td>${esc(r.cashier || '')}</td>
-      <td>${esc(r.payment || '')}</td>
-      <td class="text-end">$${money(r.subtotal)}</td>
-      <td class="text-end">$${money(r.tax)}</td>
-      <td class="text-end fw-semibold">$${money(r.total)}</td>
-      <td>
-        <div class="btn-group btn-group-sm">
-          <button type="button" class="btn btn-outline-primary"
-                  onclick="window.__onReceiptAction(event,'view','${rawId}')">View</button>
-          <button type="button" class="btn btn-outline-primary"
-                  onclick="window.__onReceiptAction(event,'print','${rawId}')">Print</button>
-          ${r.voided
-        ? `<button type="button" class="btn btn-outline-dark" disabled>Voided</button>`
-        : `<button type="button" class="btn btn-outline-danger"
-                         onclick="window.__onReceiptAction(event,'void','${rawId}')">Void</button>`
-      }
-        </div>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
+    html += `
+      <tr>
+        <td>${r.displayDate ? esc(r.displayDate) : (r.datetime ? new Date(r.datetime).toLocaleString() : '')}</td>
+        <td>
+          ${esc(r.number || r.id || '')}
+          ${r.voided ? `<div class="text-danger small">VOIDED ${r.voidInfo?.when ? '(' + new Date(r.voidInfo.when).toLocaleString() + ')' : ''}</div>` : ''}
+          ${commentPreview ? `<div class="text-muted small">Notes: ${esc(commentPreview)}</div>` : ''}
+        </td>
+        <td>${esc(r.cashier || '')}</td>
+        <td>${esc(r.payment || '')}</td>
+        <td class="text-end">$${money(r.subtotal)}</td>
+        <td class="text-end">$${money(r.tax)}</td>
+        <td class="text-end fw-semibold">$${money(r.total)}</td>
+        <td>
+          <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-outline-primary" onclick="window.__onReceiptAction(event,'view','${rawId}')">View</button>
+            <button type="button" class="btn btn-outline-primary" onclick="window.__onReceiptAction(event,'print','${rawId}')">Print</button>
+            ${r.voided
+              ? `<button type="button" class="btn btn-outline-dark" disabled>Voided</button>`
+              : `<button type="button" class="btn btn-outline-danger" onclick="window.__onReceiptAction(event,'void','${rawId}')">Void</button>`}
+          </div>
+        </td>
+      </tr>`;
+  }
+  tbody.innerHTML = html;
 }
 
 // ---------- view/print window (shows VOID banner + reason/by/when) ----------
 async function openReceiptWindow(r, opts = {}) {
   const autoPrint = !!opts.autoPrint;
-  const vendors = await ipcRenderer.invoke('vendors:load');
+  const vendors = (Array.isArray(window.__vendorsCache) && window.__vendorsCache.length)
+    ? window.__vendorsCache
+    : await ipcRenderer.invoke('vendors:load');
+  try { if (!window.__vendorsCache || !window.__vendorsCache.length) window.__vendorsCache = vendors; } catch (_) { }
   const norm = s => String(s || '').trim().toLowerCase();
   const resolveCode = (item) => {
     if (item.vendorCode) return item.vendorCode;
@@ -536,12 +534,25 @@ window.addEventListener('load', async () => {
   try { window.__vendorsCache = await ipcRenderer.invoke('vendors:load'); } catch (_) { window.__vendorsCache = []; }
   await loadAll();
   await populateCashiersFilter();
+  // Lightweight debounce to coalesce rapid UI changes into one render
+  const scheduleApplyFilters = (() => {
+    let raf = 0;
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => { raf = 0; try { applyFilters(); } catch (_) {} });
+    };
+  })();
   applyFilters();
 
   $('#applyBtn').addEventListener('click', applyFilters);
   $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') applyFilters(); });
   $('#exportBtn').addEventListener('click', exportCSV);
-  $('#voidFilter').addEventListener('change', applyFilters);
+  $('#voidFilter').addEventListener('change', scheduleApplyFilters);
+  // Smooth updates for common filter controls
+  document.getElementById('cashierFilter')?.addEventListener('change', scheduleApplyFilters);
+  document.getElementById('paymentFilter')?.addEventListener('change', scheduleApplyFilters);
+  document.getElementById('fromDate')?.addEventListener('change', scheduleApplyFilters);
+  document.getElementById('toDate')?.addEventListener('change', scheduleApplyFilters);
   $('#reindexBtn').addEventListener('click', async () => {
     const res = await ipcRenderer.invoke('receipts:reindex');
     alert(res.changed ? `Reindexed ${res.count} receipts.` : 'No changes needed.');
@@ -647,7 +658,10 @@ window.addEventListener('load', async () => {
 // --- Override: view/print window as full-page Sales Invoice ---
 async function openReceiptWindow(r, opts = {}) {
   const autoPrint = !!opts.autoPrint;
-  const vendors = await ipcRenderer.invoke('vendors:load');
+  const vendors = (Array.isArray(window.__vendorsCache) && window.__vendorsCache.length)
+    ? window.__vendorsCache
+    : await ipcRenderer.invoke('vendors:load');
+  try { if (!window.__vendorsCache || !window.__vendorsCache.length) window.__vendorsCache = vendors; } catch (_) { }
   const norm = s => String(s || '').trim().toLowerCase();
   const resolveCode = (item) => {
     if (item.vendorCode) return item.vendorCode;

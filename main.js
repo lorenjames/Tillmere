@@ -430,8 +430,13 @@ function createWindow() {
         height: 800,
         show: false,
         fullscreen: false,
+        backgroundColor: '#f1efea',
         icon: path.join(__dirname, 'assets', 'MiddletonsAppIcon.png'),
-        webPreferences: { nodeIntegration: true, contextIsolation: false }
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+            backgroundThrottling: false
+        }
     });
     mainWindow.loadFile('index.html');
     mainWindow.once('ready-to-show', () => {
