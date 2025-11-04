@@ -197,7 +197,7 @@ function renderTable() {
       : '';
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${r.datetime ? new Date(r.datetime).toLocaleString() : ''}</td>
+      <td>${r.displayDate ? esc(r.displayDate) : (r.datetime ? new Date(r.datetime).toLocaleString() : '')}</td>
       <td>
         ${esc(r.number || r.id || '')}
         ${r.voided ? `<div class="text-danger small">VOIDED ${r.voidInfo?.when ? '(' + new Date(r.voidInfo.when).toLocaleString() + ')' : ''}</div>` : ''}
@@ -365,7 +365,7 @@ async function openReceiptWindow(r, opts = {}) {
 
 // ---------- CSV export ----------
 function toCSV(rows) {
-  const header = ['Number', 'DateTime', 'Cashier', 'Payment', 'Subtotal', 'Tax', 'Total', 'Voided', 'VoidReason', 'Items', 'ItemComments'];
+  const header = ['Number', 'DateTime', 'DisplayDate', 'Cashier', 'Payment', 'Subtotal', 'Tax', 'Total', 'Voided', 'VoidReason', 'Items', 'ItemComments'];
   const lines = [header.join(',')];
   rows.forEach(r => {
     const itemsText = (r.items || []).map(i => `${i.name} ($${money(i.price)}${i.vendorCode ? `, ${i.vendorCode}` : i.vendor ? `, ${i.vendor}` : ''})`).join('; ');
@@ -373,6 +373,7 @@ function toCSV(rows) {
     const line = [
       r.number || r.id || '',
       r.datetime || '',
+      r.displayDate || '',
       r.cashier || '',
       r.payment || '',
       money(r.subtotal),
@@ -713,12 +714,12 @@ async function openReceiptWindow(r, opts = {}) {
       .sheet{margin:0; box-shadow:none}
       .actions{display:none}
       .vendor-sub{display:none}
-      .bgmark{position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:70%; height:auto; opacity:.10; pointer-events:none; display:block;
-        filter: blur(0.8px);
-        -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
-                mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
-        -webkit-mask-size: 100% 100%;
-                mask-size: 100% 100%; }
+       .bgmark{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:70%; height:auto; opacity:.10; pointer-events:none; display:none;
+      filter: blur(0.8px);
+      -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
+              mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
+      -webkit-mask-size: 100% 100%;
+              mask-size: 100% 100%; }
     }
   </style>`;
 
@@ -771,6 +772,7 @@ async function openReceiptWindow(r, opts = {}) {
         </div>`
     : '';
 
+  const displayDate = r.displayDate || (r.datetime ? new Date(r.datetime).toLocaleString() : '');
   const html = `
   <html>
   <head>
@@ -825,7 +827,7 @@ async function openReceiptWindow(r, opts = {}) {
 
         <div class="meta">
           <div><div class="label">Invoice #</div><div><strong>${esc(r.number || r.id)}</strong></div></div>
-          <div><div class="label">Date</div><div><strong>${r.datetime ? new Date(r.datetime).toLocaleString() : ''}</strong></div></div>
+          <div><div class="label">Date</div><div><strong>${esc(displayDate)}</strong></div></div>
           <div><div class="label">Cashier</div><div><strong>${esc(r.cashier || '-')}</strong></div></div>
           <div><div class="label">Payment</div><div><strong>${esc(r.payment || '-')}</strong></div></div>
           ${voidInline}
@@ -880,4 +882,3 @@ async function openReceiptWindow(r, opts = {}) {
   w.document.close();
   return w;
 }
-

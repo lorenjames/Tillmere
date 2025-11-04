@@ -131,10 +131,10 @@ function cleanupStrayBackdrops() {
     // Also ensure body is not stuck in modal-open state
     try { document.body.classList.remove('modal-open'); } catch (_) { }
     // Close lingering offcanvas/nav collapse
-    try { document.querySelectorAll('.offcanvas.show').forEach(el => { el.classList.remove('show'); el.style.display='none'; el.setAttribute('aria-hidden','true'); }); } catch(_){}
-    try { document.querySelectorAll('.navbar-collapse.show').forEach(el => { el.classList.remove('show'); el.style.display=''; }); } catch(_){}
+    try { document.querySelectorAll('.offcanvas.show').forEach(el => { el.classList.remove('show'); el.style.display = 'none'; el.setAttribute('aria-hidden', 'true'); }); } catch (_) { }
+    try { document.querySelectorAll('.navbar-collapse.show').forEach(el => { el.classList.remove('show'); el.style.display = ''; }); } catch (_) { }
     // Ensure pointer events are enabled on body
-    try { document.body.style.pointerEvents = 'auto'; } catch(_){}
+    try { document.body.style.pointerEvents = 'auto'; } catch (_) { }
   } catch (_) { }
 }
 
@@ -356,8 +356,8 @@ function installNavigationGuards() {
       try {
         // Close open Bootstrap UI pieces that may leave overlays on cancel
         document.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
-        document.querySelectorAll('.offcanvas.show').forEach(el => { el.classList.remove('show'); el.setAttribute('aria-hidden','true'); el.style.display='none'; });
-        document.querySelectorAll('.navbar-collapse.show').forEach(el => { el.classList.remove('show'); el.style.display=''; });
+        document.querySelectorAll('.offcanvas.show').forEach(el => { el.classList.remove('show'); el.setAttribute('aria-hidden', 'true'); el.style.display = 'none'; });
+        document.querySelectorAll('.navbar-collapse.show').forEach(el => { el.classList.remove('show'); el.style.display = ''; });
         // Clean up any stray backdrops or overlay states
         cleanupStrayBackdrops();
         nukeBlockingOverlays();
@@ -365,9 +365,9 @@ function installNavigationGuards() {
         // Give user a moment to click any field; don't auto-refocus during that window
         __suppressRefocusUntil = Date.now() + 1500;
         // Nudge focus back to Item for keyboard entry, but allow immediate click override
-        setTimeout(() => { try { document.getElementById('itemName')?.focus(); } catch(_){} }, 50);
+        setTimeout(() => { try { document.getElementById('itemName')?.focus(); } catch (_) { } }, 50);
         // One more cleanup pass after transitions settle
-        setTimeout(() => { try { cleanupStrayBackdrops(); document.body.style.pointerEvents='auto'; } catch(_){} }, 220);
+        setTimeout(() => { try { cleanupStrayBackdrops(); document.body.style.pointerEvents = 'auto'; } catch (_) { } }, 220);
       } catch (_) { }
     };
     const hasDirtyCart = () => {
@@ -758,6 +758,7 @@ async function printReceipt() {
   const now = new Date();
   // Optional back-dated sale date (keeps current time of day)
   let saleDate = new Date(now.getTime());
+  let usedBackdate = false;
   try {
     const useBackdate = !!document.getElementById('backdateToggle')?.checked;
     const dateInput = document.getElementById('backdateDate');
@@ -767,11 +768,19 @@ async function printReceipt() {
       if (parts.length === 3 && parts.every(n => !isNaN(n) && n > 0)) {
         const [y, m, d] = parts;
         saleDate.setFullYear(y, m - 1, d);
+        usedBackdate = true;
       }
     }
   } catch (_) { }
   const number = `MID-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-  numEl.textContent = number; dateEl.textContent = saleDate.toLocaleString();
+  numEl.textContent = number;
+  try {
+    if (usedBackdate) {
+      dateEl.innerHTML = `${saleDate.toLocaleDateString()} <span style="color:#dc3545;">- back dated</span>`;
+    } else {
+      dateEl.textContent = saleDate.toLocaleString();
+    }
+  } catch (_) { dateEl.textContent = saleDate.toLocaleString(); }
   document.getElementById('rcpt-cashier').textContent = cashier || '-';
   document.getElementById('rcpt-payment').textContent = payment || '-';
 
@@ -835,6 +844,8 @@ async function printReceipt() {
     });
     await ipcRenderer.invoke('receipts:add', {
       datetime: new Date(saleDate.getTime()).toISOString(),
+      backdated: !!usedBackdate,
+      displayDate: usedBackdate ? (saleDate.toLocaleDateString() + ' - back dated') : saleDate.toLocaleString(),
       number,
       cashier,
       payment,
@@ -857,10 +868,16 @@ async function printReceipt() {
       .invoice{max-width:8.5in;margin:0 auto}
       /* extra bottom padding to avoid overlap with QR block */
       .sheet{position:relative;background:#fff;padding:32px 40px 200px 40px}
-      .bgmark{position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:70%; height:auto; opacity:.10; pointer-events:none; filter: blur(0.8px);
-        -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
-                mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
-        -webkit-mask-size: 100% 100%; mask-size:100% 100% }
+       .bgmark{
+          position: fixed;
+          top: 50%; left: 50%; transform: translate(-50%, -50%);
+          width: 70%; height: auto; opacity: .10; pointer-events: none;
+          filter: blur(0.8px);
+          -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
+                  mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
+          -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+          -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+        }
       .header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
       .brand-wrap{display:flex;gap:12px;align-items:center}
       .brand{font-weight:800;font-size:20px}
@@ -880,7 +897,20 @@ async function printReceipt() {
       .socialQR{position:static; display:flex; flex-direction:row-reverse; align-items:center; gap:10px; text-align:right; margin-top:12px}
       .socialQR img{width:90px; height:auto; border-radius:8px; border:1px solid var(--border)}
       .socialQR .msg{font-weight:700; font-size:12px; line-height:1.2}
-      @media print { .qr-fixed{ position: fixed; right: 0.5in; bottom: 0.5in; } }
+      @media print {
+        .qr-fixed{ position: fixed; right: 0.5in; bottom: 0.5in; }
+        /* Reinforce watermark masking for preview print pipeline */
+        .bgmark{
+          position: fixed;
+          top: 50%; left: 50%; transform: translate(-50%, -50%);
+          width: 70%; height: auto; opacity: .10; pointer-events: none;
+          filter: blur(0.8px);
+          -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
+                  mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
+          -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+          -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+        }
+      }
     </style>`;
 
   const vendorsList = await fetchVendors();
@@ -952,7 +982,9 @@ async function printReceipt() {
             </div>
             <div class="meta">
               <div><div class="label">Invoice #</div><div><strong>${escapeHtml(number)}</strong></div></div>
-              <div><div class="label">Date</div><div><strong>${saleDate.toLocaleString()}</strong></div></div>
+              <div><div class="label">Date</div><div><strong>${(usedBackdate
+      ? `${saleDate.toLocaleDateString()} <span style="color:#dc3545;">- back dated</span>`
+      : saleDate.toLocaleString())}</strong></div></div>
               <div><div class="label">Cashier</div><div><strong>${escapeHtml(cashier || '-')}</strong></div></div>
               <div><div class="label">Payment</div><div><strong>${escapeHtml(payment || '-')}</strong></div></div>
             </div>
@@ -1209,9 +1241,9 @@ window.addEventListener('load', async () => {
     const bdToggle = document.getElementById('backdateToggle');
     const bdWrap = document.getElementById('backdateWrap');
     const bdDate = document.getElementById('backdateDate');
-    const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (bdDate) bdDate.value = fmtLocal(new Date());
-    const sync = () => { try { if (bdWrap) bdWrap.classList.toggle('d-none', !bdToggle.checked); } catch(_){} };
+    const sync = () => { try { if (bdWrap) bdWrap.classList.toggle('d-none', !bdToggle.checked); } catch (_) { } };
     if (bdToggle) bdToggle.addEventListener('change', sync);
     sync();
   } catch (_) { }

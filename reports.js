@@ -434,7 +434,7 @@ function openReceiptWindowFromReports(r) {
           </div>
           <div class="meta">
             <div><div class="label">Receipt #</div><div><strong>${esc(r.number || r.id || '')}</strong></div></div>
-            <div><div class="label">Date</div><div><strong>${r.datetime ? new Date(r.datetime).toLocaleString() : ''}</strong></div></div>
+            <div><div class="label">Date</div><div><strong>${esc(r.displayDate || (r.datetime ? new Date(r.datetime).toLocaleString() : ''))}</strong></div></div>
             <div><div class="label">Cashier</div><div><strong>${esc(r.cashier || '-')}</strong></div></div>
             <div><div class="label">Payment</div><div><strong>${esc(r.payment || '-')}</strong></div></div>
           </div>
