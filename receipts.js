@@ -142,6 +142,9 @@ function renderVendorSubtotals() {
   const wrap = $('#vendorSubtotals');
   wrap.innerHTML = '';
   const codes = Object.keys(bucket).sort();
+  // Always clear the running total before possibly early-returning
+  const totalEl = document.getElementById('vendorSubtotalsTotal');
+  if (totalEl) totalEl.textContent = '';
   if (!codes.length) { wrap.innerHTML = '<div class="text-muted">No vendor subtotals for current filter.</div>'; return; }
   codes.forEach(c => {
     const col = document.createElement('div');
@@ -156,7 +159,6 @@ function renderVendorSubtotals() {
   });
   // Total of all vendors in current filter
   const total = codes.reduce((sum, c) => sum + Number(bucket[c] || 0), 0);
-  const totalEl = document.getElementById('vendorSubtotalsTotal');
   if (totalEl) totalEl.textContent = `Total (Current Filter): $${money(total)}`;
 }
 
