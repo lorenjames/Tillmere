@@ -741,10 +741,11 @@ async function printReceipt() {
   const paymentSelect = document.getElementById('paymentSelect');
   const cashier = cashierSelect?.value || '';
   const payment = paymentSelect?.value || '';
+  const isBackdated = !!document.getElementById('backdateToggle')?.checked;
   if (!cashier) { showToast('Please select a cashier.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) { } return; }
   if (!payment) { showToast('Please select a payment type.', { type: 'error' }); try { paymentSelect?.focus(); } catch (_) { } return; }
   // If Cash is selected, require a cash tendered amount
-  if ((payment || '') === 'Cash') {
+  if ((payment || '') === 'Cash' && !isBackdated) {
     const cashEl = document.getElementById('cashReceived');
     const raw = String(cashEl?.value ?? '').trim();
     if (!raw) { showToast('Enter the cash received from the customer.', { type: 'error' }); try { cashEl?.focus(); } catch (_) { } return; }
@@ -1014,6 +1015,49 @@ async function printReceipt() {
         </div>
       </body>
     </html>`;
+
+  // If back-dated, do not print; just reset POS state
+  try {
+    if (isBackdated) {
+      // Reset POS
+      try {
+        items = [];
+        const cashierSelect = document.getElementById('cashierSelect');
+        const paymentSelect = document.getElementById('paymentSelect');
+        document.getElementById('itemName').value = '';
+        document.getElementById('itemPrice').value = '';
+        document.getElementById('itemVendor').value = '';
+        renderTable();
+        resetSelectToPlaceholder(cashierSelect);
+        resetSelectToPlaceholder(paymentSelect);
+        // Reset cash helpers
+        const cashWrap = document.getElementById('cashFields');
+        if (cashWrap) cashWrap.classList.add('d-none');
+        const cashEl = document.getElementById('cashReceived');
+        if (cashEl) cashEl.value = '';
+        const changeEl = document.getElementById('changeDue');
+        if (changeEl) changeEl.textContent = money(0);
+        // Reset back-date controls to default (unchecked and hidden, date set to today)
+        try {
+          const bdToggle = document.getElementById('backdateToggle');
+          const bdWrap = document.getElementById('backdateWrap');
+          const bdDate = document.getElementById('backdateDate');
+          if (bdToggle) bdToggle.checked = false;
+          if (bdWrap) bdWrap.classList.add('d-none');
+          if (bdDate) {
+            const now2 = new Date();
+            const y = now2.getFullYear();
+            const m = String(now2.getMonth() + 1).padStart(2, '0');
+            const d = String(now2.getDate()).padStart(2, '0');
+            bdDate.value = `${y}-${m}-${d}`;
+          }
+        } catch (_) { }
+        // Return focus to the first entry field
+        try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
+      } catch (_) { }
+      return;
+    }
+  } catch (_) { }
 
   // If paying cash, show a dismissible Bootstrap alert with change due,
   // then proceed to print after it is dismissed. Otherwise, proceed immediately.
