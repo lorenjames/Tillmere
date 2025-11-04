@@ -70,6 +70,18 @@
                                 </select>
                             </div>
                         </div>
+                        <div class="row g-2 align-items-end mt-2">
+                            <div class="col-auto">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="backdateToggle">
+                                    <label class="form-check-label" for="backdateToggle">Back-date sale</label>
+                                </div>
+                            </div>
+                            <div class="col-auto d-none" id="backdateWrap">
+                                <label for="backdateDate" class="form-label mb-0">Sale Date</label>
+                                <input type="date" id="backdateDate" class="form-control" style="min-width:180px;">
+                            </div>
+                        </div>
                         <div class="small text-muted mt-2">Manage cashiers in <a href="cashiers.html">Cashiers</a>.
                         </div>
                     </div>

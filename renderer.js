@@ -10,6 +10,7 @@ let __editModal = null;
 let __cashAudio = null;
 let __allowNavigation = false;
 let __lastTotal = 0;
+let __suppressRefocusUntil = 0;
 
 // ---------- Utils ----------
 function money(n) { return Number(n || 0).toFixed(2); }
@@ -124,11 +125,16 @@ function cleanupStrayBackdrops() {
   try {
     const anyOpenModal = !!document.querySelector('.modal.show');
     if (anyOpenModal) return;
-    document.querySelectorAll('.modal-backdrop').forEach(el => {
+    document.querySelectorAll('.modal-backdrop, .offcanvas-backdrop').forEach(el => {
       try { el.remove(); } catch (_) { }
     });
     // Also ensure body is not stuck in modal-open state
     try { document.body.classList.remove('modal-open'); } catch (_) { }
+    // Close lingering offcanvas/nav collapse
+    try { document.querySelectorAll('.offcanvas.show').forEach(el => { el.classList.remove('show'); el.style.display='none'; el.setAttribute('aria-hidden','true'); }); } catch(_){}
+    try { document.querySelectorAll('.navbar-collapse.show').forEach(el => { el.classList.remove('show'); el.style.display=''; }); } catch(_){}
+    // Ensure pointer events are enabled on body
+    try { document.body.style.pointerEvents = 'auto'; } catch(_){}
   } catch (_) { }
 }
 
@@ -345,8 +351,74 @@ function setupEntryDiscountControls() {
   syncState();
 }
 function installNavigationGuards() {
-  // Navigation guard disabled to avoid focus interference
-  // Intentionally left blank
+  try {
+    const restoreUiAfterGuardCancel = () => {
+      try {
+        // Close open Bootstrap UI pieces that may leave overlays on cancel
+        document.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
+        document.querySelectorAll('.offcanvas.show').forEach(el => { el.classList.remove('show'); el.setAttribute('aria-hidden','true'); el.style.display='none'; });
+        document.querySelectorAll('.navbar-collapse.show').forEach(el => { el.classList.remove('show'); el.style.display=''; });
+        // Clean up any stray backdrops or overlay states
+        cleanupStrayBackdrops();
+        nukeBlockingOverlays();
+        document.body.classList.remove('modal-open');
+        // Give user a moment to click any field; don't auto-refocus during that window
+        __suppressRefocusUntil = Date.now() + 1500;
+        // Nudge focus back to Item for keyboard entry, but allow immediate click override
+        setTimeout(() => { try { document.getElementById('itemName')?.focus(); } catch(_){} }, 50);
+        // One more cleanup pass after transitions settle
+        setTimeout(() => { try { cleanupStrayBackdrops(); document.body.style.pointerEvents='auto'; } catch(_){} }, 220);
+      } catch (_) { }
+    };
+    const hasDirtyCart = () => {
+      try { return Array.isArray(items) && items.length > 0; } catch (_) { return false; }
+    };
+
+    // Block window unload (refresh, close, navigate) without native prompt
+    window.addEventListener('beforeunload', (e) => {
+      try {
+        if (__allowNavigation) return;
+        if (!hasDirtyCart()) return;
+        e.preventDefault(); // prevent silently
+        // Do NOT set e.returnValue to avoid native confirm dialogs
+      } catch (_) { }
+    });
+
+    // Intercept clicks on links/buttons that would navigate away
+    document.addEventListener('click', (e) => {
+      try {
+        if (__allowNavigation) return;
+        const el = e.target instanceof Element ? e.target.closest('a, button') : null;
+        if (!el) return;
+        // Skip non-navigation UI toggles (Bootstrap dropdowns, modals, offcanvas)
+        const toggleAttr = el.getAttribute('data-bs-toggle');
+        if (toggleAttr) return;
+        // Only guard real navigations
+        const href = el.tagName === 'A' ? (el.getAttribute('href') || '') : '';
+        const willNavigate = href && href !== '#' && !href.startsWith('javascript:');
+        if (willNavigate && hasDirtyCart()) {
+          e.preventDefault();
+          e.stopPropagation();
+          // Inform user without blocking native prompts
+          try { showToast('You have items in the cart. Complete the sale or empty the cart to leave.', { type: 'error', duration: 3500 }); } catch (_) { }
+          restoreUiAfterGuardCancel();
+          return;
+        }
+      } catch (_) { }
+    }, true);
+
+    // Block common reload shortcuts
+    window.addEventListener('keydown', (e) => {
+      try {
+        if (__allowNavigation) return;
+        const isReload = (e.key === 'F5') || (e.key === 'r' && (e.ctrlKey || e.metaKey));
+        if (isReload && hasDirtyCart()) {
+          e.preventDefault();
+          try { showToast('You have items in the cart. Complete the sale or empty the cart to reload.', { type: 'error', duration: 3500 }); } catch (_) { }
+        }
+      } catch (_) { }
+    });
+  } catch (_) { }
 }
 
 // ---------- Data ----------
@@ -684,8 +756,22 @@ async function printReceipt() {
   const numEl = document.getElementById('rcpt-number');
   const dateEl = document.getElementById('rcpt-date');
   const now = new Date();
+  // Optional back-dated sale date (keeps current time of day)
+  let saleDate = new Date(now.getTime());
+  try {
+    const useBackdate = !!document.getElementById('backdateToggle')?.checked;
+    const dateInput = document.getElementById('backdateDate');
+    const ymd = String(dateInput?.value || '').trim();
+    if (useBackdate && ymd) {
+      const parts = ymd.split('-').map(n => parseInt(n, 10));
+      if (parts.length === 3 && parts.every(n => !isNaN(n) && n > 0)) {
+        const [y, m, d] = parts;
+        saleDate.setFullYear(y, m - 1, d);
+      }
+    }
+  } catch (_) { }
   const number = `MID-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
-  numEl.textContent = number; dateEl.textContent = now.toLocaleString();
+  numEl.textContent = number; dateEl.textContent = saleDate.toLocaleString();
   document.getElementById('rcpt-cashier').textContent = cashier || '-';
   document.getElementById('rcpt-payment').textContent = payment || '-';
 
@@ -748,7 +834,7 @@ async function printReceipt() {
       };
     });
     await ipcRenderer.invoke('receipts:add', {
-      datetime: new Date(now.getTime()).toISOString(),
+      datetime: new Date(saleDate.getTime()).toISOString(),
       number,
       cashier,
       payment,
@@ -866,7 +952,7 @@ async function printReceipt() {
             </div>
             <div class="meta">
               <div><div class="label">Invoice #</div><div><strong>${escapeHtml(number)}</strong></div></div>
-              <div><div class="label">Date</div><div><strong>${now.toLocaleString()}</strong></div></div>
+              <div><div class="label">Date</div><div><strong>${saleDate.toLocaleString()}</strong></div></div>
               <div><div class="label">Cashier</div><div><strong>${escapeHtml(cashier || '-')}</strong></div></div>
               <div><div class="label">Payment</div><div><strong>${escapeHtml(payment || '-')}</strong></div></div>
             </div>
@@ -995,6 +1081,21 @@ async function completePrintWithHtml(html) {
     if (cashEl) cashEl.value = '';
     const changeEl = document.getElementById('changeDue');
     if (changeEl) changeEl.textContent = money(0);
+    // Reset back-date controls to default (unchecked and hidden, date set to today)
+    try {
+      const bdToggle = document.getElementById('backdateToggle');
+      const bdWrap = document.getElementById('backdateWrap');
+      const bdDate = document.getElementById('backdateDate');
+      if (bdToggle) bdToggle.checked = false;
+      if (bdWrap) bdWrap.classList.add('d-none');
+      if (bdDate) {
+        const now2 = new Date();
+        const y = now2.getFullYear();
+        const m = String(now2.getMonth() + 1).padStart(2, '0');
+        const d = String(now2.getDate()).padStart(2, '0');
+        bdDate.value = `${y}-${m}-${d}`;
+      }
+    } catch (_) { }
     // Return focus to the first entry field
     try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
   } catch (_) { }
@@ -1031,7 +1132,7 @@ window.addEventListener('load', async () => {
   await loadVendorsIntoDatalist();
   renderTable();
   updateTaxRateLabel();
-  installNavigationGuards(); // no-op (disabled)
+  installNavigationGuards();
   // Clean up any stray overlays after startup
   try { cleanupStrayBackdrops(); } catch (_) { }
   // Ensure input focus behavior is resilient
@@ -1103,31 +1204,42 @@ window.addEventListener('load', async () => {
     toggleCashFields();
     updateCashChange();
   } catch (_) { }
+  // Back-date helpers
+  try {
+    const bdToggle = document.getElementById('backdateToggle');
+    const bdWrap = document.getElementById('backdateWrap');
+    const bdDate = document.getElementById('backdateDate');
+    const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if (bdDate) bdDate.value = fmtLocal(new Date());
+    const sync = () => { try { if (bdWrap) bdWrap.classList.toggle('d-none', !bdToggle.checked); } catch(_){} };
+    if (bdToggle) bdToggle.addEventListener('change', sync);
+    sync();
+  } catch (_) { }
   // Periodically ensure the UI isn't blocked by stale overlays
   try { setInterval(() => { cleanupStrayBackdrops(); nukeBlockingOverlays(); }, 1500); } catch (_) { }
 
-  // POS-specific: after any button click on this page, refocus the Item field
+  // POS-specific: gentle refocus helper — only when nothing else has focus
   try {
     document.addEventListener('click', (e) => {
       const btn = e.target instanceof Element ? e.target.closest('button') : null;
       if (!btn) return;
-      // If this click is intended to open the Edit Item modal, don't refocus
-      try {
-        const oc = String(btn.getAttribute('onclick') || '');
-        if (oc.includes('openEditModal(')) return;
-      } catch (_) { }
-      // Do not refocus while interacting within any modal
+      // Skip if button opens toggles/modals or is inside one
       if (btn.closest('.modal')) return;
+      if (btn.getAttribute('data-bs-toggle')) return;
+      // If this click is intended to open the Edit Item modal, don't refocus
+      try { const oc = String(btn.getAttribute('onclick') || ''); if (oc.includes('openEditModal(')) return; } catch (_) { }
       const nameEl = document.getElementById('itemName');
       if (!nameEl) return; // not on POS page
-      // Do not steal focus if a modal is opening or open (e.g., editing cart items)
+      // Do not steal focus if a modal is opening/open or another input already has focus
       setTimeout(() => {
         try {
           const hasOpenModal = !!document.querySelector('.modal.show');
           if (hasOpenModal) return;
+          const ae = document.activeElement;
+          if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) return;
           nameEl.focus();
         } catch (_) { }
-      }, 0);
+      }, 120);
     });
   } catch (_) { }
 });
