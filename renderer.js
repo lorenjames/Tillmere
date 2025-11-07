@@ -1039,7 +1039,7 @@ async function printReceipt() {
             <div class="thanks">Thank you for shopping small!</div>
 
             <div class="socialQR">
-              <img src="assets/url_qrcodecreator.com_09_16_06.png" alt="Facebook QR code">
+              <img src="assets/qr.png" alt="Facebook QR code">
               <div class="msg">Visit us on Facebook!! Like, Follow, Share</div>
             </div>
           </div>
@@ -1291,9 +1291,9 @@ window.addEventListener('load', async () => {
     function normalizeEditVendorLocal(el) {
       try {
 
-  // Refresh sources when opening the dropdown/field
-  try { document.getElementById('cashierSelect')?.addEventListener('focus', () => { loadCashiersIntoSelect(); }); } catch (_) { }
-  try { document.getElementById('itemVendor')?.addEventListener('focus', () => { loadVendorsIntoDatalist(); }); } catch (_) { }
+        // Refresh sources when opening the dropdown/field
+        try { document.getElementById('cashierSelect')?.addEventListener('focus', () => { loadCashiersIntoSelect(); }); } catch (_) { }
+        try { document.getElementById('itemVendor')?.addEventListener('focus', () => { loadVendorsIntoDatalist(); }); } catch (_) { }
         const s = norm(el.value || '');
         if (!s) return;
         const list = Array.isArray(__vendorsCache) && __vendorsCache.length ? __vendorsCache : [];

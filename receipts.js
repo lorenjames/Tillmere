@@ -880,7 +880,7 @@ async function openReceiptWindow(r, opts = {}) {
         </div>
 
         <div class="socialQR">
-          <img src="assets/url_qrcodecreator.com_09_16_06.png" alt="Facebook QR code">
+          <img src="assets/qr.png" alt="Facebook QR code">
           <div class="msg">Visit us on Facebook!! Like, Follow, Share</div>
         </div>
       </div>
