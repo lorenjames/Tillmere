@@ -324,7 +324,7 @@ function nextAvailablePath(dir, baseNameNoExt) {
     if (!fs.existsSync(base)) return base;
     let i = 1;
     while (true) {
-        const candidate = path.join(dir, `${baseNameNoExt}-${String(i).padStart(2,'0')}.json`);
+        const candidate = path.join(dir, `${baseNameNoExt}-${String(i).padStart(2, '0')}.json`);
         if (!fs.existsSync(candidate)) return candidate;
         i++;
     }
@@ -347,7 +347,7 @@ ipcMain.handle('data:export', async () => {
             receipts: readJson(RECEIPTS_FILE, [])
         };
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
-        try { saveSettings({ backupDir: path.dirname(filePath) }); } catch (_) {}
+        try { saveSettings({ backupDir: path.dirname(filePath) }); } catch (_) { }
         return { ok: true, path: filePath, counts: { vendors: data.vendors.length || 0, cashiers: data.cashiers.length || 0, receipts: data.receipts.length || 0 } };
     } catch (e) {
         console.error('Export failed', e);
@@ -459,7 +459,7 @@ ipcMain.handle('app:getVersion', () => {
 
 // Focus the main window on request (helps recover after hidden windows/dialogs)
 ipcMain.handle('app:focus', () => {
-    try { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.focus(); return true; } } catch (_) {}
+    try { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.focus(); return true; } } catch (_) { }
     return false;
 });
 
@@ -475,5 +475,5 @@ ipcMain.handle('splash:resize', (_evt, size) => {
     } catch (_) { return false; }
 });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-app.on('before-quit', () => { try { performAutoBackup(); } catch (_) {} });
+app.on('before-quit', () => { try { performAutoBackup(); } catch (_) { } });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

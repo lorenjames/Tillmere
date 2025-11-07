@@ -94,7 +94,7 @@
                     <div class="card-body">
                         <h5 class="card-title mb-3">Add New Items</h5>
                         <div class="row g-2 align-items-end">
-                            <div class="col-12 col-lg-5">
+                            <div class="col-12 col-lg-4">
                                 <label for="itemName" class="form-label">Item</label>
                                 <input type="text" id="itemName" class="form-control" placeholder="Item name">
                             </div>
@@ -102,7 +102,11 @@
                                 <label for="itemPrice" class="form-label">Price ($)</label>
                                 <input type="number" id="itemPrice" class="form-control" step="0.01">
                             </div>
-                            <div class="col-12 col-sm-6 col-lg-4">
+                            <div class="col-12 col-sm-6 col-lg-2">
+                                <label for="itemQty" class="form-label">Qty</label>
+                                <input type="number" id="itemQty" class="form-control" min="1" step="1" value="1">
+                            </div>
+                            <div class="col-12 col-sm-6 col-lg-3">
                                 <label for="itemVendor" class="form-label">Vendor (name or code)</label>
                                 <input list="vendorList" id="itemVendor" class="form-control"
                                     placeholder="Type vendor name or code">
@@ -149,6 +153,7 @@
                                 <thead class="table-light">
                                     <tr>
                                         <th>Item</th>
+                                        <th style="width: 70px;" class="text-center">Qty</th>
                                         <th style="width: 140px;" class="text-end">Price</th>
                                         <th style="width: 220px;">Vendor</th>
                                         <th style="width: 90px;"></th>
@@ -395,6 +400,10 @@
                         <div class="col-12 col-lg-3">
                             <label for="edit_price" class="form-label">Price ($)</label>
                             <input id="edit_price" type="number" step="0.01" class="form-control">
+                        </div>
+                        <div class="col-12 col-lg-3">
+                            <label for="edit_qty" class="form-label">Qty</label>
+                            <input id="edit_qty" type="number" min="1" step="1" class="form-control" value="1">
                         </div>
                         <div class="col-12 col-lg-3">
                             <label for="edit_vendor" class="form-label">Vendor (name or code)</label>

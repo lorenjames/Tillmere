@@ -296,6 +296,12 @@ function updateTaxRateLabel() {
   const el = document.getElementById('taxRatePct');
   if (el) el.textContent = (Number(TAX_RATE) * 100).toFixed(2);
 }
+function selectHasRealOptions(selectEl) {
+  try {
+    if (!selectEl) return false;
+    return [...selectEl.options].some(o => String(o.value || '').trim() !== '');
+  } catch (_) { return false; }
+}
 function ensurePlaceholder(selectEl) {
   if (!selectEl) return;
   if ([...selectEl.options].some(o => o.value === '')) {
@@ -541,6 +547,7 @@ async function loadCashiersIntoSelect() {
 async function addItem() {
   const nameEl = document.getElementById('itemName');
   const priceEl = document.getElementById('itemPrice');
+  const qtyEl = document.getElementById('itemQty');
   const vendorEl = document.getElementById('itemVendor');
   const commentEl = document.getElementById('itemComment');
   const discountTypeEl = document.getElementById('discountType');
@@ -548,9 +555,14 @@ async function addItem() {
   const discountReasonEl = document.getElementById('discountReason');
   const name = (nameEl.value || '').trim();
   const price = parseFloat(priceEl.value);
+  let qtyRaw = (qtyEl?.value || '1').trim();
+  let qty = parseInt(qtyRaw, 10);
+  if (!Number.isFinite(qty) || qty < 1) qty = 1;
   const vendorName = (vendorEl.value || '').trim();
   const comment = (commentEl?.value || '').trim();
   if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { nameEl?.focus(); } catch (_) { } return; }
+  // Safeguard: vendor is required to add to cart
+  if (!vendorName) { showToast('Please enter a vendor (name or code).', { type: 'error' }); try { vendorEl?.focus(); } catch (_) { } return; }
   const originalPrice = toMoneyNumber(price);
   const typeVal = discountTypeEl?.value || 'none';
   const discountValueRaw = discountValueEl?.value;
@@ -571,6 +583,7 @@ async function addItem() {
     name,
     price: finalPrice,
     originalPrice,
+    quantity: qty,
     vendorName: vendorFinal,
     comment,
     discountType: discount.type,
@@ -579,7 +592,7 @@ async function addItem() {
     discountReason: discount.amount > 0 ? discount.reason : ''
   });
 
-  nameEl.value = ''; priceEl.value = ''; vendorEl.value = ''; if (commentEl) commentEl.value = '';
+  nameEl.value = ''; priceEl.value = ''; if (qtyEl) qtyEl.value = '1'; vendorEl.value = ''; if (commentEl) commentEl.value = '';
   if (discountTypeEl) {
     discountTypeEl.value = 'none';
     applyDiscountTypeState(discountTypeEl, discountValueEl);
@@ -612,6 +625,8 @@ function openEditModal(i) {
   ensureEditModal();
   document.getElementById('edit_name').value = it.name || '';
   document.getElementById('edit_price').value = deriveOriginalPrice(it);
+  const qtyEl = document.getElementById('edit_qty');
+  if (qtyEl) qtyEl.value = String(Math.max(1, parseInt(it.quantity || 1, 10)));
   document.getElementById('edit_vendor').value = it.vendorName || '';
   document.getElementById('edit_comment').value = it.comment || '';
   const editTypeEl = document.getElementById('edit_discountType');
@@ -637,9 +652,12 @@ async function saveEditFromModal() {
   if (!(idx >= 0 && items[idx])) { __editModal?.hide(); return; }
   const name = (document.getElementById('edit_name').value || '').trim();
   const price = parseFloat(document.getElementById('edit_price').value);
+  let qty = parseInt((document.getElementById('edit_qty')?.value || '1'), 10); if (!Number.isFinite(qty) || qty < 1) qty = 1;
   const vendorName = (document.getElementById('edit_vendor').value || '').trim();
   const comment = (document.getElementById('edit_comment').value || '').trim();
   if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { document.getElementById('edit_name')?.focus(); } catch (_) { } return; }
+  // Safeguard: vendor is required when saving edits
+  if (!vendorName) { showToast('Please enter a vendor (name or code).', { type: 'error' }); try { document.getElementById('edit_vendor')?.focus(); } catch (_) { } return; }
   const originalPrice = toMoneyNumber(price);
   const typeEl = document.getElementById('edit_discountType');
   const valueEl = document.getElementById('edit_discountValue');
@@ -665,6 +683,7 @@ async function saveEditFromModal() {
     name,
     price: finalPrice,
     originalPrice,
+    quantity: qty,
     vendorName: vendorFinal,
     comment,
     discountType: discount.type,
@@ -683,19 +702,23 @@ function renderTable() {
   tbody.innerHTML = '';
   let subtotal = 0;
   items.forEach((it, i) => {
-    const finalPrice = toMoneyNumber(it.price || 0);
+    const qty = Math.max(1, parseInt(it.quantity || 1, 10));
+    const finalPrice = toMoneyNumber(it.price || 0); // unit final
     const discountAmount = toMoneyNumber(it.discountAmount || 0);
-    const originalPrice = deriveOriginalPrice(it);
+    const originalPrice = deriveOriginalPrice(it); // unit original
     const hasDiscount = discountAmount > 0;
     const reason = hasDiscount ? String(it.discountReason || '').trim() : '';
     const discountSuffix = hasDiscount ? buildDiscountSuffix(it.discountType, it.discountValue, discountAmount, reason, escapeHtml) : '';
-    subtotal += finalPrice;
+    const lineTotal = toMoneyNumber(finalPrice * qty);
+    subtotal += lineTotal;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${escapeHtml(it.name)}${it.comment ? `<div class="text-muted small">${escapeHtml(it.comment)}</div>` : ''}</td>
+      <td class="text-center">${qty}</td>
       <td class="text-end">
-        <div class="fw-semibold">$${money(finalPrice)}</div>
-        ${hasDiscount ? `<div class="text-muted small text-decoration-line-through">Original: $${money(originalPrice)}</div>` : ''}
+        <div class="fw-semibold">$${money(lineTotal)}</div>
+        ${qty > 1 ? `<div class=\"text-muted small\">${qty} × $${money(finalPrice)} each</div>` : ''}
+        ${hasDiscount ? `<div class="text-muted small text-decoration-line-through">Original (unit): $${money(originalPrice)}</div>` : ''}
         ${hasDiscount ? `<div class="text-danger small">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}
       </td>
       <td>${escapeHtml(it.vendorName || '')}</td>
@@ -790,25 +813,28 @@ async function printReceipt() {
   rowsEl.innerHTML = '';
   let subtotal = 0; const vendorTotals = {};
   items.forEach(it => {
-    const finalPrice = toMoneyNumber(it.price || 0);
+    const qty = Math.max(1, parseInt(it.quantity || 1, 10));
+    const finalPrice = toMoneyNumber(it.price || 0); // unit final
     const originalPrice = deriveOriginalPrice(it);
     const discountAmount = toMoneyNumber(it.discountAmount || (originalPrice - finalPrice));
     const hasDiscount = discountAmount > 0;
     const reason = hasDiscount ? String(it.discountReason || '').trim() : '';
     const discountSuffix = hasDiscount ? buildDiscountSuffix(it.discountType, it.discountValue, discountAmount, reason, escapeHtml) : '';
-    subtotal += finalPrice;
+    const lineTotal = toMoneyNumber(finalPrice * qty);
+    subtotal += lineTotal;
     const v = findVendorLoose(vendors, it.vendorName); const code = v?.code || '';
-    if (code) vendorTotals[code] = (vendorTotals[code] || 0) + finalPrice;
+    if (code) vendorTotals[code] = (vendorTotals[code] || 0) + lineTotal;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>
         ${escapeHtml(it.name)}
         ${it.comment ? `<div class="vendor">${escapeHtml(it.comment)}</div>` : ''}
         ${code ? `<div class="vendor">Vendor: ${escapeHtml(code)}</div>` : ''}
+        ${qty > 1 ? `<div class="vendor">Qty: ${qty} @ $${money(finalPrice)}</div>` : ''}
         ${hasDiscount ? `<div class="original-line">Original: $${money(originalPrice)}</div>` : ''}
         ${hasDiscount ? `<div class="discount-line">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}
       </td>
-      <td class="price">$${money(finalPrice)}</td>`;
+      <td class="price">$${money(lineTotal)}</td>`;
     rowsEl.appendChild(tr);
   });
   const tax = subtotal * TAX_RATE; const total = subtotal + tax;
@@ -821,7 +847,8 @@ async function printReceipt() {
     const savedItems = items.map(it => {
       const v = findVendorLoose(vendors, it.vendorName);
       const code = v?.code || '';
-      const priceFinal = toMoneyNumber(it.price || 0);
+      const qty = Math.max(1, parseInt(it.quantity || 1, 10));
+      const priceFinal = toMoneyNumber(it.price || 0); // unit final
       const originalPrice = deriveOriginalPrice(it);
       const discountAmount = toMoneyNumber(it.discountAmount || (originalPrice - priceFinal));
       const hasDiscount = discountAmount > 0;
@@ -834,6 +861,7 @@ async function printReceipt() {
         name: it.name,
         price: priceFinal,
         originalPrice,
+        quantity: qty,
         vendorCode: code,
         vendor: it.vendorName || '',
         comment: it.comment || '',
@@ -894,6 +922,7 @@ async function printReceipt() {
       .totals{margin-top:12px;display:grid;grid-template-columns: 1fr auto;row-gap:6px}
       .totals .val{min-width:120px;text-align:right}
       .totals .grand{font-weight:800;font-size:16px}
+      .thanks{margin-top:12px;color:var(--muted);font-size:12px;text-align:left}
       /* By default, QR sits after content (last page only). If single page, JS adds .qr-fixed to pin it to page bottom */
       .socialQR{position:static; display:flex; flex-direction:row-reverse; align-items:center; gap:10px; text-align:right; margin-top:12px}
       .socialQR img{width:90px; height:auto; border-radius:8px; border:1px solid var(--border)}
@@ -917,8 +946,8 @@ async function printReceipt() {
   const vendorsList = await fetchVendors();
   const rowsHtml = items.map((it, idx) => {
     const v = findVendorLoose(vendorsList, it.vendorName); const code = v?.code || '';
-    const qty = 1;
-    const unit = toMoneyNumber(it.price || 0);
+    const qty = Math.max(1, parseInt(it.quantity || 1, 10));
+    const unit = toMoneyNumber(it.price || 0); // unit final
     const originalPrice = deriveOriginalPrice(it);
     const discountAmount = toMoneyNumber(it.discountAmount || (originalPrice - unit));
     const hasDiscount = discountAmount > 0;
@@ -1006,6 +1035,8 @@ async function printReceipt() {
               <div class="label">Tax (${(TAX_RATE * 100).toFixed(2)}%)</div><div class="val">$${money(tax)}</div>
               <div class="label grand">Total</div><div class="val grand">$${money(total)}</div>
             </div>
+
+            <div class="thanks">Thank you for shopping small!</div>
 
             <div class="socialQR">
               <img src="assets/url_qrcodecreator.com_09_16_06.png" alt="Facebook QR code">
@@ -1215,6 +1246,17 @@ window.addEventListener('load', async () => {
   try { forceFocusOnInputs(); } catch (_) { }
 
   const addrEl = document.getElementById('rcpt-address');
+
+  // Safety: retry population shortly after load if still empty
+  try {
+    setTimeout(async () => {
+      try {
+        const cs = document.getElementById('cashierSelect');
+        if (!selectHasRealOptions(cs)) await loadCashiersIntoSelect();
+      } catch (_) { }
+      try { await loadVendorsIntoDatalist(); } catch (_) { }
+    }, 250);
+  } catch (_) { }
   if (addrEl) addrEl.textContent = '1615 S 17th St, Lincoln, NE 68502 · 531-500-0135';
 
   const itemVendorEl = document.getElementById('itemVendor');
@@ -1247,6 +1289,10 @@ window.addEventListener('load', async () => {
   if (editVendorEl) {
     function normalizeEditVendorLocal(el) {
       try {
+
+  // Refresh sources when opening the dropdown/field
+  try { document.getElementById('cashierSelect')?.addEventListener('focus', () => { loadCashiersIntoSelect(); }); } catch (_) { }
+  try { document.getElementById('itemVendor')?.addEventListener('focus', () => { loadVendorsIntoDatalist(); }); } catch (_) { }
         const s = norm(el.value || '');
         if (!s) return;
         const list = Array.isArray(__vendorsCache) && __vendorsCache.length ? __vendorsCache : [];

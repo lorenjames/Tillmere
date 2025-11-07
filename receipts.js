@@ -136,7 +136,10 @@ function renderVendorSubtotals() {
         }
       }
       if (!key) return;
-      bucket[key] = (bucket[key] || 0) + Number(it.price || 0);
+      const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+      const unit = toMoneyNumber(it.price || 0);
+      const amount = toMoneyNumber(unit * qty);
+      bucket[key] = (bucket[key] || 0) + Number(amount || 0);
     });
   });
   const wrap = $('#vendorSubtotals');
@@ -188,7 +191,7 @@ function renderTable() {
     if (prevLi && prevBtn) prevLi.classList.toggle('disabled', !!prevBtn.disabled);
     if (nextLi && nextBtn) nextLi.classList.toggle('disabled', !!nextBtn.disabled);
   } catch (_) { }
-  
+
   let html = '';
   for (const r of pageRows) {
     const rawId = String(r.id || r.number || '').trim();
@@ -214,8 +217,8 @@ function renderTable() {
             <button type="button" class="btn btn-outline-primary" onclick="window.__onReceiptAction(event,'view','${rawId}')">View</button>
             <button type="button" class="btn btn-outline-primary" onclick="window.__onReceiptAction(event,'print','${rawId}')">Print</button>
             ${r.voided
-              ? `<button type="button" class="btn btn-outline-dark" disabled>Voided</button>`
-              : `<button type="button" class="btn btn-outline-danger" onclick="window.__onReceiptAction(event,'void','${rawId}')">Void</button>`}
+        ? `<button type="button" class="btn btn-outline-dark" disabled>Voided</button>`
+        : `<button type="button" class="btn btn-outline-danger" onclick="window.__onReceiptAction(event,'void','${rawId}')">Void</button>`}
           </div>
         </td>
       </tr>`;
@@ -351,7 +354,7 @@ async function openReceiptWindow(r, opts = {}) {
 
       <div class="foot center">
         <hr>
-        <div class="muted">Returns within 7 days with receipt. Thank you for shopping small!</div>
+        <div class="muted">Thank you for shopping small!</div>
       </div>
     </div>
     </body>
@@ -541,7 +544,7 @@ window.addEventListener('load', async () => {
     let raf = 0;
     return () => {
       if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => { raf = 0; try { applyFilters(); } catch (_) {} });
+      raf = requestAnimationFrame(() => { raf = 0; try { applyFilters(); } catch (_) { } });
     };
   })();
   applyFilters();
@@ -745,10 +748,10 @@ async function openReceiptWindow(r, opts = {}) {
     const hasDiscount = discountAmount > 0;
     const discountSuffix = hasDiscount ? buildDiscountSuffix(type, value, discountAmount, reason, esc) : '';
     const code = resolveCode(it);
-    if (code) vendorTotals[code] = (vendorTotals[code] || 0) + finalPrice;
-    const qty = 1;
+    const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
     const unit = finalPrice;
     const amount = qty * unit;
+    if (code) vendorTotals[code] = (vendorTotals[code] || 0) + amount;
     return `
       <tr>
         <td class="num">${idx + 1}</td>

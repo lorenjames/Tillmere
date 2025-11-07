@@ -105,14 +105,16 @@ function runReport() {
                 };
             }
 
-            const price = Number(it.price || 0);
-            rec.gross += price;
-            rec.count += 1;
-            if (tender === 'Cash') rec.cash += price;
-            else if (tender === 'Card') rec.card += price;
-            else if (tender === 'Check') rec.check += price;
-            else if (tender === 'Gift Card') rec.gift += price;
-            else rec.other += price;
+            const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+            const unit = Number(it.price || 0);
+            const amount = unit * qty;
+            rec.gross += amount;
+            rec.count += qty;
+            if (tender === 'Cash') rec.cash += amount;
+            else if (tender === 'Card') rec.card += amount;
+            else if (tender === 'Check') rec.check += amount;
+            else if (tender === 'Gift Card') rec.gift += amount;
+            else rec.other += amount;
 
             // prefer known vendor name
             if (!rec.name && name) rec.name = name;
@@ -231,17 +233,19 @@ function runDetailedReport() {
                 g = { code: code || '', name, cash: 0, card: 0, check: 0, gift: 0, other: 0, gross: 0, count: 0, items: [] };
             }
 
-            const price = Number(it.price || 0);
-            g.gross += price;
-            g.count += 1;
-            if (tender === 'Cash') g.cash += price;
-            else if (tender === 'Card') g.card += price;
-            else if (tender === 'Check') g.check += price;
-            else if (tender === 'Gift Card') g.gift += price;
-            else g.other += price;
+            const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+            const unit = Number(it.price || 0);
+            const amount = unit * qty;
+            g.gross += amount;
+            g.count += qty;
+            if (tender === 'Cash') g.cash += amount;
+            else if (tender === 'Card') g.card += amount;
+            else if (tender === 'Check') g.check += amount;
+            else if (tender === 'Gift Card') g.gift += amount;
+            else g.other += amount;
             if (!g.name && name) g.name = name;
 
-            g.items.push({ datetime: when, number: r.number || '', item: it.name || '', price, tender });
+            g.items.push({ datetime: when, number: r.number || '', item: it.name || '', qty, unit, amount, tender });
             groups.set(key, g);
         });
     });
@@ -265,9 +269,9 @@ function runDetailedReport() {
               <tr>
                 <td>${it.datetime ? esc(new Date(it.datetime).toLocaleString()) : ''}</td>
                 <td><a href="#" class="detail-receipt-link" data-id="${esc(String(it.number || ''))}">${esc(String(it.number || ''))}</a></td>
-                <td>${esc(String(it.item || ''))}</td>
+                <td>${esc(String(it.item || ''))}${it.qty > 1 ? `<div class="text-muted small">Qty: ${it.qty} @ $${money(it.unit)}</div>` : ''}</td>
                 <td class="text-end">${esc(String(it.tender || ''))}</td>
-                <td class="text-end">${moneyStr(it.price)}</td>
+                <td class="text-end">${moneyStr(it.amount)}</td>
               </tr>
             `).join('');
 
@@ -286,7 +290,7 @@ function runDetailedReport() {
                     <th>Receipt #</th>
                     <th>Item</th>
                     <th class="text-end">Tender</th>
-                    <th class="text-end">Price ($)</th>
+                    <th class="text-end">Amount ($)</th>
                   </tr>
                 </thead>
                 <tbody>${rowsHtml || '<tr><td colspan="5" class="text-muted">No items.</td></tr>'}</tbody>
@@ -394,24 +398,26 @@ function openReceiptWindowFromReports(r) {
         const rowsHtml = (r.items || []).map((it, idx) => {
             const code = String(it.vendorCode || '').trim();
             const original = deriveOriginalPrice(it);
-            const finalPrice = toMoneyNumber(it?.price || 0);
+            const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+            const finalPrice = toMoneyNumber(it?.price || 0); // unit final
             const discountAmount = Math.max(0, toMoneyNumber(it?.discountAmount ?? (original - finalPrice)));
             const hasDiscount = discountAmount > 0;
             const type = hasDiscount ? (it?.discountType === 'percent' ? 'percent' : 'amount') : 'none';
             const value = hasDiscount ? (type === 'percent' ? toMoneyNumber(it?.discountValue || 0) : discountAmount) : 0;
             const reason = hasDiscount ? String(it?.discountReason || '').trim() : '';
             const discountSuffix = hasDiscount ? buildDiscountSuffix(type, value, discountAmount, reason, esc) : '';
-
+            const amount = toMoneyNumber(finalPrice * qty);
             return `
             <tr>
               <td>
                 <div class="title">${esc(it.name || '')}</div>
                 ${it.comment ? `<div class="addr">${esc(it.comment)}</div>` : ''}
                 ${code ? `<div class="addr">Vendor: ${esc(code)}</div>` : ''}
+                ${qty > 1 ? `<div class="addr">Qty: ${qty} @ $${money(finalPrice)}</div>` : ''}
                 ${hasDiscount ? `<div class="addr" style="text-decoration:line-through;">Original: $${money(original)}</div>` : ''}
                 ${hasDiscount ? `<div class="addr" style="color:#dc3545;">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}
               </td>
-              <td class="num">$${money(finalPrice)}</td>
+              <td class="num">$${money(amount)}</td>
             </tr>`;
         }).join('');
 
@@ -442,7 +448,7 @@ function openReceiptWindowFromReports(r) {
             <thead>
               <tr>
                 <th>Item</th>
-                <th class="num">Price</th>
+                <th class="num">Amount</th>
               </tr>
             </thead>
             <tbody>${rowsHtml || '<tr><td colspan="2" class="label">No items</td></tr>'}</tbody>
@@ -498,15 +504,17 @@ function printDetailedReport() {
                 }
                 let g = groups.get(key);
                 if (!g) g = { code: code || '', name, cash: 0, card: 0, check: 0, gift: 0, other: 0, gross: 0, count: 0, items: [] };
-                const price = Number(it.price || 0);
-                g.gross += price; g.count += 1;
-                if (tender === 'Cash') g.cash += price;
-                else if (tender === 'Card') g.card += price;
-                else if (tender === 'Check') g.check += price;
-                else if (tender === 'Gift Card') g.gift += price;
-                else g.other += price;
+                const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+                const unit = Number(it.price || 0);
+                const amount = unit * qty;
+                g.gross += amount; g.count += qty;
+                if (tender === 'Cash') g.cash += amount;
+                else if (tender === 'Card') g.card += amount;
+                else if (tender === 'Check') g.check += amount;
+                else if (tender === 'Gift Card') g.gift += amount;
+                else g.other += amount;
                 if (!g.name && name) g.name = name;
-                g.items.push({ datetime: when, number: r.number || '', item: it.name || '', price, tender });
+                g.items.push({ datetime: when, number: r.number || '', item: it.name || '', qty, unit, amount, tender });
                 groups.set(key, g);
             });
         });
@@ -605,9 +613,9 @@ function printDetailedReport() {
               <tr>
                 <td>${it.datetime ? esc(new Date(it.datetime).toLocaleString()) : ''}</td>
                 <td>${esc(String(it.number || ''))}</td>
-                <td>${esc(String(it.item || ''))}</td>
+                <td>${esc(String(it.item || ''))}${it.qty > 1 ? `<div class="muted">Qty: ${it.qty} @ $${money(it.unit)}</div>` : ''}</td>
                 <td class="num">${esc(String(it.tender || ''))}</td>
-                <td class="num">${moneyStr(it.price)}</td>
+                <td class="num">${moneyStr(it.amount)}</td>
               </tr>`).join('') : `<tr><td colspan="5" class="label">No items.</td></tr>`;
 
             return `
@@ -629,7 +637,7 @@ function printDetailedReport() {
                     <th>Receipt #</th>
                     <th>Item</th>
                     <th class="num">Tender</th>
-                    <th class="num">Price ($)</th>
+                    <th class="num">Amount ($)</th>
                   </tr>
                 </thead>
                 <tbody>${rowsHtml}</tbody>
