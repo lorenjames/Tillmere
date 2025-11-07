@@ -13,7 +13,7 @@ let __lastTotal = 0;
 let __suppressRefocusUntil = 0;
 
 // ---------- Utils ----------
-function money(n) { return Number(n || 0).toFixed(2); }
+function money(n) { return toMoneyNumber(n).toFixed(2); }
 // Lightweight status bar shown during async operations (e.g., silent print)
 function showStatusBar(message) {
   try {
@@ -730,8 +730,8 @@ function renderTable() {
       </td>`;
     tbody.appendChild(tr);
   });
-  const tax = subtotal * TAX_RATE;
-  const total = subtotal + tax;
+  const tax = toMoneyNumber(subtotal * TAX_RATE);
+  const total = toMoneyNumber(subtotal + tax);
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('subtotal', money(subtotal));
   set('tax', money(tax));
@@ -837,7 +837,7 @@ async function printReceipt() {
       <td class="price">$${money(lineTotal)}</td>`;
     rowsEl.appendChild(tr);
   });
-  const tax = subtotal * TAX_RATE; const total = subtotal + tax;
+  const tax = toMoneyNumber(subtotal * TAX_RATE); const total = toMoneyNumber(subtotal + tax);
   document.getElementById('receiptSubtotal').textContent = money(subtotal);
   document.getElementById('receiptTax').textContent = money(tax);
   document.getElementById('receiptTotal').textContent = money(total);
@@ -1096,7 +1096,8 @@ async function printReceipt() {
     if ((payment || '') === 'Cash') {
       const cashEl = document.getElementById('cashReceived');
       const cash = toMoneyNumber(cashEl?.value || 0);
-      const change = Math.max(0, toMoneyNumber(cash - total));
+      const totalRounded = toMoneyNumber(total);
+      const change = Math.max(0, toMoneyNumber(cash - totalRounded));
 
       const alertEl = document.createElement('div');
       alertEl.className = 'alert alert-dismissible alert-warning shadow-lg';
