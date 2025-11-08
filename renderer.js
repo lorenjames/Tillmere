@@ -1039,7 +1039,7 @@ async function printReceipt() {
             <div class="thanks">Thank you for shopping small!</div>
 
             <div class="socialQR">
-              <img src="assets/qr.png" alt="Facebook QR code">
+              <img src="assets/QR.png" alt="Facebook QR code">
               <div class="msg">Visit us on Facebook!! Like, Follow, Share</div>
             </div>
           </div>
