@@ -3,6 +3,9 @@ const { ipcRenderer } = require('electron');
 
 // ---------- Globals ----------
 let TAX_RATE = 0.0725;
+let __taxExempt = false;
+let __taxExemptInfo = { id: '', name: '' };
+let __noTaxModal = null;
 let __silentPrint = true;
 let items = []; // { name, price, vendorName, comment }
 let __vendorsCache = [];
@@ -294,7 +297,10 @@ function itemHasDiscount(it) {
 function cartHasItems() { return Array.isArray(items) && items.length > 0; }
 function updateTaxRateLabel() {
   const el = document.getElementById('taxRatePct');
-  if (el) el.textContent = (Number(TAX_RATE) * 100).toFixed(2);
+  const note = document.getElementById('taxExemptNote');
+  const effRate = __taxExempt ? 0 : Number(TAX_RATE);
+  if (el) el.textContent = (effRate * 100).toFixed(2);
+  try { if (note) note.classList.toggle('d-none', !__taxExempt); } catch (_) { }
 }
 function selectHasRealOptions(selectEl) {
   try {
@@ -730,7 +736,7 @@ function renderTable() {
       </td>`;
     tbody.appendChild(tr);
   });
-  const tax = toMoneyNumber(subtotal * TAX_RATE);
+  const tax = __taxExempt ? 0 : toMoneyNumber(subtotal * TAX_RATE);
   const total = toMoneyNumber(subtotal + tax);
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('subtotal', money(subtotal));
@@ -744,14 +750,21 @@ function renderTable() {
 function playCashRegisterSound() {
   // Play only the ka-ching MP3 (no synthesized pre-tone)
   try {
+    // In test/jsdom or environments without media, skip playing
+    const ua = (typeof navigator !== 'undefined' && navigator && navigator.userAgent) ? String(navigator.userAgent) : '';
+    if (/jsdom/i.test(ua)) return;
+    if (typeof Audio !== 'function') return;
+
     if (typeof __cashAudio === 'object' && __cashAudio) {
-      __cashAudio.currentTime = 0;
-      __cashAudio.play().catch(() => { });
+      try { __cashAudio.currentTime = 0; } catch (_) { }
+      const p = __cashAudio.play && __cashAudio.play();
+      if (p && typeof p.catch === 'function') p.catch(() => { });
       return;
     }
     const audio = new Audio('assets/cash-register-kaching-sound-effect-125042.mp3');
     audio.volume = 0.8;
-    audio.play().catch(() => { });
+    const p = audio.play && audio.play();
+    if (p && typeof p.catch === 'function') p.catch(() => { });
   } catch (_) { }
 }
 
@@ -809,8 +822,15 @@ async function printReceipt() {
   document.getElementById('rcpt-payment').textContent = payment || '-';
 
   const vendors = await fetchVendors();
-  const rowsEl = document.getElementById('receiptRows');
-  rowsEl.innerHTML = '';
+  let rowsEl = document.getElementById('receiptRows');
+  if (!rowsEl) {
+    try {
+      rowsEl = document.createElement('tbody');
+      rowsEl.id = 'receiptRows';
+      document.body.appendChild(rowsEl);
+    } catch (_) { /* tolerate missing print container in tests */ }
+  }
+  if (rowsEl) rowsEl.innerHTML = '';
   let subtotal = 0; const vendorTotals = {};
   items.forEach(it => {
     const qty = Math.max(1, parseInt(it.quantity || 1, 10));
@@ -835,9 +855,9 @@ async function printReceipt() {
         ${hasDiscount ? `<div class="discount-line">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}
       </td>
       <td class="price">$${money(lineTotal)}</td>`;
-    rowsEl.appendChild(tr);
+    if (rowsEl) rowsEl.appendChild(tr);
   });
-  const tax = toMoneyNumber(subtotal * TAX_RATE); const total = toMoneyNumber(subtotal + tax);
+  const tax = __taxExempt ? 0 : toMoneyNumber(subtotal * TAX_RATE); const total = toMoneyNumber(subtotal + tax);
   document.getElementById('receiptSubtotal').textContent = money(subtotal);
   document.getElementById('receiptTax').textContent = money(tax);
   document.getElementById('receiptTotal').textContent = money(total);
@@ -882,7 +902,10 @@ async function printReceipt() {
       taxRate: Number(TAX_RATE),
       subtotal: Number(subtotal),
       tax: Number(tax),
-      total: Number(total)
+      total: Number(total),
+      taxExempt: !!__taxExempt,
+      taxExemptId: String(__taxExemptInfo?.id || ''),
+      taxExemptName: String(__taxExemptInfo?.name || '')
     });
   } catch (e) {
     console.error('Failed to save receipt:', e);
@@ -1032,9 +1055,10 @@ async function printReceipt() {
             </table>
             <div class="totals">
               <div class="label">Subtotal</div><div class="val">$${money(subtotal)}</div>
-              <div class="label">Tax (${(TAX_RATE * 100).toFixed(2)}%)</div><div class="val">$${money(tax)}</div>
+              <div class="label">${__taxExempt ? 'Tax (Exempt)' : `Tax (${(TAX_RATE * 100).toFixed(2)}%)`}</div><div class="val">$${money(tax)}</div>
               <div class="label grand">Total</div><div class="val grand">$${money(total)}</div>
             </div>
+            ${__taxExempt ? `<div class="thanks">Exempt: ${escapeHtml(__taxExemptInfo?.name || '')} — ID: ${escapeHtml(__taxExemptInfo?.id || '')}</div>` : ''}
 
             <div class="thanks">Thank you for shopping small!</div>
 
@@ -1061,6 +1085,9 @@ async function printReceipt() {
         renderTable();
         resetSelectToPlaceholder(cashierSelect);
         resetSelectToPlaceholder(paymentSelect);
+        // Reset tax exemption state
+        try { const nt = document.getElementById('noTaxToggle'); if (nt) nt.checked = false; } catch (_) { }
+        __taxExempt = false; __taxExemptInfo = { id: '', name: '' }; updateTaxRateLabel();
         // Reset cash helpers
         const cashWrap = document.getElementById('cashFields');
         if (cashWrap) cashWrap.classList.add('d-none');
@@ -1182,6 +1209,9 @@ async function completePrintWithHtml(html) {
     renderTable();
     resetSelectToPlaceholder(cashierSelect);
     resetSelectToPlaceholder(paymentSelect);
+    // Reset tax exemption state
+    try { const nt = document.getElementById('noTaxToggle'); if (nt) nt.checked = false; } catch (_) { }
+    __taxExempt = false; __taxExemptInfo = { id: '', name: '' }; updateTaxRateLabel();
     // Reset cash helpers
     const cashWrap = document.getElementById('cashFields');
     if (cashWrap) cashWrap.classList.add('d-none');
@@ -1338,6 +1368,66 @@ window.addEventListener('load', async () => {
     if (bdToggle) bdToggle.addEventListener('change', sync);
     sync();
   } catch (_) { }
+
+  // Tax Exempt (No Tax) helpers
+  try {
+    const modalEl = document.getElementById('noTaxModal');
+    if (modalEl && window.bootstrap) __noTaxModal = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
+    const toggle = document.getElementById('noTaxToggle');
+    const idEl = document.getElementById('noTaxId');
+    const nameEl = document.getElementById('noTaxName');
+    const applyBtn = document.getElementById('noTaxApplyBtn');
+    const cancelBtn = document.getElementById('noTaxCancelBtn');
+
+    const openModal = () => {
+      try {
+        if (!__noTaxModal) return;
+        // Prefill if available
+        if (nameEl) nameEl.value = String(__taxExemptInfo?.name || '');
+        if (idEl) idEl.value = String(__taxExemptInfo?.id || '');
+        __noTaxModal.show();
+        setTimeout(() => { try { (nameEl || idEl)?.focus(); } catch (_) { } }, 100);
+      } catch (_) { }
+    };
+
+    const validateAndApply = () => {
+      const nameVal = String(nameEl?.value || '').trim();
+      const idVal = String(idEl?.value || '').trim();
+      const okId = /^[a-z0-9]+$/i.test(idVal);
+      if (!nameVal) { try { showToast('Please enter a name or organization.', { type: 'error' }); } catch (_) { } try { nameEl?.focus(); } catch (_) { } return; }
+      if (!okId) { try { showToast('Tax ID must be alphanumeric (no spaces).', { type: 'error' }); } catch (_) { } try { idEl?.focus(); } catch (_) { } return; }
+      __taxExempt = true;
+      __taxExemptInfo = { id: idVal, name: nameVal };
+      try { updateTaxRateLabel(); renderTable(); } catch (_) { }
+      try { __noTaxModal?.hide(); } catch (_) { }
+    };
+
+    if (toggle) {
+      toggle.addEventListener('change', () => {
+        try {
+          if (toggle.checked) {
+            openModal();
+          } else {
+            // Turn off exemption
+            __taxExempt = false;
+            __taxExemptInfo = { id: '', name: '' };
+            updateTaxRateLabel();
+            renderTable();
+          }
+        } catch (_) { }
+      });
+    }
+    if (applyBtn) applyBtn.addEventListener('click', validateAndApply);
+    if (cancelBtn) cancelBtn.addEventListener('click', () => {
+      try {
+        if (!__taxExempt && toggle) toggle.checked = false;
+      } catch (_) { }
+    });
+    // If modal is closed by backdrop/close button, revert toggle when not applied
+    if (modalEl) modalEl.addEventListener('hidden.bs.modal', () => {
+      try { if (!__taxExempt && toggle) toggle.checked = false; } catch (_) { }
+    });
+  } catch (_) { }
   // Periodically ensure the UI isn't blocked by stale overlays
   try { setInterval(() => { cleanupStrayBackdrops(); nukeBlockingOverlays(); }, 1500); } catch (_) { }
 
@@ -1382,3 +1472,41 @@ try {
 window.addItem = addItem;
 window.printReceipt = printReceipt;
 window.openEditModal = openEditModal;
+
+// Test-friendly exports (no impact in Electron runtime)
+try {
+  if (typeof module !== 'undefined' && module && module.exports) {
+    module.exports = {
+      // utils
+      money,
+      escapeHtml,
+      toMoneyNumber,
+      formatPercent,
+      formatDiscountLabel,
+      buildDiscountSuffix,
+      clamp,
+      // pricing & discounts
+      computeDiscount,
+      finalPriceFrom,
+      deriveOriginalPrice,
+      itemHasDiscount,
+      // vendors
+      findVendorLoose,
+      // cart flows
+      addItem,
+      printReceipt,
+      removeItem,
+      // totals & UI
+      renderTable,
+      updateTaxRateLabel,
+      updateCashChange,
+      // tiny test hooks
+      __test: {
+        setTaxRate: (v) => { try { TAX_RATE = Number(v); updateTaxRateLabel(); } catch (_) { } },
+        setTaxExempt: (b) => { try { __taxExempt = !!b; updateTaxRateLabel(); } catch (_) { } },
+        resetCart: () => { try { items = []; } catch (_) { } },
+        getItems: () => { try { return items.slice(); } catch (_) { return []; } },
+      }
+    };
+  }
+} catch (_) { }

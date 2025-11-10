@@ -79,6 +79,12 @@
                                     <label class="form-check-label" for="backdateToggle">Back-date sale</label>
                                 </div>
                             </div>
+                            <div class="col-auto">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="noTaxToggle">
+                                    <label class="form-check-label" for="noTaxToggle">No Tax (Tax Exempt)</label>
+                                </div>
+                            </div>
                             <div class="col-auto d-none" id="backdateWrap">
                                 <label for="backdateDate" class="form-label mb-0">Sale Date</label>
                                 <input type="date" id="backdateDate" class="form-control" style="min-width:180px;">
@@ -168,7 +174,7 @@
                             <div class="fw-semibold">$<span id="subtotal">0.00</span></div>
                         </div>
                         <div class="d-flex justify-content-between">
-                            <div class="text-muted">Tax (<span id="taxRatePct">7.25</span>%):</div>
+                            <div class="text-muted">Tax (<span id="taxRatePct">7.25</span>%): <span id="taxExemptNote" class="badge text-bg-warning ms-1 d-none">Exempt</span></div>
                             <div class="fw-semibold">$<span id="tax">0.00</span></div>
                         </div>
                         <hr>
@@ -377,6 +383,33 @@
                     <div class="foot center">
                         <hr>
                         <div class="muted">Thank you for shopping small!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tax Exempt Modal -->
+        <div class="modal fade" id="noTaxModal" tabindex="-1" aria-labelledby="noTaxModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="noTaxModalLabel">Tax Exemption Details</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="noTaxName" class="form-label">Name / Organization</label>
+                            <input type="text" id="noTaxName" class="form-control" placeholder="e.g., Lincoln Public Schools">
+                        </div>
+                        <div class="mb-2">
+                            <label for="noTaxId" class="form-label">Tax ID (alphanumeric)</label>
+                            <input type="text" id="noTaxId" class="form-control" placeholder="e.g., EXEMPT1234">
+                            <div class="form-text">Letters and numbers only; no spaces or symbols.</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="noTaxCancelBtn">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="noTaxApplyBtn">Apply Exemption</button>
                     </div>
                 </div>
             </div>

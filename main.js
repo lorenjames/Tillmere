@@ -477,3 +477,14 @@ ipcMain.handle('splash:resize', (_evt, size) => {
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 app.on('before-quit', () => { try { performAutoBackup(); } catch (_) { } });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+
+// Test-friendly exports of pure helpers only (no window/app side effects)
+try {
+  if (typeof module !== 'undefined' && module && module.exports) {
+    module.exports = {
+      migrateReceipts,
+      // expose small helpers used in tests if needed later
+      // formatLocalDate, nextAvailablePath
+    };
+  }
+} catch (_) { }

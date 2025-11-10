@@ -348,9 +348,11 @@ async function openReceiptWindow(r, opts = {}) {
       <div class="totals">
         <hr>
         <div class="row"><div>Subtotal</div><div>$${money(r.subtotal)}</div></div>
-        <div class="row"><div>Tax (${(Number(r.taxRate || 0) * 100).toFixed(2)}%)</div><div>$${money(r.tax)}</div></div>
+        <div class="row"><div>${r.taxExempt ? 'Tax (Exempt)' : `Tax (${(Number(r.taxRate || 0) * 100).toFixed(2)}%)`}</div><div>$${money(r.tax)}</div></div>
         <div class="row total"><div>Total</div><div>$${money(r.total)}</div></div>
       </div>
+
+      ${r.taxExempt ? `<div class="foot"><div><span class="muted">Exempt:</span> <strong>${esc(r.taxExemptName || '')}</strong> — ID: <strong>${esc(r.taxExemptId || '')}</strong></div></div>` : ''}
 
       <div class="foot center">
         <hr>
@@ -366,9 +368,26 @@ async function openReceiptWindow(r, opts = {}) {
   return w;
 }
 
+// Test-friendly exports (pure helpers only)
+try {
+  if (typeof module !== 'undefined' && module && module.exports) {
+    module.exports = {
+      money,
+      esc,
+      toMoneyNumber,
+      deriveOriginalPrice,
+      deriveDiscount,
+      formatPercentText,
+      formatDiscountLabel,
+      buildDiscountSuffix,
+      toDateInputValue,
+    };
+  }
+} catch (_) { }
+
 // ---------- CSV export ----------
 function toCSV(rows) {
-  const header = ['Number', 'DateTime', 'DisplayDate', 'Cashier', 'Payment', 'Subtotal', 'Tax', 'Total', 'Voided', 'VoidReason', 'Items', 'ItemComments'];
+  const header = ['Number', 'DateTime', 'DisplayDate', 'Cashier', 'Payment', 'Subtotal', 'Tax', 'Total', 'TaxExempt', 'TaxExemptName', 'TaxExemptId', 'Voided', 'VoidReason', 'Items', 'ItemComments'];
   const lines = [header.join(',')];
   rows.forEach(r => {
     const itemsText = (r.items || []).map(i => `${i.name} ($${money(i.price)}${i.vendorCode ? `, ${i.vendorCode}` : i.vendor ? `, ${i.vendor}` : ''})`).join('; ');
@@ -382,6 +401,9 @@ function toCSV(rows) {
       money(r.subtotal),
       money(r.tax),
       money(r.total),
+      r.taxExempt ? 'YES' : 'NO',
+      r.taxExemptName || '',
+      r.taxExemptId || '',
       r.voided ? 'YES' : 'NO',
       r.voidInfo?.reason || '',
       itemsText.replaceAll(',', ';'),
@@ -871,9 +893,10 @@ async function openReceiptWindow(r, opts = {}) {
 
         <div class="totals">
           <div class="label">Subtotal</div><div class="val">$${money(r.subtotal)}</div>
-          <div class="label">Tax (${(Number(r.taxRate || 0) * 100).toFixed(2)}%)</div><div class="val">$${money(r.tax)}</div>
-          <div class="label grand">Total</div><div class="val grand">$${money(r.total)}</div>
-        </div>
+              <div class="label">${r.taxExempt ? 'Tax (Exempt)' : `Tax (${(Number(r.taxRate || 0) * 100).toFixed(2)}%)`}</div><div class="val">$${money(r.tax)}</div>
+              <div class="label grand">Total</div><div class="val grand">$${money(r.total)}</div>
+            </div>
+            ${r.taxExempt ? `<div class="notes"><strong>Tax Exempt</strong>: ${esc(r.taxExemptName || '')} — ID: ${esc(r.taxExemptId || '')}</div>` : ''}
 
         <div class="notes">
           Thank you for shopping small!
