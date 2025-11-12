@@ -82,5 +82,30 @@ describe('POS cart and totals', () => {
     expect(document.getElementById('tax').textContent).toBe('0.00');
     expect(document.getElementById('total').textContent).toBe('80.00');
   });
-});
 
+  test('clearItemEntry resets entry form fields', async () => {
+    const { clearItemEntry } = require('../renderer.js');
+    // Seed fields with values
+    document.getElementById('itemName').value = 'Chair';
+    document.getElementById('itemPrice').value = '80';
+    document.getElementById('itemQty').value = '3';
+    document.getElementById('itemVendor').value = 'V1';
+    document.getElementById('itemComment').value = 'Nice';
+    document.getElementById('discountType').value = 'percent';
+    document.getElementById('discountValue').disabled = false;
+    document.getElementById('discountValue').value = '10';
+    document.getElementById('discountReason').value = 'Promo';
+
+    clearItemEntry();
+
+    expect(document.getElementById('itemName').value).toBe('');
+    expect(document.getElementById('itemPrice').value).toBe('');
+    expect(document.getElementById('itemQty').value).toBe('1');
+    expect(document.getElementById('itemVendor').value).toBe('');
+    expect(document.getElementById('itemComment').value).toBe('');
+    expect(document.getElementById('discountType').value).toBe('none');
+    expect(document.getElementById('discountValue').value).toBe('');
+    expect(document.getElementById('discountValue').disabled).toBe(true);
+    expect(document.getElementById('discountReason').value).toBe('');
+  });
+});

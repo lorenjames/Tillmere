@@ -450,6 +450,32 @@ function createWindow() {
     });
     mainWindow.on('closed', () => (mainWindow = null));
 }
+
+// Create an additional sale window (no splash)
+function createSaleWindow(cartId) {
+    const w = new BrowserWindow({
+        width: 1200,
+        height: 800,
+        show: true,
+        fullscreen: false,
+        backgroundColor: '#f1efea',
+        icon: path.join(__dirname, 'assets', 'MiddletonsAppIcon.png'),
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+            backgroundThrottling: false
+        }
+    });
+    try {
+        const target = cartId ? `index.html?cartId=${encodeURIComponent(String(cartId))}` : 'index.html';
+        w.loadFile('index.html', cartId ? { query: { cartId: String(cartId) } } : undefined);
+    } catch (_) {
+        // Fallback for environments that don't support the query option
+        try { w.loadFile('index.html'); } catch (_) { }
+    }
+    try { w.maximize(); } catch (_) { }
+    return w;
+}
 // Avoid side effects during tests where Electron may be mocked
 try {
   const isTest = !!process.env.JEST_WORKER_ID;
@@ -472,6 +498,17 @@ ipcMain.handle('app:focus', () => {
     return false;
 });
 
+// Open a new sale window on demand
+ipcMain.handle('sale:new', () => {
+    try {
+        const id = `C-${Date.now()}`;
+        createSaleWindow(id);
+        return { cartId: id };
+    } catch (e) {
+        return { error: String(e?.message || e) };
+    }
+});
+
 // Allow splash to request window resize to fit logo exactly
 ipcMain.handle('splash:resize', (_evt, size) => {
     try {
@@ -486,7 +523,15 @@ ipcMain.handle('splash:resize', (_evt, size) => {
 try {
   if (app && typeof app.on === 'function') {
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-    app.on('before-quit', () => { try { performAutoBackup(); } catch (_) { } });
+    app.on('before-quit', () => {
+      try {
+        // Inform renderers to clear tab persistence for next session
+        BrowserWindow.getAllWindows().forEach(w => {
+          try { w.webContents.send('app:prepareQuit'); } catch (_) { }
+        });
+      } catch (_) { }
+      try { performAutoBackup(); } catch (_) { }
+    });
     app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
   }
 } catch (_) { }

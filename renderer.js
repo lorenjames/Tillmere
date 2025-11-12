@@ -15,6 +15,313 @@ let __allowNavigation = false;
 let __lastTotal = 0;
 let __suppressRefocusUntil = 0;
 
+// Multi-sale tabs: per-cart state manager
+let __carts = new Map(); // id -> state
+let __activeCartId = '';
+let __cartCounter = 0;
+const __TABS_STORAGE_KEY = 'posTabsV1';
+const __SESSION_KEY = 'posSessionIdV1';
+let __sessionId = '';
+let __isQuitting = false;
+
+function __todayYmd() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+function __newCartState(title = '') {
+  return {
+    title,
+    items: [],
+    cashier: '',
+    payment: '',
+    backdateEnabled: false,
+    backdateDate: __todayYmd(),
+    taxExempt: false,
+    taxExemptInfo: { id: '', name: '' },
+    cashReceived: '',
+    // Entry form draft (per-tab)
+    entryName: '',
+    entryPrice: '',
+    entryQty: '1',
+    entryVendor: '',
+    entryComment: '',
+    entryDiscountType: 'none',
+    entryDiscountValue: '',
+    entryDiscountReason: ''
+  };
+}
+function __snapshotFromUI() {
+  try {
+    const cashier = document.getElementById('cashierSelect')?.value || '';
+    const payment = document.getElementById('paymentSelect')?.value || '';
+    const backdateEnabled = !!document.getElementById('backdateToggle')?.checked;
+    const backdateDate = document.getElementById('backdateDate')?.value || __todayYmd();
+    const cashReceived = document.getElementById('cashReceived')?.value || '';
+    // Entry form fields
+    const entryName = document.getElementById('itemName')?.value || '';
+    const entryPrice = document.getElementById('itemPrice')?.value || '';
+    const entryQty = document.getElementById('itemQty')?.value || '1';
+    const entryVendor = document.getElementById('itemVendor')?.value || '';
+    const entryComment = document.getElementById('itemComment')?.value || '';
+    const entryDiscountType = document.getElementById('discountType')?.value || 'none';
+    const entryDiscountValue = document.getElementById('discountValue')?.value || '';
+    const entryDiscountReason = document.getElementById('discountReason')?.value || '';
+    return {
+      title: __carts.get(__activeCartId)?.title || '',
+      items: (Array.isArray(items) ? items.map(it => ({ ...it })) : []),
+      cashier,
+      payment,
+      backdateEnabled,
+      backdateDate,
+      taxExempt: !!__taxExempt,
+      taxExemptInfo: { id: String(__taxExemptInfo?.id || ''), name: String(__taxExemptInfo?.name || '') },
+      cashReceived,
+      entryName,
+      entryPrice,
+      entryQty,
+      entryVendor,
+      entryComment,
+      entryDiscountType,
+      entryDiscountValue,
+      entryDiscountReason
+    };
+  } catch (_) {
+    return __newCartState(__carts.get(__activeCartId)?.title || '');
+  }
+}
+function __applyStateToUI(state) {
+  try {
+    items = (Array.isArray(state?.items) ? state.items.map(it => ({ ...it })) : []);
+    renderTable();
+  } catch (_) { items = []; renderTable(); }
+  try { const el = document.getElementById('cashierSelect'); if (el) el.value = state?.cashier || ''; } catch (_) { }
+  try { const el = document.getElementById('paymentSelect'); if (el) el.value = state?.payment || ''; } catch (_) { }
+  try { toggleCashFields(); } catch (_) { }
+  try { const el = document.getElementById('cashReceived'); if (el) el.value = state?.cashReceived || ''; updateCashChange(); } catch (_) { }
+  try {
+    const bdToggle = document.getElementById('backdateToggle');
+    const bdWrap = document.getElementById('backdateWrap');
+    const bdDate = document.getElementById('backdateDate');
+    if (bdToggle) bdToggle.checked = !!state?.backdateEnabled;
+    if (bdWrap) bdWrap.classList.toggle('d-none', !state?.backdateEnabled);
+    if (bdDate) bdDate.value = state?.backdateDate || __todayYmd();
+  } catch (_) { }
+  try {
+    const nt = document.getElementById('noTaxToggle');
+    if (nt) nt.checked = !!state?.taxExempt;
+    __taxExempt = !!state?.taxExempt;
+    __taxExemptInfo = { id: String(state?.taxExemptInfo?.id || ''), name: String(state?.taxExemptInfo?.name || '') };
+    updateTaxRateLabel();
+  } catch (_) { }
+  // Restore per-tab entry form draft
+  try {
+    const nameEl = document.getElementById('itemName'); if (nameEl) nameEl.value = state?.entryName || '';
+    const priceEl = document.getElementById('itemPrice'); if (priceEl) priceEl.value = state?.entryPrice || '';
+    const qtyEl = document.getElementById('itemQty'); if (qtyEl) qtyEl.value = state?.entryQty || '1';
+    const vendorEl = document.getElementById('itemVendor'); if (vendorEl) vendorEl.value = state?.entryVendor || '';
+    const commentEl = document.getElementById('itemComment'); if (commentEl) commentEl.value = state?.entryComment || '';
+    const typeEl = document.getElementById('discountType');
+    const valueEl = document.getElementById('discountValue');
+    const reasonEl = document.getElementById('discountReason');
+    if (typeEl) typeEl.value = state?.entryDiscountType || 'none';
+    if (valueEl) valueEl.value = state?.entryDiscountValue || '';
+    if (reasonEl) reasonEl.value = state?.entryDiscountReason || '';
+    if (typeEl && valueEl) applyDiscountTypeState(typeEl, valueEl, { preserveValue: true });
+  } catch (_) { }
+}
+function __renderTabs() {
+  try {
+    const bar = document.getElementById('saleTabs');
+    if (!bar) return;
+    const entries = Array.from(__carts.entries());
+    bar.innerHTML = entries.map(([id, st], idx) => {
+      const active = id === __activeCartId ? 'active' : '';
+      const label = st?.title || `Sale ${idx + 1}`;
+      return `<li class="nav-item"><button class="nav-link ${active}" data-cartid="${id}">${label}</button></li>`;
+    }).join('');
+    bar.querySelectorAll('button[data-cartid]')?.forEach(btn => {
+      btn.addEventListener('click', () => { __switchToCart(btn.getAttribute('data-cartid')); });
+    });
+    try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+  } catch (_) { }
+}
+function __switchToCart(id) {
+  try {
+    if (!id || id === __activeCartId) return;
+    if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI());
+    __activeCartId = id;
+    const st = __carts.get(id) || __newCartState();
+    __applyStateToUI(st);
+    __renderTabs();
+    __persistTabs();
+  } catch (_) { }
+}
+function __createNewCartTab() {
+  try {
+    if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI());
+    const id = `T-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+    const title = `Sale ${++__cartCounter}`;
+    __carts.set(id, __newCartState(title));
+    __activeCartId = id;
+    __applyStateToUI(__carts.get(id));
+    __renderTabs();
+    __persistTabs();
+    try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+  } catch (_) { }
+}
+
+function __renumberTabsOnStartup() {
+  try {
+    const entries = Array.from(__carts.entries());
+    // Reassign titles in current order as Sale 1..N
+    entries.forEach(([id, st], idx) => {
+      if (!st || typeof st !== 'object') return;
+      st.title = `Sale ${idx + 1}`;
+      __carts.set(id, st);
+    });
+    __cartCounter = entries.length;
+    __renderTabs();
+    __persistTabs();
+    try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+  } catch (_) { }
+}
+
+function __cancelActiveCart() {
+  try {
+    if (!__activeCartId) return;
+    // Check if cart has data to avoid accidental loss
+    const st = __snapshotFromUI();
+    const hasItems = Array.isArray(st.items) && st.items.length > 0;
+    const hasMeta = (st.cashier || st.payment || st.taxExempt || st.backdateEnabled || (st.cashReceived || '')).toString() !== ''.toString();
+    if (hasItems || hasMeta) {
+      const ok = window.confirm('Cancel this sale and close its tab? This cannot be undone.');
+      if (!ok) return;
+    }
+    // Remove from map
+    const idToClose = __activeCartId;
+    // Choose next tab: the next entry after current, otherwise first available
+    const entries = Array.from(__carts.keys());
+    const idx = Math.max(0, entries.indexOf(idToClose));
+    __carts.delete(idToClose);
+    let nextId = '';
+    for (let i = idx; i < entries.length; i++) {
+      const cand = entries[i];
+      if (cand !== idToClose && __carts.has(cand)) { nextId = cand; break; }
+    }
+    if (!nextId) {
+      // Fallback to first remaining
+      const first = __carts.keys().next();
+      nextId = first && !first.done ? first.value : '';
+    }
+    if (!nextId) {
+      // No tabs remain; create a fresh one
+      __activeCartId = '';
+      __createNewCartTab();
+      __persistTabs();
+      return;
+    }
+    __activeCartId = nextId;
+    __applyStateToUI(__carts.get(nextId));
+    __renderTabs();
+    __persistTabs();
+    try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+  } catch (_) { }
+}
+
+function __completeSaleAndCloseTab() {
+  try {
+    if (!__activeCartId) { __persistTabs(); return; }
+    const closingId = __activeCartId;
+    // Remove the completed tab
+    __carts.delete(closingId);
+    // Find remaining tabs with pending items
+    const pending = Array.from(__carts.entries()).filter(([_, st]) => Array.isArray(st?.items) && st.items.length > 0);
+  if (pending.length === 0) {
+      // No pending tabs left: prefer preserving an existing empty tab's selections
+      const remaining = Array.from(__carts.entries());
+      if (remaining.length > 0) {
+        const keep = remaining[0];
+        // Collapse to just this one tab, keep its state
+        __carts = new Map([[keep[0], keep[1]]]);
+        __activeCartId = keep[0];
+        // Renumber title to Sale 1
+        try { __carts.get(__activeCartId).title = 'Sale 1'; } catch (_) { }
+        __applyStateToUI(keep[1]);
+        __renderTabs();
+        __persistTabs();
+        try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+        return;
+      }
+      // If truly none remain, create a fresh one
+      __carts = new Map();
+      __activeCartId = '';
+      __cartCounter = 0;
+      __createNewCartTab();
+      __renderTabs();
+      __persistTabs();
+      try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+      return;
+  }
+    // Switch to the first pending tab
+    __activeCartId = pending[0][0];
+    __applyStateToUI(pending[0][1]);
+    __renderTabs();
+    __persistTabs();
+    try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+  } catch (_) { }
+}
+
+function __persistTabs() {
+  try {
+    if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI());
+    const payload = {
+      active: __activeCartId,
+      counter: __cartCounter,
+      carts: Array.from(__carts.entries()),
+      session: __sessionId || ''
+    };
+    localStorage.setItem(__TABS_STORAGE_KEY, JSON.stringify(payload));
+  } catch (_) { }
+}
+function __restoreTabs() {
+  try {
+    const raw = localStorage.getItem(__TABS_STORAGE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.carts)) return false;
+    // Only restore within the same app session (e.g., reload/navigation), never across app launches
+    if (!data.session || !__sessionId || data.session !== __sessionId) {
+      try { localStorage.removeItem(__TABS_STORAGE_KEY); } catch (_) { }
+      return false;
+    }
+    __carts = new Map(data.carts);
+    __cartCounter = Number(data.counter) || __carts.size || 0;
+    __activeCartId = data.active || (data.carts[0] ? data.carts[0][0] : '');
+    if (__activeCartId) {
+      const st = __carts.get(__activeCartId) || __newCartState();
+      __applyStateToUI(st);
+      __renderTabs();
+      try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+      return true;
+    }
+    return false;
+  } catch (_) { return false; }
+}
+
+function __updateCancelSaleButtonEnabled() {
+  try {
+    const btn = document.getElementById('cancelSaleBtn');
+    if (!btn) return;
+    const count = (__carts && typeof __carts.size === 'number') ? __carts.size : 0;
+    const disable = count <= 1;
+    btn.disabled = disable;
+    try { btn.classList.toggle('disabled', disable); } catch (_) { }
+  } catch (_) { }
+}
+
 // ---------- Utils ----------
 function money(n) { return toMoneyNumber(n).toFixed(2); }
 // Lightweight status bar shown during async operations (e.g., silent print)
@@ -386,13 +693,40 @@ function installNavigationGuards() {
       try { return Array.isArray(items) && items.length > 0; } catch (_) { return false; }
     };
 
-    // Block window unload (refresh, close, navigate) without native prompt
+    // Block window unload (refresh, close, navigate)
     window.addEventListener('beforeunload', (e) => {
       try {
         if (__allowNavigation) return;
-        if (!hasDirtyCart()) return;
-        e.preventDefault(); // prevent silently
-        // Do NOT set e.returnValue to avoid native confirm dialogs
+
+        // If the app is quitting, show a confirm that names the first tab with items
+        if (typeof __isQuitting !== 'undefined' && __isQuitting) {
+          try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
+          let dirtyTitle = '';
+          try {
+            for (const [id, st] of __carts.entries()) {
+              if (Array.isArray(st?.items) && st.items.length > 0) { dirtyTitle = st.title || 'Current Sale'; break; }
+            }
+          } catch (_) { }
+          if (dirtyTitle) {
+            const ok = window.confirm(`There are still items in the cart on tab "${dirtyTitle}". Are you sure you want to close?`);
+            if (!ok) {
+              e.preventDefault();
+              try { __isQuitting = false; } catch (_) { }
+              try { ipcRenderer && ipcRenderer.send && ipcRenderer.send('app:cancelQuit'); } catch (_) { }
+              return;
+            }
+          }
+          // Proceed with quit; clear persisted tabs so they do not carry to next session
+          try { localStorage.removeItem(__TABS_STORAGE_KEY); } catch (_) { }
+          return; // allow unload
+        }
+
+        // Not quitting: prevent navigating away if there's a dirty cart, and show a toast
+        if (hasDirtyCart()) {
+          e.preventDefault();
+          try { showToast('You have items in the cart. Complete the sale or empty the cart to leave.', { type: 'error', duration: 3500 }); } catch (_) { }
+          restoreUiAfterGuardCancel();
+        }
       } catch (_) { }
     });
 
@@ -538,6 +872,7 @@ async function normalizeVendorInput(el) {
 async function loadCashiersIntoSelect() {
   const sel = document.getElementById('cashierSelect');
   if (!sel) return;
+  const prev = sel.value || '';
   sel.innerHTML = '';
   let list = await fetchCashiers();
   if (!Array.isArray(list) || list.length === 0) {
@@ -546,7 +881,8 @@ async function loadCashiersIntoSelect() {
   }
   ensurePlaceholder(sel);
   list.forEach(c => { const opt = document.createElement('option'); opt.value = c.name; opt.textContent = c.name; sel.appendChild(opt); });
-  sel.value = '';
+  // Preserve previous selection if still present
+  try { if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev; } catch (_) { }
 }
 
 // ---------- POS actions ----------
@@ -608,8 +944,42 @@ async function addItem() {
   renderTable();
   // Return focus to the first entry field for rapid entry
   try { nameEl.focus(); } catch (_) { }
+  // Persist current tab state after adding an item
+  try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
 }
-function removeItem(i) { items.splice(i, 1); renderTable(); }
+
+function clearItemEntry() {
+  try {
+    const nameEl = document.getElementById('itemName');
+    const priceEl = document.getElementById('itemPrice');
+    const qtyEl = document.getElementById('itemQty');
+    const vendorEl = document.getElementById('itemVendor');
+    const commentEl = document.getElementById('itemComment');
+    const discountTypeEl = document.getElementById('discountType');
+    const discountValueEl = document.getElementById('discountValue');
+    const discountReasonEl = document.getElementById('discountReason');
+
+    if (nameEl) nameEl.value = '';
+    if (priceEl) priceEl.value = '';
+    if (qtyEl) qtyEl.value = '1';
+    if (vendorEl) vendorEl.value = '';
+    if (commentEl) commentEl.value = '';
+    if (discountTypeEl) discountTypeEl.value = 'none';
+    if (discountValueEl) discountValueEl.value = '';
+    if (discountReasonEl) discountReasonEl.value = '';
+    if (discountTypeEl && discountValueEl) applyDiscountTypeState(discountTypeEl, discountValueEl);
+
+    try { nameEl?.focus(); } catch (_) { }
+    // Persist current tab state after clearing
+    try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
+  } catch (_) { }
+}
+function removeItem(i) {
+  items.splice(i, 1);
+  renderTable();
+  // Persist current tab state after removing an item
+  try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
+}
 
 // ---------- Edit modal ----------
 function ensureEditModal() {
@@ -700,6 +1070,8 @@ async function saveEditFromModal() {
 
   __editModal?.hide();
   renderTable();
+  // Persist current tab state after editing an item
+  try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
 }
 
 // ---------- Table & totals ----------
@@ -1113,6 +1485,8 @@ async function printReceipt() {
         // Return focus to the first entry field
         try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
       } catch (_) { }
+      // Close the completed sale tab and switch appropriately
+      try { __completeSaleAndCloseTab(); } catch (_) { }
       return;
     }
   } catch (_) { }
@@ -1234,8 +1608,8 @@ async function completePrintWithHtml(html) {
         bdDate.value = `${y}-${m}-${d}`;
       }
     } catch (_) { }
-    // Return focus to the first entry field
-    try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
+    // Close the completed sale tab and switch appropriately
+    try { __completeSaleAndCloseTab(); } catch (_) { }
   } catch (_) { }
 }
 
@@ -1263,6 +1637,14 @@ function updateCashChange() {
 
 // ---------- Init ----------
 window.addEventListener('load', async () => {
+  // Establish a per-app-run session id so we only restore tabs within a single run
+  try {
+    __sessionId = sessionStorage.getItem(__SESSION_KEY);
+    if (!__sessionId) {
+      __sessionId = `S-${Date.now()}-${Math.floor(Math.random()*100000)}`;
+      sessionStorage.setItem(__SESSION_KEY, __sessionId);
+    }
+  } catch (_) { __sessionId = `S-${Date.now()}-${Math.floor(Math.random()*100000)}`; }
   try { const s = await ipcRenderer.invoke('settings:load'); const tr = Number(s?.taxRate); if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr; __silentPrint = !!s?.silentPrint; } catch (_) { }
   await loadCashiersIntoSelect();
   preparePaymentSelect();
@@ -1275,6 +1657,13 @@ window.addEventListener('load', async () => {
   try { cleanupStrayBackdrops(); } catch (_) { }
   // Ensure input focus behavior is resilient
   try { forceFocusOnInputs(); } catch (_) { }
+  // Enable Bootstrap tooltips where present
+  try {
+    if (window.bootstrap && window.bootstrap.Tooltip) {
+      Array.from(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        .forEach(el => { try { new bootstrap.Tooltip(el); } catch (_) { } });
+    }
+  } catch (_) { }
 
   const addrEl = document.getElementById('rcpt-address');
 
@@ -1289,6 +1678,43 @@ window.addEventListener('load', async () => {
     }, 250);
   } catch (_) { }
   if (addrEl) addrEl.textContent = '1615 S 17th St, Lincoln, NE 68502 · 531-500-0135';
+
+  // New Sale button adds a new tab
+  try {
+    const btn = document.getElementById('newSaleBtn');
+    if (btn) btn.addEventListener('click', () => { try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { } __createNewCartTab(); });
+  } catch (_) { }
+  // Cancel Sale: clears and closes current tab
+  try {
+    const cancelBtn = document.getElementById('cancelSaleBtn');
+    if (cancelBtn) cancelBtn.addEventListener('click', () => {
+      __cancelActiveCart();
+    });
+  } catch (_) { }
+  // Try to restore previous tabs; otherwise, start with one tab
+  try {
+    if (__restoreTabs()) {
+      // Renumber tabs as Sale 1..N on each app open
+      __renumberTabsOnStartup();
+    } else {
+      __createNewCartTab();
+    }
+    try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+  } catch (_) { __createNewCartTab(); }
+
+  // Persist tabs on leave/hidden (but not when quitting the app)
+  try {
+    window.addEventListener('beforeunload', () => { try { if (!__isQuitting) __persistTabs(); } catch (_) { } });
+    window.addEventListener('pagehide', () => { try { if (!__isQuitting) __persistTabs(); } catch (_) { } });
+    document.addEventListener('visibilitychange', () => { try { if (document.hidden && !__isQuitting) __persistTabs(); } catch (_) { } });
+  } catch (_) { }
+
+  // Mark quitting so beforeunload can prompt appropriately
+  try {
+    ipcRenderer.on('app:prepareQuit', () => {
+      try { __isQuitting = true; } catch (_) { }
+    });
+  } catch (_) { }
 
   const itemVendorEl = document.getElementById('itemVendor');
   if (itemVendorEl) {
@@ -1494,6 +1920,7 @@ try {
       findVendorLoose,
       // cart flows
       addItem,
+      clearItemEntry,
       printReceipt,
       removeItem,
       // totals & UI

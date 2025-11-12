@@ -45,11 +45,17 @@
                         <li><a class="dropdown-item" href="settings.html">Settings</a></li>
                     </ul>
                 </div>
+                <button id="newSaleBtn" type="button" class="btn btn-outline-light ms-2">New Sale</button>
+                <button id="cancelSaleBtn" type="button" class="btn btn-outline-light ms-2">Cancel Sale</button>
             </div>
         </div>
     </nav>
 
     <main class="container py-4">
+        <!-- Multi-sale tabs -->
+        <div class="d-flex align-items-center mb-3">
+            <ul id="saleTabs" class="nav nav-tabs flex-grow-1"></ul>
+        </div>
         <div class="row g-4">
             <!-- Left column: Sale meta + Entry stacked -->
             <div class="col-12 col-lg-6">
@@ -143,6 +149,21 @@
                             </div>
                             <div class="col-12">
                                 <button class="btn btn-primary w-100" onclick="addItem()">Add Item</button>
+                            </div>
+                            <div class="col-12 mt-2">
+                                <button
+                                    class="btn btn-outline-secondary w-100"
+                                    onclick="clearItemEntry()"
+                                    data-bs-toggle="tooltip"
+                                    data-bs-placement="top"
+                                    title="Clear all entry fields"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eraser me-1" viewBox="0 0 16 16" aria-hidden="true">
+                                      <path d="M8.086 2.207a2 2 0 0 1 2.828 0l2.879 2.879a2 2 0 0 1 0 2.828l-4.95 4.95a2 2 0 0 1-1.414.586H5.5a2 2 0 0 1-1.414-.586L1.707 10.95a1 1 0 0 1 0-1.414l6.379-6.379z"/>
+                                      <path d="M.854 11.854a.5.5 0 0 1 0-.708l6.732-6.732 3.536 3.536-6.732 6.732a.5.5 0 0 1-.708 0L.854 11.854z"/>
+                                    </svg>
+                                    Clear Item
+                                </button>
                             </div>
                         </div>
                     </div>
