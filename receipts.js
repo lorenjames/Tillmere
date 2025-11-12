@@ -227,7 +227,8 @@ function renderTable() {
 }
 
 // ---------- view/print window (shows VOID banner + reason/by/when) ----------
-async function openReceiptWindow(r, opts = {}) {
+// Renamed to avoid duplicate declaration with the full-page invoice version below
+async function openReceiptWindowCompact(r, opts = {}) {
   const autoPrint = !!opts.autoPrint;
   const vendors = (Array.isArray(window.__vendorsCache) && window.__vendorsCache.length)
     ? window.__vendorsCache

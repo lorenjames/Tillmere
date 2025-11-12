@@ -450,7 +450,16 @@ function createWindow() {
     });
     mainWindow.on('closed', () => (mainWindow = null));
 }
-app.whenReady().then(() => { ensureDataFiles(); createWindow(); });
+// Avoid side effects during tests where Electron may be mocked
+try {
+  const isTest = !!process.env.JEST_WORKER_ID;
+  if (!isTest && app && typeof app.whenReady === 'function') {
+    const p = app.whenReady();
+    if (p && typeof p.then === 'function') {
+      p.then(() => { ensureDataFiles(); createWindow(); });
+    }
+  }
+} catch (_) { }
 
 // Expose app version to renderers
 ipcMain.handle('app:getVersion', () => {
@@ -474,9 +483,13 @@ ipcMain.handle('splash:resize', (_evt, size) => {
         return true;
     } catch (_) { return false; }
 });
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-app.on('before-quit', () => { try { performAutoBackup(); } catch (_) { } });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+try {
+  if (app && typeof app.on === 'function') {
+    app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+    app.on('before-quit', () => { try { performAutoBackup(); } catch (_) { } });
+    app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+  }
+} catch (_) { }
 
 // Test-friendly exports of pure helpers only (no window/app side effects)
 try {
