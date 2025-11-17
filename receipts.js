@@ -5,6 +5,7 @@ let all = [];
 let filtered = [];
 let currentPage = 1;
 let pageSize = 10;
+let selectedVendorKey = '';
 
 const $ = sel => document.querySelector(sel);
 const norm = s => String(s || '').trim().toLowerCase();
@@ -101,6 +102,15 @@ function applyFilters() {
     if (cashier && (r.cashier || '') !== cashier) return false;
     if (payment && (r.payment || '') !== payment) return false;
 
+    if (selectedVendorKey) {
+      const keyNorm = selectedVendorKey.toLowerCase();
+      const matchesVendor = (r.items || []).some(it => {
+        const k = resolveVendorKeyFromItem(it);
+        return k && k.toLowerCase() === keyNorm;
+      });
+      if (!matchesVendor) return false;
+    }
+
     if (q) {
       const hay = [
         r.number, r.cashier, r.payment,
@@ -121,20 +131,25 @@ function applyFilters() {
 }
 
 // ---------- vendor subtotals ----------
+function resolveVendorKeyFromItem(it) {
+  let key = String(it.vendorCode || '').trim();
+  if (!key) {
+    const input = String(it.vendor || '').trim();
+    if (input) {
+      const vendors = (window.__vendorsCache || []);
+      const match = vendors.find(vv => (vv.code || '').trim().toLowerCase() === input.toLowerCase() || (vv.name || '').trim().toLowerCase() === input.toLowerCase())
+        || vendors.find(vv => (vv.code || '').replace(/\s+/g, '').toLowerCase() === input.replace(/\s+/g, '').toLowerCase());
+      key = String((match && match.code) || input).trim();
+    }
+  }
+  return key;
+}
 function renderVendorSubtotals() {
   const bucket = {}; // by resolved vendor (code preferred, fallback to name)
   filtered.forEach(r => {
     if (r.voided) return;
     (r.items || []).forEach(it => {
-      let key = String(it.vendorCode || '').trim();
-      if (!key) {
-        const input = String(it.vendor || '').trim();
-        if (input) {
-          const v = (window.__vendorsCache || []).find(vv => (vv.code || '').trim().toLowerCase() === input.toLowerCase() || (vv.name || '').trim().toLowerCase() === input.toLowerCase())
-            || (window.__vendorsCache || []).find(vv => (vv.code || '').replace(/\s+/g, '').toLowerCase() === input.replace(/\s+/g, '').toLowerCase());
-          key = String((v && v.code) || input).trim();
-        }
-      }
+      const key = resolveVendorKeyFromItem(it);
       if (!key) return;
       const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
       const unit = toMoneyNumber(it.price || 0);
@@ -152,13 +167,27 @@ function renderVendorSubtotals() {
   codes.forEach(c => {
     const col = document.createElement('div');
     col.className = 'col-6 col-md-4 col-lg-3';
+    const isSelected = selectedVendorKey && selectedVendorKey.toLowerCase() === String(c).trim().toLowerCase();
     col.innerHTML = `
-      <div class="border rounded p-2">
+      <button type="button" class="border rounded p-2 w-100 text-start ${isSelected ? 'bg-primary text-white' : ''}" data-vendor-key="${esc(c)}">
         <div class="text-muted small">Vendor</div>
         <div class="fw-semibold">${esc(c)}</div>
         <div class="text-end">$${money(bucket[c])}</div>
-      </div>`;
+      </button>`;
     wrap.appendChild(col);
+  });
+  // Wire click handlers for vendor filter selection
+  wrap.querySelectorAll('button[data-vendor-key]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = String(btn.getAttribute('data-vendor-key') || '').trim();
+      if (!key) return;
+      if (selectedVendorKey && selectedVendorKey.toLowerCase() === key.toLowerCase()) {
+        selectedVendorKey = '';
+      } else {
+        selectedVendorKey = key;
+      }
+      applyFilters();
+    });
   });
   // Total of all vendors in current filter
   const total = codes.reduce((sum, c) => sum + Number(bucket[c] || 0), 0);
@@ -662,6 +691,7 @@ window.addEventListener('load', async () => {
     if (cashier) cashier.value = '';
     if (payment) payment.value = '';
     if (voids) voids.value = 'hide';
+    selectedVendorKey = '';
     applyFilters();
   });
 

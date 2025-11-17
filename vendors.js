@@ -3,12 +3,61 @@ const { ipcRenderer } = require('electron');
 
 function escapeHtml(s) { return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
 
+function showToast(message, opts = {}) {
+    try {
+        const hostId = 'toast-host';
+        let host = document.getElementById(hostId);
+        if (!host) {
+            host = document.createElement('div');
+            host.id = hostId;
+            host.style.position = 'fixed';
+            host.style.zIndex = '5000';
+            host.style.right = '16px';
+            host.style.bottom = '16px';
+            host.style.display = 'flex';
+            host.style.flexDirection = 'column';
+            host.style.gap = '8px';
+            host.style.pointerEvents = 'none';
+            document.body.appendChild(host);
+        }
+        const el = document.createElement('div');
+        const tone = (opts.type === 'error') ? '#dc3545' : (opts.type === 'success') ? '#198754' : '#0d6efd';
+        el.textContent = String(message || '');
+        el.style.pointerEvents = 'none';
+        el.style.color = '#fff';
+        el.style.background = tone;
+        el.style.borderRadius = '8px';
+        el.style.padding = '10px 12px';
+        el.style.boxShadow = '0 6px 18px rgba(0,0,0,.18)';
+        el.style.fontSize = '14px';
+        host.appendChild(el);
+        const ms = Math.max(1000, Number(opts.duration || 2500));
+        setTimeout(() => { try { el.remove(); } catch (_) { } }, ms);
+    } catch (_) { }
+}
+
+function focusElement(selectorOrElement) {
+    try {
+        const el = typeof selectorOrElement === 'string' ? document.querySelector(selectorOrElement) : selectorOrElement;
+        if (el && typeof el.focus === 'function') {
+            el.focus();
+        }
+    } catch (_) { }
+}
+function confirmWithFocus(message) {
+    const prev = document.activeElement;
+    const result = confirm(message);
+    if (prev) focusElement(prev);
+    return result;
+}
+
 let cache = [];
 let __vendorEditIndex = -1;
 let sortField = 'name';
 const SORT_LABELS = { name: 'Name (A-Z)', code: 'Vendor Code (A-Z)' };
 
 function sortCache() {
+    if (!Array.isArray(cache)) cache = [];
     const primary = sortField;
     const fallback = primary === 'code' ? 'name' : 'code';
     cache.sort((aRaw, bRaw) => {
@@ -73,9 +122,10 @@ window.addVendor = async function () {
     const name = (nameEl.value || '').trim();
     const phone = (phoneEl.value || '').trim();
     const code = (codeEl.value || '').trim();
-    if (!name) return alert('Vendor name is required.');
+    if (!name) { showToast('Vendor name is required.', { type: 'error' }); focusElement('#newVendorName'); return; }
+    if (!code) { showToast('Vendor code is required.', { type: 'error' }); focusElement('#newVendorCode'); return; }
     await loadFromDisk();
-    if (code && cache.some(v => (v.code || '').toLowerCase() === code.toLowerCase())) return alert('Vendor code must be unique.');
+    if (cache.some(v => (v.code || '').toLowerCase() === code.toLowerCase())) { showToast('Vendor code must be unique.', { type: 'error' }); focusElement('#newVendorCode'); return; }
     cache.push({ name, phone, code });
     await saveToDisk();
     nameEl.value = ''; phoneEl.value = ''; codeEl.value = '';
@@ -109,11 +159,10 @@ window.saveVendorEdit = async function () {
     const code = String(document.getElementById('edit_vendor_code')?.value || '').trim();
     const name = String(document.getElementById('edit_vendor_name')?.value || '').trim();
     const phone = String(document.getElementById('edit_vendor_phone')?.value || '').trim();
-    if (!name) return alert('Vendor name cannot be empty.');
-    if (code) {
-        const lower = code.toLowerCase();
-        if (cache.some((v, idx) => idx !== i && (v.code || '').toLowerCase() === lower)) return alert('Vendor code must be unique.');
-    }
+    if (!name) { showToast('Vendor name cannot be empty.', { type: 'error' }); focusElement('#edit_vendor_name'); return; }
+    if (!code) { showToast('Vendor code is required.', { type: 'error' }); focusElement('#edit_vendor_code'); return; }
+    const lower = code.toLowerCase();
+    if (cache.some((v, idx) => idx !== i && (v.code || '').toLowerCase() === lower)) { showToast('Vendor code must be unique.', { type: 'error' }); focusElement('#edit_vendor_code'); return; }
     cache[i] = { name, phone, code };
     await saveToDisk();
     try {
@@ -132,7 +181,7 @@ window.saveVendorEdit = async function () {
 window.deleteVendor = async function (i) {
     await loadFromDisk();
     if (!cache[i]) return;
-    if (!confirm(`Delete vendor "${cache[i].name}"?`)) return;
+    if (!confirmWithFocus(`Delete vendor "${cache[i].name}"?`)) return;
     cache.splice(i, 1);
     await saveToDisk();
     renderTable();
