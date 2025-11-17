@@ -66,12 +66,16 @@
                     </div>
                     <div class="col-12 col-lg-3 d-grid">
                         <label class="form-label invisible">Apply</label>
-                        <button id="runBtn" class="btn btn-primary">Run Report</button>
-                    </div>
-                    <div class="col-12 col-lg-3 d-grid">
-                        <label class="form-label invisible">Quick Filters</label>
                         <div class="d-flex gap-2">
+                            <button id="runBtn" class="btn btn-primary flex-grow-1">Run Report</button>
+                            <button id="clearFiltersBtn" class="btn btn-outline-secondary">Clear</button>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-4 col-xl-3 d-grid">
+                        <label class="form-label invisible">Quick Filters</label>
+                        <div class="d-flex flex-wrap gap-2">
                             <button id="todayBtn" class="btn btn-outline-primary">Today</button>
+                            <button id="yesterdayBtn" class="btn btn-outline-primary">Yesterday</button>
                             <button id="currentMonthBtn" class="btn btn-outline-primary">Current Month</button>
                         </div>
                     </div>

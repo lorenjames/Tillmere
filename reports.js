@@ -880,9 +880,11 @@ window.addEventListener('DOMContentLoaded', () => {
     const expBtn = document.getElementById('exportBtn');
     const prnBtn = document.getElementById('printBtn');
     const prnDetBtn = document.getElementById('printDetailBtn');
+    const clearBtn = document.getElementById('clearFiltersBtn');
     const bkpBtn = document.getElementById('backupBtn');
     const rstBtn = document.getElementById('restoreBtn');
     const todayBtn = document.getElementById('todayBtn');
+    const yesterdayBtn = document.getElementById('yesterdayBtn');
     const monthBtn = document.getElementById('currentMonthBtn');
 
     // Developer-mode visibility toggle for backup/restore buttons
@@ -919,6 +921,21 @@ window.addEventListener('DOMContentLoaded', () => {
     if (prnDetBtn) {
         const onClickPrintDet = () => { console.log('[reports] Print detailed clicked'); try { printDetailedReport(); } catch (e) { console.error(e); alert('Print failed: ' + (e?.message || e)); } };
         prnDetBtn.addEventListener('click', onClickPrintDet);
+    }
+    if (clearBtn) {
+        const onClickClear = () => {
+            console.log('[reports] Clear filters clicked');
+            const now = new Date();
+            const from = new Date(now.getFullYear(), now.getMonth(), 1);
+            const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            const fmtLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            const fromEl = document.getElementById('fromDate');
+            const toEl = document.getElementById('toDate');
+            if (fromEl) fromEl.value = fmtLocal(from);
+            if (toEl) toEl.value = fmtLocal(to);
+            try { runReport(); } catch (e) { console.error(e); alert('Run failed: ' + (e?.message || e)); }
+        };
+        clearBtn.addEventListener('click', onClickClear);
     }
     if (bkpBtn) {
         const onClickBackup = async () => {
@@ -964,6 +981,14 @@ window.addEventListener('DOMContentLoaded', () => {
             const now = new Date();
             const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
             setRange(start, start);
+            try { runReport(); } catch (e) { console.error(e); alert('Run failed: ' + (e?.message || e)); }
+        });
+    }
+    if (yesterdayBtn) {
+        yesterdayBtn.addEventListener('click', () => {
+            const now = new Date();
+            const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+            setRange(yesterday, yesterday);
             try { runReport(); } catch (e) { console.error(e); alert('Run failed: ' + (e?.message || e)); }
         });
     }
