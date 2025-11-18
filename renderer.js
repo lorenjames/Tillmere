@@ -173,7 +173,7 @@ function __createNewCartTab() {
   } catch (_) { }
 }
 
-function __renumberTabsOnStartup() {
+function __renumberTabs() {
   try {
     const entries = Array.from(__carts.entries());
     // Reassign titles in current order as Sale 1..N
@@ -183,9 +183,6 @@ function __renumberTabsOnStartup() {
       __carts.set(id, st);
     });
     __cartCounter = entries.length;
-    __renderTabs();
-    __persistTabs();
-    try { __updateCancelSaleButtonEnabled(); } catch (_) { }
   } catch (_) { }
 }
 
@@ -220,12 +217,14 @@ function __cancelActiveCart() {
       // No tabs remain; create a fresh one
       __activeCartId = '';
       __createNewCartTab();
+      __renumberTabs();
       __persistTabs();
       return;
     }
     __activeCartId = nextId;
     __applyStateToUI(__carts.get(nextId));
     __renderTabs();
+    __renumberTabs();
     __persistTabs();
     try { __updateCancelSaleButtonEnabled(); } catch (_) { }
   } catch (_) { }
@@ -239,7 +238,7 @@ function __completeSaleAndCloseTab() {
     __carts.delete(closingId);
     // Find remaining tabs with pending items
     const pending = Array.from(__carts.entries()).filter(([_, st]) => Array.isArray(st?.items) && st.items.length > 0);
-  if (pending.length === 0) {
+    if (pending.length === 0) {
       // No pending tabs left: prefer preserving an existing empty tab's selections
       const remaining = Array.from(__carts.entries());
       if (remaining.length > 0) {
@@ -247,9 +246,8 @@ function __completeSaleAndCloseTab() {
         // Collapse to just this one tab, keep its state
         __carts = new Map([[keep[0], keep[1]]]);
         __activeCartId = keep[0];
-        // Renumber title to Sale 1
-        try { __carts.get(__activeCartId).title = 'Sale 1'; } catch (_) { }
-        __applyStateToUI(keep[1]);
+        __renumberTabs();
+        __applyStateToUI(__carts.get(__activeCartId));
         __renderTabs();
         __persistTabs();
         try { __updateCancelSaleButtonEnabled(); } catch (_) { }
@@ -260,14 +258,16 @@ function __completeSaleAndCloseTab() {
       __activeCartId = '';
       __cartCounter = 0;
       __createNewCartTab();
+      __renumberTabs();
       __renderTabs();
       __persistTabs();
       try { __updateCancelSaleButtonEnabled(); } catch (_) { }
       return;
-  }
+    }
     // Switch to the first pending tab
     __activeCartId = pending[0][0];
     __applyStateToUI(pending[0][1]);
+    __renumberTabs();
     __renderTabs();
     __persistTabs();
     try { __updateCancelSaleButtonEnabled(); } catch (_) { }
@@ -1695,11 +1695,13 @@ window.addEventListener('load', async () => {
   try {
     if (__restoreTabs()) {
       // Renumber tabs as Sale 1..N on each app open
-      __renumberTabsOnStartup();
+      __renumberTabs();
+      __renderTabs();
+      __persistTabs();
+      try { __updateCancelSaleButtonEnabled(); } catch (_) { }
     } else {
       __createNewCartTab();
     }
-    try { __updateCancelSaleButtonEnabled(); } catch (_) { }
   } catch (_) { __createNewCartTab(); }
 
   // Persist tabs on leave/hidden (but not when quitting the app)

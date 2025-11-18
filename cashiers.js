@@ -5,6 +5,48 @@ let cache = [];
 let __cashierEditIndex = -1;
 function escapeHtml(s) { return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
 
+function showToast(message, opts = {}) {
+    try {
+        const hostId = 'toast-host';
+        let host = document.getElementById(hostId);
+        if (!host) {
+            host = document.createElement('div');
+            host.id = hostId;
+            host.style.position = 'fixed';
+            host.style.zIndex = '5000';
+            host.style.right = '16px';
+            host.style.bottom = '16px';
+            host.style.display = 'flex';
+            host.style.flexDirection = 'column';
+            host.style.gap = '8px';
+            host.style.pointerEvents = 'none';
+            document.body.appendChild(host);
+        }
+        const el = document.createElement('div');
+        const tone = (opts.type === 'error') ? '#dc3545' : (opts.type === 'success') ? '#198754' : '#0d6efd';
+        el.textContent = String(message || '');
+        el.style.pointerEvents = 'none';
+        el.style.color = '#fff';
+        el.style.background = tone;
+        el.style.borderRadius = '8px';
+        el.style.padding = '10px 12px';
+        el.style.boxShadow = '0 6px 18px rgba(0,0,0,.18)';
+        el.style.fontSize = '14px';
+        host.appendChild(el);
+        const ms = Math.max(1000, Number(opts.duration || 2500));
+        setTimeout(() => { try { el.remove(); } catch (_) { } }, ms);
+    } catch (_) { }
+}
+
+function focusElement(selectorOrElement) {
+    try {
+        const el = typeof selectorOrElement === 'string' ? document.querySelector(selectorOrElement) : selectorOrElement;
+        if (el && typeof el.focus === 'function') {
+            el.focus();
+        }
+    } catch (_) { }
+}
+
 async function load() { const list = await ipcRenderer.invoke('cashiers:load'); cache = Array.isArray(list) ? list : []; cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
 async function save() { cache = await ipcRenderer.invoke('cashiers:save', cache); cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
 
@@ -29,9 +71,9 @@ async function render() {
 window.addCashier = async function () {
     const inp = document.getElementById('newCashier');
     const name = (inp.value || '').trim();
-    if (!name) return alert('Cashier name required.');
+    if (!name) { showToast('Cashier name is required.', { type: 'error' }); focusElement('#newCashier'); return; }
     await load();
-    if (cache.some(c => (c.name || '').toLowerCase() === name.toLowerCase())) return alert('Cashier already exists.');
+    if (cache.some(c => (c.name || '').toLowerCase() === name.toLowerCase())) { showToast('Cashier already exists.', { type: 'error' }); focusElement('#newCashier'); return; }
     cache.push({ name });
     await save();
     inp.value = '';
@@ -59,8 +101,8 @@ window.saveCashierEdit = async function () {
     const i = __cashierEditIndex;
     if (!cache[i]) return;
     const name = String(document.getElementById('edit_cashier_name')?.value || '').trim();
-    if (!name) return alert('Name cannot be empty.');
-    if (cache.some((c, idx) => idx !== i && (c.name || '').toLowerCase() === name.toLowerCase())) return alert('Cashier already exists.');
+    if (!name) { showToast('Cashier name cannot be empty.', { type: 'error' }); focusElement('#edit_cashier_name'); return; }
+    if (cache.some((c, idx) => idx !== i && (c.name || '').toLowerCase() === name.toLowerCase())) { showToast('Cashier already exists.', { type: 'error' }); focusElement('#edit_cashier_name'); return; }
     cache[i].name = name;
     await save();
     try {
