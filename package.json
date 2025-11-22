@@ -43,6 +43,7 @@
     },
     "dependencies": {
         "bootstrap": "^5.3.8",
-        "bootswatch": "^5.3.8"
+        "bootswatch": "^5.3.8",
+        "square": "^43.2.1"
     }
 }
