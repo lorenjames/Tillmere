@@ -22,8 +22,48 @@
         .table th {
             vertical-align: middle;
         }
+
         /* Safety: prevent stray Bootstrap backdrops from blocking input focus */
-        .modal-backdrop, .offcanvas-backdrop { pointer-events: none !important; }
+        .modal-backdrop,
+        .offcanvas-backdrop {
+            pointer-events: none !important;
+        }
+
+        /* Quantity picker popover */
+        #qtyPickerWrap { position: relative; }
+        #qtyPickerPopover {
+            position: absolute;
+            right: 0;
+            top: calc(100% + 6px);
+            z-index: 2050;
+            min-width: 220px;
+            border: 1px solid rgba(0, 0, 0, .08);
+            border-radius: 12px;
+            background: #fff;
+        }
+        #qtyPickerPopover .qty-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 6px;
+        }
+        #qtyPickerPopover .qty-btn {
+            font-weight: 700;
+            padding: 8px 0;
+            border-radius: 10px;
+            border: 1px solid #dee2e6;
+            background: #f8f9fa;
+            transition: background .15s, transform .1s;
+        }
+        #qtyPickerPopover .qty-btn:hover {
+            background: #eef2f7;
+        }
+        #qtyPickerPopover .qty-btn:active {
+            transform: translateY(1px);
+        }
+        #qtyPickerPopover .qty-meta {
+            font-size: .85rem;
+        }
+        .qty-input { min-width: 110px; }
     </style>
 
 </head>
@@ -110,18 +150,63 @@
                                 <label for="itemName" class="form-label">Item</label>
                                 <input type="text" id="itemName" class="form-control" placeholder="Item name">
                             </div>
-                            <div class="col-12 col-sm-6 col-lg-3">
-                                <label for="itemPrice" class="form-label">Price ($)</label>
-                                <input type="number" id="itemPrice" class="form-control" step="0.01">
-                            </div>
                             <div class="col-12 col-sm-6 col-lg-2">
+                                <label for="itemPrice" class="form-label">Price</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="text" id="itemPrice" class="form-control text-end" inputmode="decimal"
+                                        placeholder="0.00" aria-label="Price" pattern="^\\d*(\\.\\d{0,2})?$">
+                                </div>
+                            </div>
+                            <div class="col-12 col-sm-6 col-lg-3">
                                 <label for="itemQty" class="form-label">Qty</label>
-                                <input type="number" id="itemQty" class="form-control" min="1" step="1" value="1">
+                                <div id="qtyPickerWrap">
+                                    <div class="input-group">
+                                        <input type="number" id="itemQty" class="form-control qty-input" min="1" step="1"
+                                            value="1" inputmode="numeric" aria-haspopup="true"
+                                            aria-expanded="false" aria-controls="qtyPickerPopover">
+                                        <button class="btn btn-outline-secondary" type="button" id="qtyPickerToggle"
+                                            aria-label="Choose quantity" aria-expanded="false"
+                                            aria-controls="qtyPickerPopover">Pick</button>
+                                    </div>
+                                    <div id="qtyPickerPopover" class="card shadow-sm d-none" role="menu"
+                                        aria-label="Select quantity quickly">
+                                        <div class="qty-grid p-2">
+                                            <button type="button" class="qty-btn" data-value="1">1</button>
+                                            <button type="button" class="qty-btn" data-value="2">2</button>
+                                            <button type="button" class="qty-btn" data-value="3">3</button>
+                                            <button type="button" class="qty-btn" data-value="4">4</button>
+                                            <button type="button" class="qty-btn" data-value="5">5</button>
+                                            <button type="button" class="qty-btn" data-value="6">6</button>
+                                            <button type="button" class="qty-btn" data-value="7">7</button>
+                                            <button type="button" class="qty-btn" data-value="8">8</button>
+                                            <button type="button" class="qty-btn" data-value="9">9</button>
+                                            <button type="button" class="qty-btn" data-value="10">10</button>
+                                            <button type="button" class="qty-btn" data-value="12">12</button>
+                                            <button type="button" class="qty-btn" data-value="15">15</button>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2 px-2 pb-2 pt-0">
+                                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                data-value="20">20</button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                data-value="24">24</button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                data-value="30">30</button>
+                                            <button type="button" class="btn btn-outline-secondary btn-sm"
+                                                data-value="50">50</button>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center qty-meta px-2 pb-2 pt-0">
+                                            <span class="text-muted">Tap a number or type manually.</span>
+                                            <button type="button" class="btn btn-link btn-sm text-decoration-none"
+                                                id="qtyPickerClose">Close</button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="col-12 col-sm-6 col-lg-3">
                                 <label for="itemVendor" class="form-label">Vendor (name or code)</label>
                                 <input list="vendorList" id="itemVendor" class="form-control"
-                                    placeholder="Type vendor name or code">
+                                    placeholder="Vendor name / code">
                                 <datalist id="vendorList"></datalist>
                             </div>
                             <div class="col-12 col-sm-4">
@@ -151,16 +236,14 @@
                                 <button class="btn btn-primary w-100" onclick="addItem()">Add Item</button>
                             </div>
                             <div class="col-12 mt-2">
-                                <button
-                                    class="btn btn-outline-secondary w-100"
-                                    onclick="clearItemEntry()"
-                                    data-bs-toggle="tooltip"
-                                    data-bs-placement="top"
-                                    title="Clear all entry fields"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-eraser me-1" viewBox="0 0 16 16" aria-hidden="true">
-                                      <path d="M8.086 2.207a2 2 0 0 1 2.828 0l2.879 2.879a2 2 0 0 1 0 2.828l-4.95 4.95a2 2 0 0 1-1.414.586H5.5a2 2 0 0 1-1.414-.586L1.707 10.95a1 1 0 0 1 0-1.414l6.379-6.379z"/>
-                                      <path d="M.854 11.854a.5.5 0 0 1 0-.708l6.732-6.732 3.536 3.536-6.732 6.732a.5.5 0 0 1-.708 0L.854 11.854z"/>
+                                <button class="btn btn-outline-secondary w-100" onclick="clearItemEntry()"
+                                    data-bs-toggle="tooltip" data-bs-placement="top" title="Clear all entry fields">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                                        class="bi bi-eraser me-1" viewBox="0 0 16 16" aria-hidden="true">
+                                        <path
+                                            d="M8.086 2.207a2 2 0 0 1 2.828 0l2.879 2.879a2 2 0 0 1 0 2.828l-4.95 4.95a2 2 0 0 1-1.414.586H5.5a2 2 0 0 1-1.414-.586L1.707 10.95a1 1 0 0 1 0-1.414l6.379-6.379z" />
+                                        <path
+                                            d="M.854 11.854a.5.5 0 0 1 0-.708l6.732-6.732 3.536 3.536-6.732 6.732a.5.5 0 0 1-.708 0L.854 11.854z" />
                                     </svg>
                                     Clear Item
                                 </button>
@@ -195,7 +278,8 @@
                             <div class="fw-semibold">$<span id="subtotal">0.00</span></div>
                         </div>
                         <div class="d-flex justify-content-between">
-                            <div class="text-muted">Tax (<span id="taxRatePct">7.25</span>%): <span id="taxExemptNote" class="badge text-bg-warning ms-1 d-none">Exempt</span></div>
+                            <div class="text-muted">Tax (<span id="taxRatePct">7.25</span>%): <span id="taxExemptNote"
+                                    class="badge text-bg-warning ms-1 d-none">Exempt</span></div>
                             <div class="fw-semibold">$<span id="tax">0.00</span></div>
                         </div>
                         <hr>
@@ -204,11 +288,11 @@
                             <div class="fw-bold">$<span id="total">0.00</span></div>
                         </div>
                         <!-- Cash payment helpers -->
-                            <div id="cashFields" class="mt-3 d-none">
+                        <div id="cashFields" class="mt-3 d-none">
                             <div class="d-flex justify-content-between align-items-center">
                                 <label for="cashReceived" class="form-label mb-0">Cash Received ($):</label>
-                                <input type="text" id="cashReceived" class="form-control" inputmode="decimal" placeholder="$0.00"
-                                    style="max-width: 160px;">
+                                <input type="text" id="cashReceived" class="form-control" inputmode="decimal"
+                                    placeholder="$0.00" style="max-width: 160px;">
                             </div>
                             <div class="d-flex justify-content-between mt-2">
                                 <div>Change Due:</div>
@@ -216,7 +300,12 @@
                             </div>
                         </div>
 
-                        <button class="btn btn-success w-100 mt-3" onclick="printReceipt()">Print & Save</button>
+                        <div class="form-check mt-3">
+                            <input class="form-check-input" type="checkbox" id="receiptWanted" checked>
+                            <label class="form-check-label" for="receiptWanted">Print receipt?</label>
+                        </div>
+
+                        <button id="printSaveBtn" class="btn btn-success w-100 mt-3" onclick="printReceipt()">Print &amp; Save</button>
                     </div>
                 </div>
             </div>
@@ -409,6 +498,26 @@
             </div>
         </div>
 
+        <!-- Cancel Sale Modal -->
+        <div class="modal fade" id="cancelSaleModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Cancel Sale</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-1">Cancel this sale and clear all fields?</p>
+                        <p class="text-muted small mb-0">Items, payments, backdating, and tax selections will be removed. This cannot be undone.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-role="cancel" data-bs-dismiss="modal">Keep Sale</button>
+                        <button type="button" class="btn btn-danger" id="cancelSaleConfirmBtn">Yes, Cancel Sale</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Tax Exempt Modal -->
         <div class="modal fade" id="noTaxModal" tabindex="-1" aria-labelledby="noTaxModalLabel" aria-hidden="true">
             <div class="modal-dialog">
@@ -420,7 +529,8 @@
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="noTaxName" class="form-label">Name / Organization</label>
-                            <input type="text" id="noTaxName" class="form-control" placeholder="e.g., Lincoln Public Schools">
+                            <input type="text" id="noTaxName" class="form-control"
+                                placeholder="e.g., Lincoln Public Schools">
                         </div>
                         <div class="mb-2">
                             <label for="noTaxId" class="form-label">Tax ID (alphanumeric)</label>
@@ -429,7 +539,8 @@
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="noTaxCancelBtn">Cancel</button>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
+                            id="noTaxCancelBtn">Cancel</button>
                         <button type="button" class="btn btn-primary" id="noTaxApplyBtn">Apply Exemption</button>
                     </div>
                 </div>
@@ -462,7 +573,7 @@
                         <div class="col-12 col-lg-3">
                             <label for="edit_vendor" class="form-label">Vendor (name or code)</label>
                             <input id="edit_vendor" class="form-control" list="vendorList"
-                                placeholder="Type vendor name or code">
+                                placeholder="Vendor name / code">
                         </div>
                         <div class="col-12 col-sm-4">
                             <label for="edit_discountType" class="form-label">Discount</label>
@@ -496,7 +607,7 @@
     </div>
 
     <script src="renderer.js"></script>
-    <script>      (async function populateCashiersFallback() { try { const sel = document.getElementById('cashierSelect'); if (!sel) return; const { ipcRenderer } = require('electron'); let list = await ipcRenderer.invoke('cashiers:load'); if (!Array.isArray(list) || list.length === 0) { list = [{ name: 'Cashier' }]; await ipcRenderer.invoke('cashiers:save', list); } sel.innerHTML = ''; const opt = document.createElement('option'); opt.value = ''; opt.textContent = 'Select...'; opt.disabled = true; opt.selected = true; sel.appendChild(opt); list.forEach(c => { const o = document.createElement('option'); o.value = c.name; o.textContent = c.name; sel.appendChild(o); }); } catch (e) { console.error('Cashier populate fallback failed', e); } })();    </script>
+    <script>      (async function populateCashiersFallback() { try { const sel = document.getElementById('cashierSelect'); if (!sel) return; const { ipcRenderer } = require('electron'); let list = await ipcRenderer.invoke('cashiers:load'); if (!Array.isArray(list)) list = []; sel.innerHTML = ''; const opt = document.createElement('option'); opt.value = ''; opt.textContent = 'Select...'; opt.disabled = true; opt.selected = true; sel.appendChild(opt); list.forEach(c => { const o = document.createElement('option'); o.value = c.name; o.textContent = c.name; sel.appendChild(o); }); } catch (e) { console.error('Cashier populate fallback failed', e); } })();    </script>
 </body>
 
 </html>

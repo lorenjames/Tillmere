@@ -50,6 +50,18 @@ function setupTabsDom() {
       <span id="receiptSubtotal"></span>
       <span id="receiptTax"></span>
       <span id="receiptTotal"></span>
+
+      <!-- Cancel Sale Modal scaffold -->
+      <div class="modal fade" id="cancelSaleModal">
+        <div class="modal-dialog">
+          <div class="modal-content">
+            <div class="modal-body">
+              <button id="cancelSaleConfirmBtn" type="button">Confirm Cancel</button>
+              <button type="button" data-role="cancel">Keep</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>`;
 }
 
@@ -108,8 +120,8 @@ describe('multi-sale tabs', () => {
     expect(tabs.length).toBe(1);
     expect(tabs[0].textContent).toMatch(/Sale 1/);
     expect(tabs[0].className).toMatch(/active/);
-    // With only one tab, cancel should be disabled
-    expect(document.getElementById('cancelSaleBtn').disabled).toBe(true);
+    // With only one tab, cancel should be available to clear it
+    expect(document.getElementById('cancelSaleBtn').disabled).toBe(false);
   });
 
   test('New Sale creates a tab and state is isolated per tab', async () => {
@@ -167,7 +179,7 @@ describe('multi-sale tabs', () => {
     expect(document.getElementById('itemName').value).toBe('DraftOnly');
   });
 
-  test('Cancel on empty tab closes it and switches back', async () => {
+  test('Cancel on empty tab closes that tab and returns to previous', async () => {
     require('../renderer.js');
     dispatchLoad();
     await waitForTabsAtLeast(1);
@@ -181,10 +193,47 @@ describe('multi-sale tabs', () => {
     const confirmSpy = jest.spyOn(window, 'confirm').mockImplementation(() => true);
     document.getElementById('cancelSaleBtn').click();
     tabs = Array.from(document.querySelectorAll('#saleTabs button'));
+    // Should close Sale 2 and return to Sale 1
     expect(tabs.length).toBe(1);
     expect(tabs[0].textContent).toMatch(/Sale 1/);
-    expect(document.getElementById('cancelSaleBtn').disabled).toBe(true);
+    expect(document.getElementById('cancelSaleBtn').disabled).toBe(false);
     confirmSpy.mockRestore();
+  });
+
+  test('Cancel on single populated tab uses in-app modal and resets to Sale 1', async () => {
+    const showMock = jest.fn();
+    const hideMock = jest.fn();
+    // Provide a minimal bootstrap.Modal shim so renderer prefers the app modal over window.confirm
+    global.window.bootstrap = {
+      Modal: jest.fn(() => ({ show: showMock, hide: hideMock }))
+    };
+    const { addItem } = require('../renderer.js');
+    dispatchLoad();
+    await waitForTabsAtLeast(1);
+
+    // Populate tab so cancel flow asks for confirmation
+    document.getElementById('itemName').value = 'Cancelable Item';
+    document.getElementById('itemPrice').value = '3';
+    document.getElementById('itemQty').value = '1';
+    document.getElementById('itemVendor').value = 'V1';
+    await addItem();
+
+    const confirmSpy = jest.spyOn(window, 'confirm');
+    document.getElementById('cancelSaleBtn').click();
+    // App modal should be shown instead of native confirm
+    expect(showMock).toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled();
+
+    // Approve cancellation via modal button
+    document.getElementById('cancelSaleConfirmBtn').click();
+    await tick();
+
+    const tabs = Array.from(document.querySelectorAll('#saleTabs button'));
+    expect(tabs.length).toBe(1);
+    expect(tabs[0].textContent).toMatch(/Sale 1/);
+    expect(document.getElementById('subtotal').textContent).toBe('0.00');
+    confirmSpy.mockRestore();
+    delete global.window.bootstrap;
   });
 
   test('Completing a sale closes its tab and switches to next with items', async () => {
@@ -224,8 +273,8 @@ describe('multi-sale tabs', () => {
     expect(labels.length).toBe(1);
     const active = Array.from(document.querySelectorAll('#saleTabs button')).find(b => /active/.test(b.className));
     expect(active).toBeTruthy();
-    // With one remaining tab, cancel should be disabled
-    expect(document.getElementById('cancelSaleBtn').disabled).toBe(true);
+    // With one remaining tab, cancel stays enabled for clearing
+    expect(document.getElementById('cancelSaleBtn').disabled).toBe(false);
     // The active tab should have the totals for Item B (2*3=6; total ~ 6.44 with 7.25% tax)
     expect(document.getElementById('subtotal').textContent).toBe('6.00');
     expect(['6.43','6.44']).toContain(document.getElementById('total').textContent);

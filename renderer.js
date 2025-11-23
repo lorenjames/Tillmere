@@ -6,6 +6,7 @@ let TAX_RATE = 0.0725;
 let __taxExempt = false;
 let __taxExemptInfo = { id: '', name: '' };
 let __noTaxModal = null;
+let __cancelConfirmModal = null;
 let __silentPrint = true;
 let items = []; // { name, price, vendorName, comment }
 let __vendorsCache = [];
@@ -14,6 +15,7 @@ let __cashAudio = null;
 let __allowNavigation = false;
 let __lastTotal = 0;
 let __suppressRefocusUntil = 0;
+let __qtyPickerOpen = false;
 
 // Multi-sale tabs: per-cart state manager
 let __carts = new Map(); // id -> state
@@ -42,6 +44,7 @@ function __newCartState(title = '') {
     taxExempt: false,
     taxExemptInfo: { id: '', name: '' },
     cashReceived: '',
+    receiptWanted: true,
     // Entry form draft (per-tab)
     entryName: '',
     entryPrice: '',
@@ -60,6 +63,9 @@ function __snapshotFromUI() {
     const backdateEnabled = !!document.getElementById('backdateToggle')?.checked;
     const backdateDate = document.getElementById('backdateDate')?.value || __todayYmd();
     const cashReceived = document.getElementById('cashReceived')?.value || '';
+    const receiptWanted = document.getElementById('receiptWanted')
+      ? !!document.getElementById('receiptWanted')?.checked
+      : true;
     // Entry form fields
     const entryName = document.getElementById('itemName')?.value || '';
     const entryPrice = document.getElementById('itemPrice')?.value || '';
@@ -79,6 +85,7 @@ function __snapshotFromUI() {
       taxExempt: !!__taxExempt,
       taxExemptInfo: { id: String(__taxExemptInfo?.id || ''), name: String(__taxExemptInfo?.name || '') },
       cashReceived,
+      receiptWanted,
       entryName,
       entryPrice,
       entryQty,
@@ -101,6 +108,7 @@ function __applyStateToUI(state) {
   try { const el = document.getElementById('paymentSelect'); if (el) el.value = state?.payment || ''; } catch (_) { }
   try { toggleCashFields(); } catch (_) { }
   try { const el = document.getElementById('cashReceived'); if (el) el.value = state?.cashReceived || ''; updateCashChange(); } catch (_) { }
+  try { const el = document.getElementById('receiptWanted'); if (el) el.checked = state?.receiptWanted !== false; updatePrintButtonLabel(); } catch (_) { }
   try {
     const bdToggle = document.getElementById('backdateToggle');
     const bdWrap = document.getElementById('backdateWrap');
@@ -162,7 +170,7 @@ function __switchToCart(id) {
 function __createNewCartTab() {
   try {
     if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI());
-    const id = `T-${Date.now()}-${Math.floor(Math.random()*1000)}`;
+    const id = `T-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const title = `Sale ${++__cartCounter}`;
     __carts.set(id, __newCartState(title));
     __activeCartId = id;
@@ -175,18 +183,42 @@ function __createNewCartTab() {
 
 function __renumberTabs() {
   try {
-    const entries = Array.from(__carts.entries());
-    // Reassign titles in current order as Sale 1..N
-    entries.forEach(([id, st], idx) => {
-      if (!st || typeof st !== 'object') return;
-      st.title = `Sale ${idx + 1}`;
-      __carts.set(id, st);
-    });
-    __cartCounter = entries.length;
+    // Deliberately avoid renumbering existing tabs to preserve their titles.
+    // Keep counter in sync with total count for future tab creation.
+    __cartCounter = (__carts && typeof __carts.size === 'number') ? __carts.size : __cartCounter;
   } catch (_) { }
 }
 
-function __cancelActiveCart() {
+function __confirmCancelActiveCart() {
+  return new Promise((resolve) => {
+    try {
+      const modalEl = document.getElementById('cancelSaleModal');
+      if (!modalEl || !window.bootstrap) {
+        resolve(window.confirm('Cancel this sale and clear all its fields? This cannot be undone.'));
+        return;
+      }
+      if (!__cancelConfirmModal) {
+        __cancelConfirmModal = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
+      }
+      const okBtn = modalEl.querySelector('#cancelSaleConfirmBtn');
+      const cancelBtns = modalEl.querySelectorAll('[data-role="cancel"]');
+      let done = false;
+      const finish = (val) => {
+        if (done) return;
+        done = true;
+        resolve(!!val);
+        try { __cancelConfirmModal.hide(); } catch (_) { }
+      };
+      cancelBtns.forEach(btn => btn.addEventListener('click', () => finish(false), { once: true }));
+      if (okBtn) okBtn.addEventListener('click', () => finish(true), { once: true });
+      modalEl.addEventListener('hidden.bs.modal', () => finish(false), { once: true });
+      __cancelConfirmModal.show();
+      setTimeout(() => { try { (okBtn || modalEl.querySelector('button'))?.focus(); } catch (_) { } }, 80);
+    } catch (_) { resolve(false); }
+  });
+}
+
+async function __cancelActiveCart() {
   try {
     if (!__activeCartId) return;
     // Check if cart has data to avoid accidental loss
@@ -194,12 +226,24 @@ function __cancelActiveCart() {
     const hasItems = Array.isArray(st.items) && st.items.length > 0;
     const hasMeta = (st.cashier || st.payment || st.taxExempt || st.backdateEnabled || (st.cashReceived || '')).toString() !== ''.toString();
     if (hasItems || hasMeta) {
-      const ok = window.confirm('Cancel this sale and close its tab? This cannot be undone.');
+      const ok = await __confirmCancelActiveCart();
       if (!ok) return;
     }
-    // Remove from map
+    const tabCount = (__carts && typeof __carts.size === 'number') ? __carts.size : 0;
+    // If only one tab, refresh it in-place and keep label as Sale 1
+    if (tabCount <= 1) {
+      const fresh = __newCartState('Sale 1');
+      __carts = new Map([[__activeCartId, fresh]]);
+      __cartCounter = 1;
+      __applyStateToUI(fresh);
+      __renderTabs();
+      __persistTabs();
+      try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+      return;
+    }
+
+    // Multiple tabs: close the active one and switch
     const idToClose = __activeCartId;
-    // Choose next tab: the next entry after current, otherwise first available
     const entries = Array.from(__carts.keys());
     const idx = Math.max(0, entries.indexOf(idToClose));
     __carts.delete(idToClose);
@@ -209,12 +253,10 @@ function __cancelActiveCart() {
       if (cand !== idToClose && __carts.has(cand)) { nextId = cand; break; }
     }
     if (!nextId) {
-      // Fallback to first remaining
       const first = __carts.keys().next();
       nextId = first && !first.done ? first.value : '';
     }
     if (!nextId) {
-      // No tabs remain; create a fresh one
       __activeCartId = '';
       __createNewCartTab();
       __renumberTabs();
@@ -238,35 +280,23 @@ function __completeSaleAndCloseTab() {
     __carts.delete(closingId);
     // Find remaining tabs with pending items
     const pending = Array.from(__carts.entries()).filter(([_, st]) => Array.isArray(st?.items) && st.items.length > 0);
-    if (pending.length === 0) {
-      // No pending tabs left: prefer preserving an existing empty tab's selections
-      const remaining = Array.from(__carts.entries());
-      if (remaining.length > 0) {
-        const keep = remaining[0];
-        // Collapse to just this one tab, keep its state
-        __carts = new Map([[keep[0], keep[1]]]);
-        __activeCartId = keep[0];
-        __renumberTabs();
-        __applyStateToUI(__carts.get(__activeCartId));
-        __renderTabs();
-        __persistTabs();
-        try { __updateCancelSaleButtonEnabled(); } catch (_) { }
-        return;
-      }
-      // If truly none remain, create a fresh one
-      __carts = new Map();
-      __activeCartId = '';
-      __cartCounter = 0;
-      __createNewCartTab();
+    if (pending.length > 0) {
+      // Keep only the first pending tab to simplify post-sale state
+      const next = pending[0];
+      __carts = new Map([[next[0], next[1]]]);
+      __activeCartId = next[0];
       __renumberTabs();
+      __applyStateToUI(next[1]);
       __renderTabs();
       __persistTabs();
       try { __updateCancelSaleButtonEnabled(); } catch (_) { }
       return;
     }
-    // Switch to the first pending tab
-    __activeCartId = pending[0][0];
-    __applyStateToUI(pending[0][1]);
+    // If no pending items remain, create a fresh empty tab
+    __carts = new Map();
+    __activeCartId = '';
+    __cartCounter = 0;
+    __createNewCartTab();
     __renumberTabs();
     __renderTabs();
     __persistTabs();
@@ -315,15 +345,23 @@ function __updateCancelSaleButtonEnabled() {
   try {
     const btn = document.getElementById('cancelSaleBtn');
     if (!btn) return;
-    const count = (__carts && typeof __carts.size === 'number') ? __carts.size : 0;
-    const disable = count <= 1;
-    btn.disabled = disable;
-    try { btn.classList.toggle('disabled', disable); } catch (_) { }
+    // Keep enabled even when only one tab remains to allow cancelling the lone sale.
+    btn.disabled = false;
+    try { btn.classList.remove('disabled'); } catch (_) { }
   } catch (_) { }
 }
 
 // ---------- Utils ----------
 function money(n) { return toMoneyNumber(n).toFixed(2); }
+function formatPriceInput(el) {
+  try {
+    if (!el) return;
+    const raw = String(el.value || '').trim();
+    if (!raw) return; // keep empty as-is
+    const num = toMoneyNumber(raw);
+    el.value = money(num);
+  } catch (_) { }
+}
 // Lightweight status bar shown during async operations (e.g., silent print)
 function showStatusBar(message) {
   try {
@@ -518,6 +556,24 @@ function toMoneyNumber(n) {
   s = s.replace(/\s+/g, '');
   // Keep digits, first dot and minus
   const cleaned = s.replace(/[^0-9+\-.]/g, '');
+  const num = parseFloat(cleaned);
+  if (!isFinite(num)) return 0;
+  return Math.round(num * 100) / 100;
+}
+// Override with safer currency parsing to avoid stripping digits (keeps latest definition)
+function toMoneyNumberLegacy(n) {
+  if (typeof n === 'number') {
+    return isFinite(n) ? Math.round(n * 100) / 100 : 0;
+  }
+  let s = String(n ?? '').trim();
+  if (!s) return 0;
+  if (/^\(.*\)$/.test(s)) s = '-' + s.slice(1, -1);
+  s = s.replace(/[\$£€¥₩₱₹]/g, '');
+  s = s.replace(/\s+/g, '');
+  const commaCount = (s.match(/,/g) || []).length;
+  if (!s.includes('.') && commaCount === 1) s = s.replace(',', '.');
+  s = s.replace(/,/g, '');
+  const cleaned = s.replace(/[^0-9.+-]/g, '');
   const num = parseFloat(cleaned);
   if (!isFinite(num)) return 0;
   return Math.round(num * 100) / 100;
@@ -825,6 +881,18 @@ function updateVendorDatalistForValue(valRaw) {
   );
   setVendorDatalistOptions(matches);
 }
+// Apply the currently filtered list's first option to the input (emulates picking the highlighted option)
+function applyFirstVendorOption(el) {
+  try {
+    const listEl = document.getElementById('vendorList');
+    if (!el || !listEl || !listEl.options || !listEl.options.length) return false;
+    const first = listEl.options[0];
+    const val = String(first?.value || first?.label || '').trim();
+    if (!val) return false;
+    el.value = val;
+    return true;
+  } catch (_) { return false; }
+}
 function findVendorLoose(vendors, input) {
   const s = norm(input);
   if (!s) return null;
@@ -833,6 +901,27 @@ function findVendorLoose(vendors, input) {
     vendors.find(v => norm(v.code || '').replace(/\s+/g, '') === s.replace(/\s+/g, '')) ||
     vendors.find(v => norm(v.name).includes(s)) || null
   );
+}
+// Strict match: only consider exact name/code combos that already exist.
+function findVendorStrict(vendors, input) {
+  const s = norm(input);
+  if (!s) return null;
+  const safe = Array.isArray(vendors) ? vendors : [];
+  return safe.find(v => {
+    const code = norm(v.code || '');
+    const name = norm(v.name || '');
+    if (!code && !name) return false;
+    if (code === s || name === s) return true;
+    if (code.replace(/\s+/g, '') === s.replace(/\s+/g, '')) return true;
+    return false;
+  }) || null;
+}
+
+function findCashierStrict(cashiers, input) {
+  const s = norm(input);
+  if (!s) return null;
+  const safe = Array.isArray(cashiers) ? cashiers : [];
+  return safe.find(c => norm(c.name || '') === s) || null;
 }
 
 // Choose the closest vendor match for partial input.
@@ -862,8 +951,8 @@ async function normalizeVendorInput(el) {
     const val = (el?.value || '').trim();
     if (!val) return;
     const list = __vendorsCache.length ? __vendorsCache : await fetchVendors();
-    __vendorsCache = list;
-    const v = findVendorLoose(list, val);
+    __vendorsCache = Array.isArray(list) ? list : [];
+    const v = findVendorStrict(__vendorsCache, val);
     if (v?.code) el.value = v.code;
   } catch (_) { }
 }
@@ -875,10 +964,7 @@ async function loadCashiersIntoSelect() {
   const prev = sel.value || '';
   sel.innerHTML = '';
   let list = await fetchCashiers();
-  if (!Array.isArray(list) || list.length === 0) {
-    list = [{ name: 'Cashier' }];
-    await ipcRenderer.invoke('cashiers:save', list);
-  }
+  if (!Array.isArray(list)) list = [];
   ensurePlaceholder(sel);
   list.forEach(c => { const opt = document.createElement('option'); opt.value = c.name; opt.textContent = c.name; sel.appendChild(opt); });
   // Preserve previous selection if still present
@@ -896,13 +982,15 @@ async function addItem() {
   const discountValueEl = document.getElementById('discountValue');
   const discountReasonEl = document.getElementById('discountReason');
   const name = (nameEl.value || '').trim();
-  const price = parseFloat(priceEl.value);
+  const priceRaw = priceEl.value;
+  const price = toMoneyNumber(priceRaw);
   let qtyRaw = (qtyEl?.value || '1').trim();
   let qty = parseInt(qtyRaw, 10);
   if (!Number.isFinite(qty) || qty < 1) qty = 1;
   const vendorName = (vendorEl.value || '').trim();
   const comment = (commentEl?.value || '').trim();
-  if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { nameEl?.focus(); } catch (_) { } return; }
+  const priceProvided = String(priceRaw || '').trim() !== '';
+  if (!name || !priceProvided || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { nameEl?.focus(); } catch (_) { } return; }
   // Safeguard: vendor is required to add to cart
   if (!vendorName) { showToast('Please enter a vendor (name or code).', { type: 'error' }); try { vendorEl?.focus(); } catch (_) { } return; }
   const originalPrice = toMoneyNumber(price);
@@ -913,13 +1001,10 @@ async function addItem() {
   if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { discountReasonEl?.focus(); } catch (_) { } return; }
   const finalPrice = finalPriceFrom(originalPrice, discount.amount);
 
-  let vendorFinal = vendorName;
-  try {
-    const list = __vendorsCache.length ? __vendorsCache : await fetchVendors();
-    __vendorsCache = list;
-    const v = findVendorLoose(list, vendorName);
-    vendorFinal = v?.code || vendorName;
-  } catch (_) { }
+  const list = __vendorsCache.length ? __vendorsCache : await fetchVendors();
+  __vendorsCache = Array.isArray(list) ? list : [];
+  const v = findVendorStrict(__vendorsCache, vendorName);
+  const vendorFinal = v ? (v.code || v.name) : (vendorName || 'Unknown');
 
   items.push({
     name,
@@ -1027,11 +1112,13 @@ async function saveEditFromModal() {
   const idx = Number(btn?.dataset?.index || -1);
   if (!(idx >= 0 && items[idx])) { __editModal?.hide(); return; }
   const name = (document.getElementById('edit_name').value || '').trim();
-  const price = parseFloat(document.getElementById('edit_price').value);
+  const priceRaw = document.getElementById('edit_price').value;
+  const price = toMoneyNumber(priceRaw);
   let qty = parseInt((document.getElementById('edit_qty')?.value || '1'), 10); if (!Number.isFinite(qty) || qty < 1) qty = 1;
   const vendorName = (document.getElementById('edit_vendor').value || '').trim();
   const comment = (document.getElementById('edit_comment').value || '').trim();
-  if (!name || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { document.getElementById('edit_name')?.focus(); } catch (_) { } return; }
+  const priceProvided = String(priceRaw || '').trim() !== '';
+  if (!name || !priceProvided || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { document.getElementById('edit_name')?.focus(); } catch (_) { } return; }
   // Safeguard: vendor is required when saving edits
   if (!vendorName) { showToast('Please enter a vendor (name or code).', { type: 'error' }); try { document.getElementById('edit_vendor')?.focus(); } catch (_) { } return; }
   const originalPrice = toMoneyNumber(price);
@@ -1045,14 +1132,10 @@ async function saveEditFromModal() {
   if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { document.getElementById('edit_discountReason')?.focus(); } catch (_) { } return; }
   const finalPrice = finalPriceFrom(originalPrice, discount.amount);
 
-  let vendorFinal = vendorName;
-  try {
-    const list = __vendorsCache.length ? __vendorsCache : await fetchVendors();
-    __vendorsCache = list;
-    const v = findVendorLoose(list, vendorName);
-    if (v?.code) vendorFinal = v.code;
-    else vendorFinal = vendorName;
-  } catch (_) { }
+  const list = __vendorsCache.length ? __vendorsCache : await fetchVendors();
+  __vendorsCache = Array.isArray(list) ? list : [];
+  const v = findVendorStrict(__vendorsCache, vendorName);
+  const vendorFinal = v ? (v.code || v.name) : (vendorName || 'Unknown');
 
   items[idx] = {
     ...items[idx],
@@ -1150,6 +1233,8 @@ async function printReceipt() {
   const cashier = cashierSelect?.value || '';
   const payment = paymentSelect?.value || '';
   const isBackdated = !!document.getElementById('backdateToggle')?.checked;
+  const receiptToggle = document.getElementById('receiptWanted');
+  const wantsReceipt = receiptToggle ? !!receiptToggle.checked : true;
   if (!cashier) { showToast('Please select a cashier.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) { } return; }
   if (!payment) { showToast('Please select a payment type.', { type: 'error' }); try { paymentSelect?.focus(); } catch (_) { } return; }
   // If Cash is selected, require a cash tendered amount
@@ -1159,6 +1244,15 @@ async function printReceipt() {
     if (!raw) { showToast('Enter the cash received from the customer.', { type: 'error' }); try { cashEl?.focus(); } catch (_) { } return; }
     const cashNum = toMoneyNumber(raw);
     if (isNaN(cashNum) || cashNum < 0) { showToast('Enter a valid non-negative cash amount.', { type: 'error' }); try { cashEl?.focus(); } catch (_) { } return; }
+  }
+  const cashiersList = await fetchCashiers();
+  if (!Array.isArray(cashiersList) || !cashiersList.length) { showToast('Add at least one cashier in Manage Cashiers before saving sales.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) { } return; }
+  if (!findCashierStrict(cashiersList, cashier)) { showToast('Please select a cashier that exists in Manage Cashiers.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) { } return; }
+  const vendors = await fetchVendors();
+  const vendorListForValidation = Array.isArray(vendors) ? vendors : [];
+  if (vendorListForValidation.length) {
+    const invalidItem = items.find(it => !findVendorStrict(vendorListForValidation, it.vendorName));
+    if (invalidItem) { showToast(`Vendor "${invalidItem.vendorName || 'Unknown'}" is not in Manage Vendors.`, { type: 'error' }); try { document.getElementById('itemVendor')?.focus(); } catch (_) { } return; }
   }
   try { playCashRegisterSound(); } catch (_) { }
 
@@ -1193,7 +1287,6 @@ async function printReceipt() {
   document.getElementById('rcpt-cashier').textContent = cashier || '-';
   document.getElementById('rcpt-payment').textContent = payment || '-';
 
-  const vendors = await fetchVendors();
   let rowsEl = document.getElementById('receiptRows');
   if (!rowsEl) {
     try {
@@ -1285,55 +1378,45 @@ async function printReceipt() {
 
   const style = `
     <style>
-      @page { size: Letter portrait; margin: 0.5in; }
+      @page { size: Letter portrait; margin: 0.35in; }
       :root{ --ink:#111827; --muted:#6b7280; --border:#e5e7eb; --emph:#0f172a; }
       html,body{height:100%}
       body{background:#fff;margin:0;font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:var(--ink);}
       .invoice{max-width:8.5in;margin:0 auto}
-      /* extra bottom padding to avoid overlap with QR block */
-      .sheet{position:relative;background:#fff;padding:32px 40px 200px 40px}
+      /* tighter padding to fit more lines per page */
+      .sheet{position:relative;background:#fff;padding:20px 24px 120px 24px}
        .bgmark{
           position: fixed;
           top: 50%; left: 50%; transform: translate(-50%, -50%);
-          width: 70%; height: auto; opacity: .10; pointer-events: none;
-          filter: blur(0.8px);
-          -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
-                  mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
-          -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
-          -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+          width: 60%; height: auto; opacity: .08; pointer-events: none;
         }
       .header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
       .brand-wrap{display:flex;gap:12px;align-items:center}
-      .brand{font-weight:800;font-size:20px}
-      .addr{color:var(--muted);font-size:12px;margin-top:2px}
-      .title{font-size:22px;font-weight:800;letter-spacing:.5px;color:var(--emph);text-transform:uppercase}
-      .meta{display:grid;grid-template-columns: repeat(2,minmax(180px,1fr)); gap:8px 16px; margin-top:12px}
-      table{width:100%;border-collapse:collapse;margin-top:16px}
-      thead th{font-size:12px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);padding:10px 8px;text-align:left}
-      tbody td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+      .brand{font-weight:800;font-size:18px}
+      .addr{color:var(--muted);font-size:11px;margin-top:2px}
+      .title{font-size:18px;font-weight:800;letter-spacing:.3px;color:var(--emph);text-transform:uppercase}
+      .meta{display:grid;grid-template-columns: repeat(2,minmax(160px,1fr)); gap:6px 12px; margin-top:10px}
+      table{width:100%;border-collapse:collapse;margin-top:12px}
+      thead th{font-size:11px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);padding:8px 6px;text-align:left}
+      tbody td{padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top}
       th.num, td.num{text-align:right}
       .desc{font-weight:600}
-      .vendor{color:var(--muted);font-size:11px}
-      .totals{margin-top:12px;display:grid;grid-template-columns: 1fr auto;row-gap:6px}
-      .totals .val{min-width:120px;text-align:right}
-      .totals .grand{font-weight:800;font-size:16px}
-      .thanks{margin-top:12px;color:var(--muted);font-size:12px;text-align:left}
+      .vendor{color:var(--muted);font-size:10px}
+      .totals{margin-top:10px;display:grid;grid-template-columns: 1fr auto;row-gap:4px}
+      .totals .val{min-width:110px;text-align:right}
+      .totals .grand{font-weight:800;font-size:15px}
+      .thanks{margin-top:10px;color:var(--muted);font-size:11px;text-align:left}
       /* By default, QR sits after content (last page only). If single page, JS adds .qr-fixed to pin it to page bottom */
-      .socialQR{position:static; display:flex; flex-direction:row-reverse; align-items:center; gap:10px; text-align:right; margin-top:12px}
-      .socialQR img{width:90px; height:auto; border-radius:8px; border:1px solid var(--border)}
-      .socialQR .msg{font-weight:700; font-size:12px; line-height:1.2}
+      .socialQR{position:static; display:flex; flex-direction:row-reverse; align-items:center; gap:8px; text-align:right; margin-top:8px}
+      .socialQR img{width:72px; height:auto; border-radius:8px; border:1px solid var(--border)}
+      .socialQR .msg{font-weight:700; font-size:11px; line-height:1.2}
       @media print {
         .qr-fixed{ position: fixed; right: 0.5in; bottom: 0.5in; }
         /* Reinforce watermark masking for preview print pipeline */
         .bgmark{
           position: fixed;
           top: 50%; left: 50%; transform: translate(-50%, -50%);
-          width: 70%; height: auto; opacity: .10; pointer-events: none;
-          filter: blur(0.8px);
-          -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
-                  mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
-          -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
-          -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+          width: 60%; height: auto; opacity: .08; pointer-events: none;
         }
       }
     </style>`;
@@ -1446,47 +1529,7 @@ async function printReceipt() {
   // If back-dated, do not print; just reset POS state
   try {
     if (isBackdated) {
-      // Reset POS
-      try {
-        items = [];
-        const cashierSelect = document.getElementById('cashierSelect');
-        const paymentSelect = document.getElementById('paymentSelect');
-        document.getElementById('itemName').value = '';
-        document.getElementById('itemPrice').value = '';
-        document.getElementById('itemVendor').value = '';
-        renderTable();
-        resetSelectToPlaceholder(cashierSelect);
-        resetSelectToPlaceholder(paymentSelect);
-        // Reset tax exemption state
-        try { const nt = document.getElementById('noTaxToggle'); if (nt) nt.checked = false; } catch (_) { }
-        __taxExempt = false; __taxExemptInfo = { id: '', name: '' }; updateTaxRateLabel();
-        // Reset cash helpers
-        const cashWrap = document.getElementById('cashFields');
-        if (cashWrap) cashWrap.classList.add('d-none');
-        const cashEl = document.getElementById('cashReceived');
-        if (cashEl) cashEl.value = '';
-        const changeEl = document.getElementById('changeDue');
-        if (changeEl) changeEl.textContent = money(0);
-        // Reset back-date controls to default (unchecked and hidden, date set to today)
-        try {
-          const bdToggle = document.getElementById('backdateToggle');
-          const bdWrap = document.getElementById('backdateWrap');
-          const bdDate = document.getElementById('backdateDate');
-          if (bdToggle) bdToggle.checked = false;
-          if (bdWrap) bdWrap.classList.add('d-none');
-          if (bdDate) {
-            const now2 = new Date();
-            const y = now2.getFullYear();
-            const m = String(now2.getMonth() + 1).padStart(2, '0');
-            const d = String(now2.getDate()).padStart(2, '0');
-            bdDate.value = `${y}-${m}-${d}`;
-          }
-        } catch (_) { }
-        // Return focus to the first entry field
-        try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
-      } catch (_) { }
-      // Close the completed sale tab and switch appropriately
-      try { __completeSaleAndCloseTab(); } catch (_) { }
+      resetAfterSale();
       return;
     }
   } catch (_) { }
@@ -1523,7 +1566,7 @@ async function printReceipt() {
 
       let proceeded = false;
       const removeAlert = () => { try { alertEl.remove(); } catch (_) { } };
-      const proceedOnce = () => { if (proceeded) return; proceeded = true; try { removeAlert(); } catch (_) { }; try { completePrintWithHtml(html); } catch (_) { } };
+      const proceedOnce = () => { if (proceeded) return; proceeded = true; try { removeAlert(); } catch (_) { }; try { completePrintWithHtml(html, { shouldPrint: wantsReceipt }); } catch (_) { } };
       try { alertEl.addEventListener('closed.bs.alert', proceedOnce, { once: true }); } catch (_) { }
       const closeBtn = alertEl.querySelector('.btn-close');
       if (closeBtn) closeBtn.addEventListener('click', () => setTimeout(proceedOnce, 0), { once: true });
@@ -1538,49 +1581,20 @@ async function printReceipt() {
     }
   } catch (_) { }
 
-  completePrintWithHtml(html);
+  completePrintWithHtml(html, { shouldPrint: wantsReceipt });
 }
 
-async function completePrintWithHtml(html) {
-  let printed = false;
-  if (__silentPrint) {
-    // Show a brief status bar on the POS screen during silent print
-    showStatusBar('Printing Sales Receipt');
-    try {
-      // Remove auto-print/auto-close scripts from the HTML so the hidden
-      // printing window does NOT trigger its own preview/dialog.
-      let content = String(html || '');
-      try {
-        content = content
-          .replace(/window\.print\(\);?/g, '')
-          .replace(/window\.close\(\);?/g, '');
-      } catch (_) { }
-      // Ask main process to print silently to default/specified printer
-      printed = await ipcRenderer.invoke('print:silent', content);
-    } catch (e) {
-      console.error('Silent print failed, will fall back to preview:', e);
-    } finally {
-      hideStatusBar();
-    }
-  }
-
-  // Fallback to preview window if silent print is disabled or failed
-  if (!printed) {
-    try {
-      const w = window.open('', '', 'width=960,height=900');
-      if (w) { w.document.write(html); w.document.close(); }
-    } catch (_) { }
-  }
-
-  // Reset POS
+function resetAfterSale() {
   try {
     items = [];
     const cashierSelect = document.getElementById('cashierSelect');
     const paymentSelect = document.getElementById('paymentSelect');
+    const receiptPref = document.getElementById('receiptWanted');
     document.getElementById('itemName').value = '';
     document.getElementById('itemPrice').value = '';
     document.getElementById('itemVendor').value = '';
     renderTable();
+    __lastTotal = 0;
     resetSelectToPlaceholder(cashierSelect);
     resetSelectToPlaceholder(paymentSelect);
     // Reset tax exemption state
@@ -1608,9 +1622,50 @@ async function completePrintWithHtml(html) {
         bdDate.value = `${y}-${m}-${d}`;
       }
     } catch (_) { }
-    // Close the completed sale tab and switch appropriately
-    try { __completeSaleAndCloseTab(); } catch (_) { }
+    // Reset receipt preference to default (checked)
+    if (receiptPref) receiptPref.checked = true;
+    updatePrintButtonLabel();
+    // Return focus to the first entry field
+    try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
   } catch (_) { }
+  // Close the completed sale tab and switch appropriately
+  try { __completeSaleAndCloseTab(); } catch (_) { }
+}
+
+async function completePrintWithHtml(html, opts = {}) {
+  const shouldPrint = opts?.shouldPrint !== false;
+  let printed = false;
+  if (shouldPrint && __silentPrint) {
+    // Show a brief status bar on the POS screen during silent print
+    showStatusBar('Printing Sales Receipt');
+    try {
+      // Remove auto-print/auto-close scripts from the HTML so the hidden
+      // printing window does NOT trigger its own preview/dialog.
+      let content = String(html || '');
+      try {
+        content = content
+          .replace(/window\.print\(\);?/g, '')
+          .replace(/window\.close\(\);?/g, '');
+      } catch (_) { }
+      // Ask main process to print silently to default/specified printer
+      printed = await ipcRenderer.invoke('print:silent', content);
+    } catch (e) {
+      console.error('Silent print failed, will fall back to preview:', e);
+    } finally {
+      hideStatusBar();
+    }
+  }
+
+  // Fallback to preview window if silent print is disabled or failed
+  if (shouldPrint && !printed) {
+    try {
+      const w = window.open('', '', 'width=960,height=900');
+      if (w) { w.document.write(html); w.document.close(); }
+    } catch (_) { }
+  }
+
+  // Reset POS
+  resetAfterSale();
 }
 
 function preparePaymentSelect() { const sel = document.getElementById('paymentSelect'); if (!sel) return; ensurePlaceholder(sel); sel.value = ''; }
@@ -1635,21 +1690,103 @@ function updateCashChange() {
   changeEl.textContent = money(change);
 }
 
+function updatePrintButtonLabel() {
+  const btn = document.getElementById('printSaveBtn');
+  const receipt = document.getElementById('receiptWanted');
+  if (!btn) return;
+  const wants = receipt ? !!receipt.checked : true;
+  btn.textContent = wants ? 'Print & Save' : 'Save';
+}
+
+// ---------- Quantity picker ----------
+function hideQtyPicker() {
+  try {
+    const pop = document.getElementById('qtyPickerPopover');
+    const toggle = document.getElementById('qtyPickerToggle');
+    const input = document.getElementById('itemQty');
+    if (pop) pop.classList.add('d-none');
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    if (input) input.setAttribute('aria-expanded', 'false');
+    __qtyPickerOpen = false;
+  } catch (_) { }
+}
+function showQtyPicker() {
+  try {
+    const pop = document.getElementById('qtyPickerPopover');
+    const toggle = document.getElementById('qtyPickerToggle');
+    const input = document.getElementById('itemQty');
+    if (!pop || !toggle || !input) return;
+    pop.classList.remove('d-none');
+    toggle.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-expanded', 'true');
+    __qtyPickerOpen = true;
+  } catch (_) { }
+}
+function toggleQtyPicker() { if (__qtyPickerOpen) hideQtyPicker(); else showQtyPicker(); }
+function setupQtyPicker() {
+  try {
+    const pop = document.getElementById('qtyPickerPopover');
+    const toggle = document.getElementById('qtyPickerToggle');
+    const input = document.getElementById('itemQty');
+    const wrap = document.getElementById('qtyPickerWrap');
+    if (!pop || !toggle || !input || !wrap) return;
+    if (pop.dataset._wired === '1') return;
+    pop.dataset._wired = '1';
+
+    const apply = (valRaw) => {
+      const n = Math.max(1, parseInt(valRaw, 10) || 1);
+      input.value = String(n);
+      try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) { }
+      try { input.focus(); input.select?.(); } catch (_) { }
+      hideQtyPicker();
+      try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
+    };
+
+    pop.querySelectorAll('button[data-value]')?.forEach(btn => {
+      btn.addEventListener('click', () => apply(btn.getAttribute('data-value')));
+    });
+    try { document.getElementById('qtyPickerClose')?.addEventListener('click', hideQtyPicker); } catch (_) { }
+
+    toggle.addEventListener('click', (e) => { try { e.preventDefault(); } catch (_) { } toggleQtyPicker(); });
+    input.addEventListener('keydown', (e) => {
+      try {
+        if (e.key === 'Escape') { hideQtyPicker(); return; }
+        if (e.key === 'ArrowDown' && !__qtyPickerOpen) { showQtyPicker(); }
+      } catch (_) { }
+    });
+    document.addEventListener('click', (e) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (!target) return;
+      if (wrap.contains(target)) return;
+      hideQtyPicker();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideQtyPicker(); }, true);
+  } catch (_) { }
+}
+
 // ---------- Init ----------
 window.addEventListener('load', async () => {
   // Establish a per-app-run session id so we only restore tabs within a single run
   try {
     __sessionId = sessionStorage.getItem(__SESSION_KEY);
     if (!__sessionId) {
-      __sessionId = `S-${Date.now()}-${Math.floor(Math.random()*100000)}`;
+      __sessionId = `S-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
       sessionStorage.setItem(__SESSION_KEY, __sessionId);
     }
-  } catch (_) { __sessionId = `S-${Date.now()}-${Math.floor(Math.random()*100000)}`; }
+  } catch (_) { __sessionId = `S-${Date.now()}-${Math.floor(Math.random() * 100000)}`; }
   try { const s = await ipcRenderer.invoke('settings:load'); const tr = Number(s?.taxRate); if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr; __silentPrint = !!s?.silentPrint; } catch (_) { }
   await loadCashiersIntoSelect();
   preparePaymentSelect();
   setupEntryDiscountControls();
   await loadVendorsIntoDatalist();
+  try {
+    const priceEl = document.getElementById('itemPrice');
+    if (priceEl) {
+      priceEl.addEventListener('blur', () => formatPriceInput(priceEl));
+      priceEl.addEventListener('change', () => formatPriceInput(priceEl));
+    }
+  } catch (_) { }
+  setupQtyPicker();
   renderTable();
   updateTaxRateLabel();
   installNavigationGuards();
@@ -1725,7 +1862,7 @@ window.addEventListener('load', async () => {
         const s = norm(el.value || '');
         if (!s) return;
         const list = Array.isArray(__vendorsCache) && __vendorsCache.length ? __vendorsCache : [];
-        const v = bestVendorMatch(list, s) || findVendorLoose(list, s);
+        const v = findVendorStrict(list, s);
         if (v && v.code) el.value = v.code;
       } catch (_) { }
     }
@@ -1735,7 +1872,9 @@ window.addEventListener('load', async () => {
     itemVendorEl.addEventListener('blur', () => normalizeVendorInput(itemVendorEl));
     itemVendorEl.addEventListener('keydown', (e) => {
       if (e.key === 'Tab' || e.key === 'Enter') {
-        // Synchronously pick the best match from cache so Tab completes to a code
+        // If a vendor option is highlighted in the datalist, commit it before leaving the field
+        try { applyFirstVendorOption(itemVendorEl); } catch (_) { }
+        // Synchronously normalize to known vendor code
         normalizeVendorLocal(itemVendorEl);
         // Also kick off async normalization as a fallback (no need to wait)
         try { normalizeVendorInput(itemVendorEl); } catch (_) { }
@@ -1755,12 +1894,13 @@ window.addEventListener('load', async () => {
         const s = norm(el.value || '');
         if (!s) return;
         const list = Array.isArray(__vendorsCache) && __vendorsCache.length ? __vendorsCache : [];
-        const v = bestVendorMatch(list, s) || findVendorLoose(list, s);
+        const v = findVendorStrict(list, s);
         if (v && v.code) el.value = v.code;
       } catch (_) { }
     }
     editVendorEl.addEventListener('keydown', (e) => {
       if (e.key === 'Tab' || e.key === 'Enter') {
+        try { applyFirstVendorOption(editVendorEl); } catch (_) { }
         normalizeEditVendorLocal(editVendorEl);
       }
     });
@@ -1784,6 +1924,12 @@ window.addEventListener('load', async () => {
     if (cashEl) cashEl.addEventListener('input', updateCashChange);
     toggleCashFields();
     updateCashChange();
+  } catch (_) { }
+  // Receipt preference toggle -> update button label
+  try {
+    const receipt = document.getElementById('receiptWanted');
+    if (receipt) receipt.addEventListener('change', updatePrintButtonLabel);
+    updatePrintButtonLabel();
   } catch (_) { }
   // Back-date helpers
   try {
