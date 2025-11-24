@@ -7,10 +7,16 @@ let currentPage = 1;
 let pageSize = 10;
 let selectedVendorKey = '';
 
+// Basic DOM/query helpers shared across this module.
 const $ = sel => document.querySelector(sel);
 const norm = s => String(s || '').trim().toLowerCase();
+
+// Format a number as money with two decimals.
 function money(n) { return Number(n || 0).toFixed(2); }
+
+// HTML-escape a string so it is safe to inject into templates.
 function esc(s) { return String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
+// Lightweight toast notifier (mirrors main POS toasts) for bottom-right messages.
 function showToast(message, opts = {}) {
   try {
     const hostId = 'toast-host';
@@ -43,11 +49,13 @@ function showToast(message, opts = {}) {
     setTimeout(() => { try { el.remove(); } catch (_) { } }, ms);
   } catch (_) { }
 }
+// Normalize any numeric-like input into a 2-decimal money number.
 function toMoneyNumber(n) {
   const num = Number(n);
   if (!Number.isFinite(num)) return 0;
   return Math.round(num * 100) / 100;
 }
+// Derive the original (pre-discount) price for an item.
 function deriveOriginalPrice(it) {
   if (typeof it?.originalPrice === 'number' && !Number.isNaN(it.originalPrice)) {
     return toMoneyNumber(it.originalPrice);
@@ -56,6 +64,7 @@ function deriveOriginalPrice(it) {
   const discount = toMoneyNumber(it?.discountAmount || 0);
   return toMoneyNumber(price + discount);
 }
+// Compute final price, discount value, type, and reason for an item.
 function deriveDiscount(it) {
   const finalPrice = toMoneyNumber(it?.price || 0);
   const original = deriveOriginalPrice(it);
@@ -67,6 +76,7 @@ function deriveDiscount(it) {
     : 0;
   return { finalPrice, original, discountAmount, reason, type, value };
 }
+// Turn a numeric percent value into a compact string (e.g., "7.25").
 function formatPercentText(value) {
   const pct = toMoneyNumber(value);
   if (pct <= 0) return '';
@@ -74,6 +84,7 @@ function formatPercentText(value) {
   const str = isWhole ? String(Math.round(pct)) : pct.toFixed(2).replace(/\.?0+$/, '');
   return `${str}%`;
 }
+// Build a human-readable label for a discount (percent or fixed amount).
 function formatDiscountLabel(type, value, amount) {
   if (type === 'percent') {
     const pct = formatPercentText(value);
@@ -86,6 +97,7 @@ function formatDiscountLabel(type, value, amount) {
   }
   return '';
 }
+// Combine discount reason + label into a suffix like "Damaged, 10% off".
 function buildDiscountSuffix(type, value, amount, reason, escapeFn = s => s) {
   const parts = [];
   const trimmed = String(reason || '').trim();
@@ -94,6 +106,7 @@ function buildDiscountSuffix(type, value, amount, reason, escapeFn = s => s) {
   if (label) parts.push(escapeFn(label));
   return parts.length ? ` (${parts.join(', ')})` : '';
 }
+// Convert a Date to yyyy-mm-dd for <input type="date">.
 function toDateInputValue(d) {
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -102,11 +115,13 @@ function toDateInputValue(d) {
 }
 
 // ---------- load & filters ----------
+// Load all receipts from disk (via main process) and keep them sorted.
 async function loadAll() {
   const list = await ipcRenderer.invoke('receipts:load');
   all = Array.isArray(list) ? list : [];
   all.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
 }
+// Build cashier filter options from the loaded receipts.
 async function populateCashiersFilter() {
   const sel = $('#cashierFilter');
   sel.innerHTML = '<option value="">All</option>';
@@ -114,6 +129,7 @@ async function populateCashiersFilter() {
   names.forEach(n => { const opt = document.createElement('option'); opt.value = n; opt.textContent = n; sel.appendChild(opt); });
 }
 
+// Apply all active filters (search, date range, cashier, payment, vendor) and re-render.
 function applyFilters() {
   const q = ($('#q').value || '').toLowerCase().trim();
   const fromVal = $('#fromDate').value;
@@ -163,6 +179,7 @@ function applyFilters() {
 }
 
 // ---------- vendor subtotals ----------
+// Choose a stable vendor key for an item (prefer vendor code, fallback to name / input).
 function resolveVendorKeyFromItem(it) {
   let key = String(it.vendorCode || '').trim();
   if (!key) {
@@ -176,6 +193,7 @@ function resolveVendorKeyFromItem(it) {
   }
   return key;
 }
+// Aggregate current filtered receipts into vendor subtotal cards.
 function renderVendorSubtotals() {
   const bucket = {}; // by resolved vendor (code preferred, fallback to name)
   filtered.forEach(r => {
@@ -313,8 +331,8 @@ function renderTable() {
   tbody.innerHTML = html;
 }
 
-// ---------- view/print window (shows VOID banner + reason/by/when) ----------
-// Renamed to avoid duplicate declaration with the full-page invoice version below
+// ---------- view/print window (shows VOID/RETURN banners in a compact receipt layout) ----------
+// Compact receipt window used from the Receipts page (different from the full invoice below).
 async function openReceiptWindowCompact(r, opts = {}) {
   const autoPrint = !!opts.autoPrint;
   const vendors = (Array.isArray(window.__vendorsCache) && window.__vendorsCache.length)
@@ -553,6 +571,7 @@ try {
 } catch (_) { }
 
 // ---------- CSV export ----------
+// Convert an array of receipt objects into a CSV string for export.
 function toCSV(rows) {
   const header = [
     'Number', 'DateTime', 'DisplayDate', 'Cashier', 'Payment',
@@ -589,6 +608,7 @@ function toCSV(rows) {
   });
   return lines.join('\r\n');
 }
+// Trigger a CSV download of the currently filtered receipts.
 function exportCSV() {
   const csv = toCSV(filtered);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -603,11 +623,13 @@ function exportCSV() {
 }
 
 // ---------- Void / Return modal helpers ----------
+// Shared modal state for void + return flows.
 let __voidModal, __resolveVoid;
 let __returnModal, __resolveReturn, __returnReceiptData = null;
 let __returnConfirmBtn = null;
 let __returnEntireChk = null;
 
+// Load the cashier list from disk (main process) with a safe fallback.
 async function getCashiersList() {
   // Actual json objects from disk
   let list = await ipcRenderer.invoke('cashiers:load');
@@ -616,6 +638,7 @@ async function getCashiersList() {
   return list;
 }
 
+// Fill the void modal cashier <select> with current cashiers.
 async function populateVoidCashiers() {
   const sel = document.getElementById('voidCashierSelect');
   if (!sel) return;
@@ -638,6 +661,7 @@ async function populateVoidCashiers() {
   });
 }
 
+// Wire up the Void modal (reason + cashier + confirm/cancel behavior).
 function setupVoidModal() {
   const el = document.getElementById('voidModal');
   if (!el) return;
@@ -683,6 +707,7 @@ function setupVoidModal() {
   });
 }
 
+// Show the Void modal and resolve with the user's input (or null if canceled).
 function askVoidInfo() {
   if (!__voidModal) setupVoidModal();
   return new Promise(res => {
@@ -691,6 +716,7 @@ function askVoidInfo() {
   });
 }
 
+// Fill the Return modal cashier <select> with current cashiers.
 async function populateReturnCashiers() {
   const sel = document.getElementById('returnCashierSelect');
   if (!sel) return;
@@ -713,6 +739,7 @@ async function populateReturnCashiers() {
   });
 }
 
+// Load a receipt into the Return modal (summary + items grid + existing return info).
 async function loadReturnReceipt(receiptId) {
   const summary = document.getElementById('returnReceiptSummary');
   const list = document.getElementById('returnItemsList');
@@ -762,6 +789,7 @@ async function loadReturnReceipt(receiptId) {
   }
 }
 
+// Enable/disable and relabel the Return button based on current selection + prior returns.
 function updateReturnButtonState() {
   if (!__returnConfirmBtn) __returnConfirmBtn = document.getElementById('returnConfirmBtn');
   if (!__returnEntireChk) __returnEntireChk = document.getElementById('returnEntireCheckbox');
@@ -784,6 +812,7 @@ function updateReturnButtonState() {
   btn.disabled = !hasSelection;
 }
 
+// Render the list of items inside the Return modal, including prior returned quantities.
 function renderReturnItemsList(receipt) {
   const wrap = document.getElementById('returnItemsList');
   if (!wrap) return;
@@ -848,6 +877,7 @@ function renderReturnItemsList(receipt) {
   updateReturnButtonState();
 }
 
+// Initialize the Return modal (fields, events, validation, and confirm payload building).
 function setupReturnModal() {
   const el = document.getElementById('returnModal');
   if (!el || !window.bootstrap) return;
@@ -1002,6 +1032,7 @@ function setupReturnModal() {
   }
 }
 
+// High-level helper used by button flows to open the Return modal and collect input.
 async function askReturnInfo(opts = {}) {
   if (!__returnModal) setupReturnModal();
   if (!__returnModal) return Promise.resolve(null);
@@ -1035,6 +1066,7 @@ async function askReturnInfo(opts = {}) {
 }
 
 // ---------- Inline button action handler ----------
+// Central handler for receipt row actions: view, print, void, return.
 window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
   try {
     if (!id) return;
@@ -1142,6 +1174,7 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
 };
 
 // ---------- init ----------
+// When the Receipts page loads, hydrate data, hook filters, and react to settings.
 window.addEventListener('load', async () => {
   try { window.__vendorsCache = await ipcRenderer.invoke('vendors:load'); } catch (_) { window.__vendorsCache = []; }
   await loadAll();
@@ -1270,6 +1303,7 @@ window.addEventListener('load', async () => {
 });
 
 // --- Override: view/print window as full-page Sales Invoice ---
+// Rich, printable invoice layout used when viewing/printing a single receipt.
 async function openReceiptWindow(r, opts = {}) {
   const autoPrint = !!opts.autoPrint;
   const vendors = (Array.isArray(window.__vendorsCache) && window.__vendorsCache.length)
