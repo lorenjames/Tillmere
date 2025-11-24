@@ -11,6 +11,7 @@ let __silentPrint = true;
 let items = []; // { name, price, vendorName, comment }
 let __vendorsCache = [];
 let __editModal = null;
+let __returnModal = null;
 let __cashAudio = null;
 let __allowNavigation = false;
 let __lastTotal = 0;
@@ -1764,6 +1765,124 @@ function setupQtyPicker() {
   } catch (_) { }
 }
 
+async function populatePosReturnCashiers() {
+  try {
+    const sel = document.getElementById('posReturnCashierSelect');
+    if (!sel) return;
+    const previous = sel.value || '';
+    sel.innerHTML = '';
+    ensurePlaceholder(sel);
+    let list = await fetchCashiers();
+    if (!Array.isArray(list)) list = [];
+    if (list.length === 0) list = [{ name: 'Manager' }];
+    list.forEach((c, idx) => {
+      const opt = document.createElement('option');
+      opt.value = String(c?.name || (`Cashier ${idx + 1}`)).trim();
+      opt.textContent = opt.value;
+      try { opt.dataset.cashier = JSON.stringify(c); } catch (_) { }
+      opt.dataset.index = String(idx);
+      sel.appendChild(opt);
+    });
+    const preferred = (document.getElementById('cashierSelect')?.value || '').trim();
+    if (preferred && [...sel.options].some(o => o.value === preferred)) {
+      sel.value = preferred;
+    } else if (previous) {
+      sel.value = previous;
+    }
+  } catch (_) { }
+}
+
+function setupPosReturnModal() {
+  try {
+    if (__returnModal) return;
+    const el = document.getElementById('posReturnModal');
+    if (!el || !window.bootstrap) return;
+    __returnModal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+    const confirmBtn = document.getElementById('posReturnConfirmBtn');
+    const cancelBtn = document.getElementById('posReturnCancelBtn');
+    const closeX = document.getElementById('posReturnCloseX');
+    const receiptInput = document.getElementById('posReturnReceiptId');
+    const reasonInput = document.getElementById('posReturnReasonInput');
+    const cashierSelect = document.getElementById('posReturnCashierSelect');
+    let busy = false;
+
+    const reset = () => {
+      try { if (receiptInput) receiptInput.value = ''; } catch (_) { }
+      try { if (reasonInput) reasonInput.value = ''; } catch (_) { }
+    };
+
+    const dismiss = () => {
+      busy = false;
+      try { if (confirmBtn) confirmBtn.disabled = false; } catch (_) { }
+      reset();
+      try { __returnModal.hide(); } catch (_) { }
+    };
+
+    const handleError = (message) => {
+      try { showToast(message, { type: 'error' }); } catch (_) { }
+    };
+
+    const handleConfirm = async () => {
+      if (busy) return;
+      const id = (receiptInput?.value || '').trim();
+      if (!id) {
+        handleError('Enter a receipt number or ID.');
+        try { receiptInput?.focus(); } catch (_) { }
+        return;
+      }
+      const reason = (reasonInput?.value || '').trim();
+      if (!reason) {
+        handleError('Please describe why the receipt is being returned.');
+        try { reasonInput?.focus(); } catch (_) { }
+        return;
+      }
+      const opt = cashierSelect?.options[cashierSelect.selectedIndex];
+      let cashierObj = null;
+      try { cashierObj = opt?.dataset?.cashier ? JSON.parse(opt.dataset.cashier) : null; } catch (_) { }
+      const user = (cashierObj?.name || cashierSelect?.value || 'Manager').trim();
+      busy = true;
+      try { if (confirmBtn) confirmBtn.disabled = true; } catch (_) { }
+      try {
+        const resp = await ipcRenderer.invoke('receipts:return', { id, reason, user, userObj: cashierObj });
+        if (!resp) {
+          handleError('Unable to return the receipt. Ensure the ID is correct and the receipt is not already voided/returned.');
+          return;
+        }
+        try { showToast('Receipt marked as returned.', { type: 'success' }); } catch (_) { }
+        dismiss();
+      } catch (err) {
+        handleError('Error returning receipt: ' + (err?.message || err));
+      } finally {
+        busy = false;
+        try { if (confirmBtn) confirmBtn.disabled = false; } catch (_) { }
+      }
+    };
+
+    confirmBtn?.addEventListener('click', handleConfirm);
+    cancelBtn?.addEventListener('click', dismiss);
+    closeX?.addEventListener('click', dismiss);
+    el.addEventListener('shown.bs.modal', async () => {
+      await populatePosReturnCashiers();
+      reset();
+      try { receiptInput?.focus(); } catch (_) { }
+    });
+    el.addEventListener('hidden.bs.modal', () => {
+      busy = false;
+      try { if (confirmBtn) confirmBtn.disabled = false; } catch (_) { }
+      reset();
+    });
+  } catch (_) { }
+}
+
+function openReturnModal() {
+  if (!__returnModal) setupPosReturnModal();
+  if (!__returnModal) {
+    try { showToast('Return modal unavailable.', { type: 'error' }); } catch (_) { }
+    return;
+  }
+  try { __returnModal.show(); } catch (_) { }
+}
+
 // ---------- Init ----------
 window.addEventListener('load', async () => {
   // Establish a per-app-run session id so we only restore tabs within a single run
@@ -1787,6 +1906,7 @@ window.addEventListener('load', async () => {
     }
   } catch (_) { }
   setupQtyPicker();
+  try { setupPosReturnModal(); } catch (_) { }
   renderTable();
   updateTaxRateLabel();
   installNavigationGuards();
@@ -1930,6 +2050,10 @@ window.addEventListener('load', async () => {
     const receipt = document.getElementById('receiptWanted');
     if (receipt) receipt.addEventListener('change', updatePrintButtonLabel);
     updatePrintButtonLabel();
+  } catch (_) { }
+  try {
+    const returnBtn = document.getElementById('posReturnBtn');
+    if (returnBtn) returnBtn.addEventListener('click', openReturnModal);
   } catch (_) { }
   // Back-date helpers
   try {

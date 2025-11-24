@@ -606,6 +606,36 @@
         </div>
     </div>
 
+    <div class="modal fade" id="posReturnModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title">Record Return</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"
+                        id="posReturnCloseX"></button>
+                </div>
+                <div class="modal-body">
+                    <label for="posReturnReceiptId" class="form-label">Receipt number / ID</label>
+                    <input id="posReturnReceiptId" type="text" class="form-control mb-3"
+                        placeholder="e.g., MID-20251231-121314">
+
+                    <label for="posReturnCashierSelect" class="form-label">Cashier</label>
+                    <select id="posReturnCashierSelect" class="form-select mb-3"></select>
+
+                    <label for="posReturnReasonInput" class="form-label">Reason</label>
+                    <textarea id="posReturnReasonInput" class="form-control" rows="3"
+                        placeholder="e.g., customer changed mind, damaged item"></textarea>
+
+                    <div id="posReturnHint" class="small text-muted mt-2">Provide the receipt ID, a reason, and cashier responsible for the return.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="posReturnCancelBtn">Cancel</button>
+                    <button type="button" class="btn btn-success" id="posReturnConfirmBtn">Record Return</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="renderer.js"></script>
     <script>      (async function populateCashiersFallback() { try { const sel = document.getElementById('cashierSelect'); if (!sel) return; const { ipcRenderer } = require('electron'); let list = await ipcRenderer.invoke('cashiers:load'); if (!Array.isArray(list)) list = []; sel.innerHTML = ''; const opt = document.createElement('option'); opt.value = ''; opt.textContent = 'Select...'; opt.disabled = true; opt.selected = true; sel.appendChild(opt); list.forEach(c => { const o = document.createElement('option'); o.value = c.name; o.textContent = c.name; sel.appendChild(o); }); } catch (e) { console.error('Cashier populate fallback failed', e); } })();    </script>
 </body>

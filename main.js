@@ -158,6 +158,38 @@ ipcMain.handle('receipts:void', (_evt, { id: idIn, reason, user, userObj }) => {
     return arr[idx];
 });
 
+ipcMain.handle('receipts:return', (_evt, { id: idIn, reason, user, userObj, items }) => {
+    const id = normId(idIn);
+    const all = readJson(RECEIPTS_FILE, []);
+    const { out, changed } = migrateReceipts(all);
+    const arr = changed ? out : all;
+
+    const idx = arr.findIndex(r => normId(r.id) === id || normId(r.number) === id);
+    if (idx === -1) return null;
+    if (arr[idx].voided) return null;
+
+    const now = new Date().toISOString();
+    arr[idx].returned = true;
+    const safeItems = Array.isArray(items) ? items.map(it => ({
+        name: String(it?.name || '').trim(),
+        quantity: Math.max(1, parseInt(it?.quantity || 1, 10)),
+        price: Number(it?.price || 0),
+        vendor: String(it?.vendor || '').trim(),
+        comment: String(it?.comment || '').trim()
+    })) : null;
+
+    arr[idx].returnInfo = {
+        reason: String(reason || ''),
+        user: String(user || 'system'),
+        userObj: userObj || null,
+        when: now,
+        items: safeItems
+    };
+
+    writeJson(RECEIPTS_FILE, arr);
+    return arr[idx];
+});
+
 ipcMain.handle('receipts:update', (_evt, updated) => {
     const all = readJson(RECEIPTS_FILE, []);
     const { out, changed } = migrateReceipts(all);

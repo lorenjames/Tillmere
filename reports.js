@@ -82,6 +82,21 @@ function runReport() {
         if (from && when && when < from) return;
         if (to && when && when > to) return;
 
+        // map of item key -> returned qty for this receipt
+        const returnQtyByKey = {};
+        if (r.returned && r.returnInfo && Array.isArray(r.returnInfo.items)) {
+            r.returnInfo.items.forEach(it => {
+                const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+                const price = Number(it.price || 0).toFixed(2);
+                const key = [
+                    String(it.name || '').trim().toLowerCase(),
+                    price,
+                    String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+                ].join('|');
+                returnQtyByKey[key] = (returnQtyByKey[key] || 0) + qty;
+            });
+        }
+
         const tender = normalizeTender(r.payment);
         (r.items || []).forEach(it => {
             const code = String(it.vendorCode || '').trim();
@@ -107,9 +122,18 @@ function runReport() {
 
             const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
             const unit = Number(it.price || 0);
-            const amount = unit * qty;
+            const itemKey = [
+                String(it.name || '').trim().toLowerCase(),
+                unit.toFixed(2),
+                String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+            ].join('|');
+            const returnedQty = returnQtyByKey[itemKey] || 0;
+            const keepQty = Math.max(0, qty - returnedQty);
+            if (keepQty <= 0) return;
+
+            const amount = unit * keepQty;
             rec.gross += amount;
-            rec.count += qty;
+            rec.count += keepQty;
             if (tender === 'Cash') rec.cash += amount;
             else if (tender === 'Card') rec.card += amount;
             else if (tender === 'Check') rec.check += amount;
@@ -235,9 +259,30 @@ function runDetailedReport() {
 
             const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
             const unit = Number(it.price || 0);
-            const amount = unit * qty;
+            const itemKey = [
+                String(it.name || '').trim().toLowerCase(),
+                unit.toFixed(2),
+                String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+            ].join('|');
+            const returnQtyByKey = {};
+            if (r.returned && r.returnInfo && Array.isArray(r.returnInfo.items)) {
+                r.returnInfo.items.forEach(rit => {
+                    const rqty = Math.max(1, parseInt(rit.quantity || rit.qty || 1, 10));
+                    const rprice = Number(rit.price || 0).toFixed(2);
+                    const rkey = [
+                        String(rit.name || '').trim().toLowerCase(),
+                        rprice,
+                        String(rit.vendorCode || rit.vendor || '').trim().toLowerCase()
+                    ].join('|');
+                    returnQtyByKey[rkey] = (returnQtyByKey[rkey] || 0) + rqty;
+                });
+            }
+            const returnedQty = returnQtyByKey[itemKey] || 0;
+            const keepQty = Math.max(0, qty - returnedQty);
+            if (keepQty <= 0) return;
+            const amount = unit * keepQty;
             g.gross += amount;
-            g.count += qty;
+            g.count += keepQty;
             if (tender === 'Cash') g.cash += amount;
             else if (tender === 'Card') g.card += amount;
             else if (tender === 'Check') g.check += amount;
@@ -245,7 +290,7 @@ function runDetailedReport() {
             else g.other += amount;
             if (!g.name && name) g.name = name;
 
-            g.items.push({ datetime: when, number: r.number || '', item: it.name || '', qty, unit, amount, tender });
+            g.items.push({ datetime: when, number: r.number || '', item: it.name || '', qty: keepQty, unit, amount, tender });
             groups.set(key, g);
         });
     });
@@ -371,6 +416,26 @@ function openReceiptWindowFromReports(r) {
             return parts.length ? ` (${parts.join(', ')})` : '';
         };
 
+        const returnQtyByKey = {};
+        let returnSubtotal = 0;
+        if (r.returned && r.returnInfo && Array.isArray(r.returnInfo.items)) {
+            r.returnInfo.items.forEach(it => {
+                const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+                const price = Number(it.price || 0);
+                const key = [
+                    String(it.name || '').trim().toLowerCase(),
+                    price.toFixed(2),
+                    String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+                ].join('|');
+                returnQtyByKey[key] = (returnQtyByKey[key] || 0) + qty;
+                returnSubtotal += qty * price;
+            });
+        }
+        const taxRate = Number(r.taxRate || 0);
+        const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
+        const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
+        const netTotal = toMoneyNumber((r.total || 0) - returnTotal);
+
         const style = `
   <style>
     @page { size: Letter portrait; margin: 0.5in; }
@@ -406,20 +471,41 @@ function openReceiptWindowFromReports(r) {
             const value = hasDiscount ? (type === 'percent' ? toMoneyNumber(it?.discountValue || 0) : discountAmount) : 0;
             const reason = hasDiscount ? String(it?.discountReason || '').trim() : '';
             const discountSuffix = hasDiscount ? buildDiscountSuffix(type, value, discountAmount, reason, esc) : '';
-            const amount = toMoneyNumber(finalPrice * qty);
+            const itemKey = [
+                String(it.name || '').trim().toLowerCase(),
+                Number(it.price || 0).toFixed(2),
+                String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+            ].join('|');
+            const returnedQty = returnQtyByKey[itemKey] || 0;
+            const keepQty = Math.max(0, qty - returnedQty);
+            if (keepQty <= 0) return '';
+            const amount = toMoneyNumber(finalPrice * keepQty);
+            const strike = returnedQty >= qty && returnedQty > 0 ? ' style="text-decoration:line-through;"' : '';
+            const returnedNote = returnedQty > 0 && r.returnInfo
+                ? `<div class="addr" style="color:#16a34a;">Returned ${returnedQty}${qty > 1 ? ` of ${qty}` : ''}${r.returnInfo.when ? ` on ${new Date(r.returnInfo.when).toLocaleDateString()}` : ''}${r.returnInfo.user ? ` by ${esc(r.returnInfo.user)}` : ''}</div>`
+                : '';
             return `
             <tr>
               <td>
-                <div class="title">${esc(it.name || '')}</div>
+                <div class="title"${strike}>${esc(it.name || '')}</div>
                 ${it.comment ? `<div class="addr">${esc(it.comment)}</div>` : ''}
                 ${code ? `<div class="addr">Vendor: ${esc(code)}</div>` : ''}
-                ${qty > 1 ? `<div class="addr">Qty: ${qty} @ $${money(finalPrice)}</div>` : ''}
+                ${keepQty > 1 ? `<div class="addr">Qty: ${keepQty} @ $${money(finalPrice)}</div>` : ''}
                 ${hasDiscount ? `<div class="addr" style="text-decoration:line-through;">Original: $${money(original)}</div>` : ''}
                 ${hasDiscount ? `<div class="addr" style="color:#dc3545;">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}
+                ${returnedNote}
               </td>
-              <td class="num">$${money(amount)}</td>
+              <td class="num"${strike}>$${money(amount)}</td>
             </tr>`;
-        }).join('');
+        }).filter(Boolean).join('');
+
+        const returnMeta = r.returned
+            ? `<div class="label">Returned</div>
+               <div><strong>${esc(r.returnInfo?.reason || 'Return recorded')}</strong>
+               ${r.returnInfo?.user ? ` - <span class="label">by ${esc(r.returnInfo.user)}</span>` : ''}
+               ${r.returnInfo?.when ? ` <span class="label">on ${new Date(r.returnInfo.when).toLocaleString()}</span>` : ''}
+               </div>`
+            : '';
 
         const html = `
   <html>
@@ -443,6 +529,7 @@ function openReceiptWindowFromReports(r) {
             <div><div class="label">Date</div><div><strong>${esc(r.displayDate || (r.datetime ? new Date(r.datetime).toLocaleString() : ''))}</strong></div></div>
             <div><div class="label">Cashier</div><div><strong>${esc(r.cashier || '-')}</strong></div></div>
             <div><div class="label">Payment</div><div><strong>${esc(r.payment || '-')}</strong></div></div>
+            ${returnMeta}
           </div>
           <table>
             <thead>
@@ -459,6 +546,11 @@ function openReceiptWindowFromReports(r) {
               <div style="display:flex; justify-content:space-between;"><div class="label">Subtotal</div><div><strong>$${money(r.subtotal || 0)}</strong></div></div>
               <div style="display:flex; justify-content:space-between;"><div class="label">Tax</div><div><strong>$${money(r.tax || 0)}</strong></div></div>
               <div style="display:flex; justify-content:space-between;"><div class="label" style="font-weight:800">Total</div><div><strong>$${money(r.total || 0)}</strong></div></div>
+              ${r.returned && returnTotal > 0 ? `
+              <div style="display:flex; justify-content:space-between;"><div class="label">Return Subtotal</div><div><strong>-$${money(returnSubtotal)}</strong></div></div>
+              <div style="display:flex; justify-content:space-between;"><div class="label">Return Tax</div><div><strong>-$${money(returnTax)}</strong></div></div>
+              <div style="display:flex; justify-content:space-between;"><div class="label">Return Total</div><div><strong>-$${money(returnTotal)}</strong></div></div>
+              <div style="display:flex; justify-content:space-between;"><div class="label" style="font-weight:800">Net Total</div><div><strong>$${money(netTotal)}</strong></div></div>` : ''}
             </div>
           </div>
         </div>

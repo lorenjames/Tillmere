@@ -228,12 +228,36 @@ function renderTable() {
     const commentPreview = comments.length
       ? (comments.length > 2 ? comments.slice(0, 2).join('; ') + '…' : comments.join('; '))
       : '';
+    let netTotal = toMoneyNumber(r.total || 0);
+    if (r.returned && r.returnInfo && Array.isArray(r.returnInfo.items)) {
+      let returnSubtotal = 0;
+      r.returnInfo.items.forEach(it => {
+        const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+        const price = toMoneyNumber(it.price || 0);
+        const amount = qty * price;
+        returnSubtotal += amount;
+      });
+      const taxRate = Number(r.taxRate || 0);
+      const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
+      const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
+      const originalTotal = toMoneyNumber(r.total || 0);
+      netTotal = toMoneyNumber(originalTotal - returnTotal);
+    }
+    const returnBadge = r.returned
+      ? `<div class="text-success small">RETURNED${r.returnInfo?.reason ? `: ${esc(r.returnInfo.reason)}` : ''}${r.returnInfo?.user ? ` by ${esc(r.returnInfo.user)}` : ''}${r.returnInfo?.when ? ` on ${new Date(r.returnInfo.when).toLocaleString()}` : ''}</div>`
+      : '';
+    const returnButton = r.returned
+      ? `<button type="button" class="btn btn-outline-success" onclick="window.__onReceiptAction(event,'return','${rawId}')">Edit Return</button>`
+      : r.voided
+        ? `<button type="button" class="btn btn-outline-secondary" disabled>Return</button>`
+        : `<button type="button" class="btn btn-outline-success" onclick="window.__onReceiptAction(event,'return','${rawId}')">Return</button>`;
     html += `
       <tr>
         <td>${r.displayDate ? esc(r.displayDate) : (r.datetime ? new Date(r.datetime).toLocaleString() : '')}</td>
         <td>
           ${esc(r.number || r.id || '')}
           ${r.voided ? `<div class="text-danger small">VOIDED ${r.voidInfo?.when ? '(' + new Date(r.voidInfo.when).toLocaleString() + ')' : ''}</div>` : ''}
+          ${returnBadge}
           ${commentPreview ? `<div class="text-muted small">Notes: ${esc(commentPreview)}</div>` : ''}
         </td>
         <td>${esc(r.cashier || '')}</td>
@@ -241,10 +265,12 @@ function renderTable() {
         <td class="text-end">$${money(r.subtotal)}</td>
         <td class="text-end">$${money(r.tax)}</td>
         <td class="text-end fw-semibold">$${money(r.total)}</td>
+        <td class="text-end fw-semibold">$${money(netTotal)}</td>
         <td>
           <div class="btn-group btn-group-sm">
             <button type="button" class="btn btn-outline-primary" onclick="window.__onReceiptAction(event,'view','${rawId}')">View</button>
             <button type="button" class="btn btn-outline-primary" onclick="window.__onReceiptAction(event,'print','${rawId}')">Print</button>
+            ${returnButton}
             ${r.voided
         ? `<button type="button" class="btn btn-outline-dark" disabled>Voided</button>`
         : `<button type="button" class="btn btn-outline-danger" onclick="window.__onReceiptAction(event,'void','${rawId}')">Void</button>`}
@@ -300,30 +326,105 @@ async function openReceiptWindowCompact(r, opts = {}) {
 
 
   const vendorTotals = {};
-  const rows = (r.items || []).map(it => {
-    const { finalPrice, original, discountAmount, reason, type, value } = deriveDiscount(it);
-    const hasDiscount = discountAmount > 0;
-    const discountSuffix = hasDiscount ? buildDiscountSuffix(type, value, discountAmount, reason, esc) : '';
-    const code = resolveCode(it);
-    if (code) vendorTotals[code] = (vendorTotals[code] || 0) + finalPrice;
-    return `
-      <tr>
-        <td>
-          ${esc(it.name)}
+  const returnQtyByKey = {};
+  let returnSubtotal = 0;
+  if (r.returned && r.returnInfo && Array.isArray(r.returnInfo.items)) {
+    r.returnInfo.items.forEach(it => {
+      const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+      const price = toMoneyNumber(it.price || 0);
+      const amount = qty * price;
+      returnSubtotal += amount;
+      const key = [
+        String(it.name || '').trim().toLowerCase(),
+        price.toFixed(2),
+        String(it.vendor || it.vendorCode || '').trim().toLowerCase()
+      ].join('|');
+      returnQtyByKey[key] = (returnQtyByKey[key] || 0) + qty;
+    });
+  }
+  const taxRate = Number(r.taxRate || 0);
+  const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
+  const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
+  const netTotal = toMoneyNumber((r.total || 0) - returnTotal);
+
+  const rows = (() => {
+    const out = [];
+    (r.items || []).forEach(it => {
+      const { finalPrice, original, discountAmount, reason, type, value } = deriveDiscount(it);
+      const hasDiscount = discountAmount > 0;
+      const discountSuffix = hasDiscount ? buildDiscountSuffix(type, value, discountAmount, reason, esc) : '';
+      const code = resolveCode(it);
+      const soldQty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+      const unitPrice = toMoneyNumber(it.price || 0);
+      const key = [
+        String(it.name || '').trim().toLowerCase(),
+        unitPrice.toFixed(2),
+        String(code || it.vendor || '').trim().toLowerCase()
+      ].join('|');
+      const returnedQty = returnQtyByKey[key] || 0;
+      const remainingQty = Math.max(0, soldQty - returnedQty);
+      const fullyReturned = returnedQty >= soldQty && returnedQty > 0;
+      const partiallyReturned = returnedQty > 0 && returnedQty < soldQty;
+      const vendorContribution = toMoneyNumber(finalPrice * soldQty);
+      const vendorReturnDeduction = toMoneyNumber(finalPrice * returnedQty);
+      if (code) vendorTotals[code] = toMoneyNumber((vendorTotals[code] || 0) + vendorContribution - vendorReturnDeduction);
+      const returnedNote = (fullyReturned || partiallyReturned) && r.returnInfo
+        ? `<div class="vendor" style="color:#16a34a;">Returned ${returnedQty}${soldQty > 1 ? ` of ${soldQty}` : ''}${r.returnInfo.when ? ` on ${new Date(r.returnInfo.when).toLocaleDateString()}` : ''}${r.returnInfo.user ? ` by ${esc(r.returnInfo.user)}` : ''}</div>`
+        : '';
+      const discountBlock = `
           ${code ? `<div class="vendor">Vendor: ${esc(code)}</div>` : ''}
           ${hasDiscount ? `<div class="vendor" style="text-decoration:line-through;">Original: $${money(original)}</div>` : ''}
-          ${hasDiscount ? `<div class="vendor" style="color:#dc3545;">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}
+          ${hasDiscount ? `<div class="vendor" style="color:#dc3545;">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}`;
+
+      if (returnedQty > 0) {
+        const returnedTotal = toMoneyNumber(finalPrice * returnedQty);
+        out.push(`
+      <tr class="returned-line">
+        <td>
+          <span style="text-decoration:line-through;">${esc(it.name)}</span>
+          ${discountBlock}
+          <div class="vendor" style="text-decoration:line-through;">Returned ${returnedQty} @ $${money(finalPrice)} = $${money(returnedTotal)}</div>
+          ${returnedNote}
         </td>
-        <td class="price">$${money(finalPrice)}</td>
-      </tr>`;
-  }).join('');
+        <td class="price" style="text-decoration:line-through;">-$${money(returnedTotal)}</td>
+      </tr>`);
+      }
+
+      if (remainingQty > 0) {
+        const remainingTotal = toMoneyNumber(finalPrice * remainingQty);
+        out.push(`
+      <tr>
+        <td>
+          <span>${esc(it.name)}</span>
+          ${discountBlock}
+          ${soldQty > 1 ? `<div class="vendor">${remainingQty} @ $${money(finalPrice)} = $${money(remainingTotal)}</div>` : ''}
+        </td>
+        <td class="price">$${money(remainingTotal)}</td>
+      </tr>`);
+      }
+
+      if (returnedQty === 0 && remainingQty === 0) {
+        const amount = toMoneyNumber(finalPrice * soldQty);
+        out.push(`
+      <tr>
+        <td>
+          <span>${esc(it.name)}</span>
+          ${discountBlock}
+          ${soldQty > 1 ? `<div class="vendor">Qty ${soldQty} @ $${money(finalPrice)} = $${money(amount)}</div>` : ''}
+        </td>
+        <td class="price">$${money(amount)}</td>
+      </tr>`);
+      }
+    });
+    return out.join('');
+  })();
 
   const codes = Object.keys(vendorTotals).sort();
   const vendorBlock = codes.length
     ? `
       <tr><td colspan="2"><hr></td></tr>
       <tr><td colspan="2"><strong>Vendor Subtotals</strong></td></tr>
-      ${codes.map(c => `<tr><td class="vendor">• ${esc(c)}</td><td class="price">$${money(vendorTotals[c])}</td></tr>`).join('')}
+      ${codes.map(c => `<tr><td class="vendor">- ${esc(c)}</td><td class="price">$${money(vendorTotals[c])}</td></tr>`).join('')}
     `
     : '';
 
@@ -380,6 +481,11 @@ async function openReceiptWindowCompact(r, opts = {}) {
         <div class="row"><div>Subtotal</div><div>$${money(r.subtotal)}</div></div>
         <div class="row"><div>${r.taxExempt ? 'Tax (Exempt)' : `Tax (${(Number(r.taxRate || 0) * 100).toFixed(2)}%)`}</div><div>$${money(r.tax)}</div></div>
         <div class="row total"><div>Total</div><div>$${money(r.total)}</div></div>
+        ${r.returned && returnTotal > 0 ? `
+        <div class="row"><div>Return Subtotal</div><div>-$${money(returnSubtotal)}</div></div>
+        <div class="row"><div>Return Tax</div><div>-$${money(returnTax)}</div></div>
+        <div class="row total"><div>Return Total</div><div>-$${money(returnTotal)}</div></div>
+        <div class="row total"><div>Net Total</div><div>$${money(netTotal)}</div></div>` : ''}
       </div>
 
       ${r.taxExempt ? `<div class="foot"><div><span class="muted">Exempt:</span> <strong>${esc(r.taxExemptName || '')}</strong> — ID: <strong>${esc(r.taxExemptId || '')}</strong></div></div>` : ''}
@@ -411,13 +517,24 @@ try {
       formatDiscountLabel,
       buildDiscountSuffix,
       toDateInputValue,
+      loadReturnReceipt,
+      renderReturnItemsList,
+      askReturnInfo,
+      loadAll,
+      applyFilters,
+      updateReturnButtonState,
     };
   }
 } catch (_) { }
 
 // ---------- CSV export ----------
 function toCSV(rows) {
-  const header = ['Number', 'DateTime', 'DisplayDate', 'Cashier', 'Payment', 'Subtotal', 'Tax', 'Total', 'TaxExempt', 'TaxExemptName', 'TaxExemptId', 'Voided', 'VoidReason', 'Items', 'ItemComments'];
+  const header = [
+    'Number', 'DateTime', 'DisplayDate', 'Cashier', 'Payment',
+    'Subtotal', 'Tax', 'Total', 'TaxExempt', 'TaxExemptName', 'TaxExemptId',
+    'Voided', 'VoidReason', 'Returned', 'ReturnReason', 'ReturnUser', 'ReturnWhen',
+    'Items', 'ItemComments'
+  ];
   const lines = [header.join(',')];
   rows.forEach(r => {
     const itemsText = (r.items || []).map(i => `${i.name} ($${money(i.price)}${i.vendorCode ? `, ${i.vendorCode}` : i.vendor ? `, ${i.vendor}` : ''})`).join('; ');
@@ -436,6 +553,10 @@ function toCSV(rows) {
       r.taxExemptId || '',
       r.voided ? 'YES' : 'NO',
       r.voidInfo?.reason || '',
+      r.returned ? 'YES' : 'NO',
+      r.returnInfo?.reason || '',
+      r.returnInfo?.user || '',
+      r.returnInfo?.when || '',
       itemsText.replaceAll(',', ';'),
       commentsText.replaceAll(',', ';')
     ].map(v => `"${String(v).replaceAll('"', '""')}"`).join(',');
@@ -456,8 +577,11 @@ function exportCSV() {
   a.remove();
 }
 
-// ---------- Void modal helpers (cashier OBJECT + reason) ----------
+// ---------- Void / Return modal helpers ----------
 let __voidModal, __resolveVoid;
+let __returnModal, __resolveReturn, __returnReceiptData = null;
+let __returnConfirmBtn = null;
+let __returnEntireChk = null;
 
 async function getCashiersList() {
   // Actual json objects from disk
@@ -529,6 +653,341 @@ function askVoidInfo() {
   });
 }
 
+async function populateReturnCashiers() {
+  const sel = document.getElementById('returnCashierSelect');
+  if (!sel) return;
+  sel.innerHTML = '';
+
+  const cashiers = await getCashiersList();
+  cashiers.forEach((c, idx) => {
+    const opt = document.createElement('option');
+    opt.value = c.name;
+    opt.textContent = c.name;
+    opt.dataset.cashier = JSON.stringify(c);
+    opt.dataset.index = String(idx);
+    sel.appendChild(opt);
+  });
+
+  const currentFilter = (document.getElementById('cashierFilter')?.value || '').trim();
+  if (currentFilter) sel.value = currentFilter;
+}
+
+async function loadReturnReceipt(receiptId) {
+  const summary = document.getElementById('returnReceiptSummary');
+  const list = document.getElementById('returnItemsList');
+  const reasonInput = document.getElementById('returnReasonInput');
+  const cashierSel = document.getElementById('returnCashierSelect');
+  const hint = document.getElementById('returnModalHint');
+  __returnReceiptData = null;
+  if (summary) summary.textContent = receiptId ? 'Searching…' : '';
+  if (list) list.innerHTML = receiptId ? '<div class="text-muted small">Loading receipt…</div>' : '';
+  try {
+    if (!receiptId) return null;
+    const r = await ipcRenderer.invoke('receipts:get', receiptId);
+    if (!r) {
+      if (summary) summary.textContent = 'Receipt not found.';
+      if (list) list.innerHTML = '<div class="text-muted small">Receipt not found.</div>';
+      return null;
+    }
+    __returnReceiptData = r;
+    const count = Array.isArray(r.items) ? r.items.length : 0;
+    const hasReturn = !!r.returned;
+    if (summary) {
+      const base = `Found ${count} item${count === 1 ? '' : 's'} • Total $${money(r.total)}`;
+      const returnInfo = hasReturn && r.returnInfo
+        ? ` | Existing return: ${r.returnInfo.reason || ''}${r.returnInfo.user ? ` by ${r.returnInfo.user}` : ''}${r.returnInfo.when ? ` on ${new Date(r.returnInfo.when).toLocaleString()}` : ''}`
+        : '';
+      summary.textContent = base + returnInfo;
+    }
+    if (reasonInput && hasReturn) reasonInput.value = r.returnInfo?.reason || '';
+    if (cashierSel && hasReturn) {
+      const user = String(r.returnInfo?.user || '').trim();
+      if (user) {
+        Array.from(cashierSel.options || []).forEach(opt => {
+          if (opt.value === user || opt.textContent === user) opt.selected = true;
+        });
+      }
+    }
+    if (hint && hasReturn) {
+      hint.textContent = 'Editing existing return; adjust items/qty as needed.';
+    }
+    renderReturnItemsList(r);
+    updateReturnButtonState();
+    return r;
+  } catch (err) {
+    if (summary) summary.textContent = `Unable to load receipt: ${err?.message || String(err)}`;
+    if (list) list.innerHTML = '';
+    return null;
+  }
+}
+
+function updateReturnButtonState() {
+  if (!__returnConfirmBtn) __returnConfirmBtn = document.getElementById('returnConfirmBtn');
+  if (!__returnEntireChk) __returnEntireChk = document.getElementById('returnEntireCheckbox');
+  const btn = __returnConfirmBtn;
+  if (!btn) return;
+  const hasExistingReturn = Array.isArray(__returnReceiptData?.returnInfo?.items) && __returnReceiptData.returnInfo.items.length > 0;
+  btn.textContent = hasExistingReturn ? 'Update Return' : 'Return Items';
+  const useEntire = __returnEntireChk && __returnEntireChk.checked;
+  let hasSelection = false;
+  if (useEntire) {
+    hasSelection = Array.isArray(__returnReceiptData?.items) && __returnReceiptData.items.length > 0;
+  } else {
+    const wrap = document.getElementById('returnItemsList');
+    if (wrap) {
+      wrap.querySelectorAll('input[data-return-idx]').forEach(chk => {
+        if (chk.checked) hasSelection = true;
+      });
+    }
+  }
+  btn.disabled = !hasSelection;
+}
+
+function renderReturnItemsList(receipt) {
+  const wrap = document.getElementById('returnItemsList');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  if (!receipt || !Array.isArray(receipt.items) || !receipt.items.length) {
+    wrap.innerHTML = '<div class="text-muted small">No items on this receipt.</div>';
+    return;
+  }
+  const returnedByKey = {};
+  if (receipt.returned && receipt.returnInfo && Array.isArray(receipt.returnInfo.items)) {
+    receipt.returnInfo.items.forEach(it => {
+      const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+      const price = Number(it.price || 0).toFixed(2);
+      const key = [
+        String(it.name || '').trim().toLowerCase(),
+        price,
+        String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+      ].join('|');
+      returnedByKey[key] = (returnedByKey[key] || 0) + qty;
+    });
+  }
+  receipt.items.forEach((it, idx) => {
+    const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+    const price = Number(it.price || 0);
+    const key = [
+      String(it.name || '').trim().toLowerCase(),
+      price.toFixed(2),
+      String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+    ].join('|');
+    const previouslyReturned = returnedByKey[key] || 0;
+    const remainingQty = Math.max(0, qty - previouslyReturned);
+    const defaultQty = remainingQty;
+    const returnedBadge = previouslyReturned > 0
+      ? `<div class="text-success small">Returned ${previouslyReturned}${qty > 1 ? ` of ${qty}` : ''}</div>`
+      : '';
+    const label = esc(it.name || 'Item');
+    const vendor = esc(it.vendorCode || it.vendor || '');
+    const row = document.createElement('div');
+    row.className = 'return-item-row d-flex flex-wrap align-items-start justify-content-between gap-2';
+      row.innerHTML = `
+        <div class="form-check flex-grow-1">
+          <input class="form-check-input" type="checkbox" id="returnItemChk-${idx}" data-return-idx="${idx}" ${remainingQty <= 0 ? 'disabled' : ''} data-remaining="${remainingQty}">
+          <label class="form-check-label" for="returnItemChk-${idx}">
+            <div class="fw-semibold">${label}</div>
+            <div class="text-muted small d-flex flex-wrap gap-2">
+              ${vendor ? `<span>Vendor: ${vendor}</span>` : ''}
+              <span class="return-price">$${money(price)}</span>
+              ${qty > 1 ? `<span>Sold: ${qty}</span>` : ''}
+            </div>
+          </label>
+          ${returnedBadge}
+        </div>
+        <div class="d-flex flex-column align-items-end gap-1">
+          <div class="input-group input-group-sm" style="width:140px;">
+            <span class="input-group-text">Qty</span>
+            <input type="number" min="0" max="${remainingQty}" value="${defaultQty}" class="form-control" id="returnItemQty-${idx}" data-return-idx="${idx}" data-remaining="${remainingQty}" ${remainingQty <= 0 ? 'disabled' : ''}>
+          </div>
+        </div>
+    `;
+    wrap.appendChild(row);
+  });
+  updateReturnButtonState();
+}
+
+function setupReturnModal() {
+  const el = document.getElementById('returnModal');
+  if (!el || !window.bootstrap) return;
+  __returnModal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+
+  const confirmBtn = document.getElementById('returnConfirmBtn');
+  const cancelBtn = document.getElementById('returnCancelBtn');
+  const closeX = document.getElementById('returnCloseX');
+  const receiptInput = document.getElementById('returnReceiptId');
+  const reasonInput = document.getElementById('returnReasonInput');
+  const sel = document.getElementById('returnCashierSelect');
+  const hint = document.getElementById('returnModalHint');
+  const entireChk = document.getElementById('returnEntireCheckbox');
+  __returnConfirmBtn = confirmBtn;
+  __returnEntireChk = entireChk;
+
+  const finish = (val) => {
+    if (__resolveReturn) __resolveReturn(val);
+    __resolveReturn = null;
+    __returnReceiptData = null;
+    try { if (receiptInput) receiptInput.readOnly = false; } catch (_) { }
+    try { __returnModal.hide(); } catch (_) { }
+  };
+
+  const gatherReturnItems = () => {
+    if (!__returnReceiptData || !Array.isArray(__returnReceiptData.items)) return [];
+    const allItems = __returnReceiptData.items;
+    const useEntire = entireChk && entireChk.checked;
+    if (useEntire) {
+      return allItems.map(it => ({
+        name: it.name,
+        quantity: Math.max(1, parseInt(it.quantity || it.qty || 1, 10)),
+        price: Number(it.price || 0),
+        vendor: it.vendor || it.vendorCode || '',
+        comment: it.comment || ''
+      }));
+    }
+    const wrap = document.getElementById('returnItemsList');
+    if (!wrap) return [];
+    const out = [];
+    wrap.querySelectorAll('input[data-return-idx]').forEach(chk => {
+      if (!chk.checked) return;
+      const idx = Number(chk.dataset.returnIdx);
+      const src = allItems[idx];
+      if (!src) return;
+      const qtyInput = document.getElementById(`returnItemQty-${idx}`);
+      const remaining = Math.max(0, Number(qtyInput?.dataset?.remaining || src.quantity || src.qty || 0));
+      let qty = Math.max(0, Number(qtyInput?.value || remaining || 0));
+      const maxQty = Math.max(0, remaining || 0);
+      if (qty > maxQty) qty = maxQty;
+      if (qty <= 0) return;
+      out.push({
+        name: src.name,
+        quantity: qty,
+        price: Number(src.price || 0),
+        vendor: src.vendor || src.vendorCode || '',
+        comment: src.comment || ''
+      });
+    });
+    return out;
+  };
+
+  if (confirmBtn) {
+    confirmBtn.textContent = 'Return Items';
+    confirmBtn.onclick = () => {
+      const receiptId = (receiptInput?.value || '').trim();
+      if (!receiptId) {
+        alert('Enter a receipt number or ID.');
+        receiptInput?.focus();
+        return;
+      }
+      const reason = (reasonInput?.value || '').trim();
+      if (!reason) {
+        alert('Please provide a reason for the return.');
+        reasonInput?.focus();
+        return;
+      }
+      const useEntire = !!(entireChk && entireChk.checked);
+      const existingItems = (!useEntire && Array.isArray(__returnReceiptData?.returnInfo?.items))
+        ? __returnReceiptData.returnInfo.items.map(it => ({
+          name: String(it?.name || '').trim(),
+          quantity: Math.max(1, parseInt(it?.quantity || 1, 10)),
+          price: Number(it?.price || 0),
+          vendor: String(it?.vendor || '').trim(),
+          comment: String(it?.comment || '').trim()
+        }))
+        : [];
+      const opt = sel?.options[sel.selectedIndex];
+      let cashierObj = null;
+      try { cashierObj = opt?.dataset?.cashier ? JSON.parse(opt.dataset.cashier) : null; } catch (_) { }
+      const user = (cashierObj?.name || sel?.value || 'Manager').trim();
+      const items = gatherReturnItems();
+      const mergedItems = useEntire ? items : [...existingItems, ...items];
+      if (!mergedItems.length) {
+        alert('Select at least one item to return or choose entire receipt.');
+        return;
+      }
+      finish({ receiptId, reason, user, cashier: cashierObj, items: mergedItems });
+    };
+  }
+  if (cancelBtn) cancelBtn.onclick = () => finish(null);
+  if (closeX) closeX.onclick = () => finish(null);
+
+  el.addEventListener('shown.bs.modal', async () => {
+    await populateReturnCashiers();
+    if (reasonInput) reasonInput.value = '';
+    const summary = document.getElementById('returnReceiptSummary');
+    const list = document.getElementById('returnItemsList');
+    if (summary) summary.textContent = '';
+    if (list) list.innerHTML = '';
+    if (entireChk) entireChk.checked = false;
+    setTimeout(() => {
+      try {
+        if (receiptInput && !receiptInput.readOnly) {
+          receiptInput.focus();
+          receiptInput.select();
+        } else if (reasonInput) {
+          reasonInput.focus();
+        }
+      } catch (_) { }
+    }, 80);
+    if (hint) {
+      hint.textContent = hint.dataset.default || 'Enter the receipt number or ID to log a return.';
+    }
+    const idVal = (receiptInput?.value || '').trim();
+    if (idVal) {
+      try { await loadReturnReceipt(idVal); } catch (_) { }
+    }
+    updateReturnButtonState();
+  });
+
+  if (entireChk) entireChk.addEventListener('change', updateReturnButtonState);
+  const list = document.getElementById('returnItemsList');
+  if (list) {
+    list.addEventListener('change', e => {
+      const t = e.target;
+      if (t && t.matches && (t.matches('input[data-return-idx]') || t.id.startsWith('returnItemQty-'))) {
+        updateReturnButtonState();
+      }
+    });
+    list.addEventListener('input', e => {
+      const t = e.target;
+      if (t && t.matches && (t.matches('input[data-return-idx]') || t.id.startsWith('returnItemQty-'))) {
+        updateReturnButtonState();
+      }
+    });
+  }
+}
+
+async function askReturnInfo(opts = {}) {
+  if (!__returnModal) setupReturnModal();
+  if (!__returnModal) return Promise.resolve(null);
+
+  const receiptInput = document.getElementById('returnReceiptId');
+  const hint = document.getElementById('returnModalHint');
+  const summary = document.getElementById('returnReceiptSummary');
+  const list = document.getElementById('returnItemsList');
+  const entireChk = document.getElementById('returnEntireCheckbox');
+  if (receiptInput) {
+    receiptInput.value = opts.receiptId || '';
+    receiptInput.readOnly = !!opts.readOnly;
+  }
+  if (hint) {
+    hint.dataset.default = hint.dataset.default || (hint.textContent || '');
+    hint.textContent = opts.hint || hint.dataset.default || 'Enter the receipt number or ID to log a return.';
+  }
+  if (summary) summary.textContent = '';
+  if (list) list.innerHTML = '';
+  if (entireChk) entireChk.checked = false;
+  updateReturnButtonState();
+
+  if (opts.receiptId) {
+    try { await loadReturnReceipt(opts.receiptId); } catch (_) { }
+  }
+
+  return new Promise(res => {
+    __resolveReturn = res;
+    __returnModal.show();
+  });
+}
+
 // ---------- Inline button action handler ----------
 window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
   try {
@@ -576,6 +1035,56 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
         const resp = await ipcRenderer.invoke('receipts:void', { id, reason, user, userObj: cashier });
         if (!resp) return alert(`Unable to void receipt. ID sent: ${id}`);
         await loadAll(); applyFilters();
+      }
+      return;
+    }
+
+    if (action === 'return') {
+      const btn = e.currentTarget || e.target;
+      const infoGetter = (typeof window.__askReturnInfoOverride === 'function') ? window.__askReturnInfoOverride : askReturnInfo;
+      const info = await infoGetter({ receiptId: id, readOnly: true, hint: `Returning ${id}` });
+      if (info === null) return;
+      const { receiptId, reason, user, cashier, items } = info;
+      const resolvedId = String(receiptId || id || '').trim();
+      if (!resolvedId) {
+        alert('Receipt id missing for return.');
+        return;
+      }
+
+      const makeCall = async () => {
+        const payload = { id: resolvedId, reason, user, userObj: cashier };
+        if (Array.isArray(items) && items.length) payload.items = items;
+        if (typeof window.__onReturnTestHook === 'function') {
+          try { window.__onReturnTestHook(payload); } catch (_) { }
+        }
+        const resp = await ipcRenderer.invoke('receipts:return', payload);
+        if (!resp) {
+          alert(`Unable to return receipt. ID sent: ${receiptId}`);
+          return false;
+        }
+        await loadAll();
+        applyFilters();
+        return true;
+      };
+
+      if (btn && btn.tagName === 'BUTTON') {
+        btn.disabled = true;
+        const prev = btn.textContent;
+        btn.textContent = 'Returning…';
+        try {
+          await makeCall();
+        } catch (err) {
+          alert('Error returning receipt: ' + (err?.message || err));
+        } finally {
+          btn.disabled = false;
+          btn.textContent = prev;
+        }
+      } else {
+        try {
+          await makeCall();
+        } catch (err) {
+          alert('Error returning receipt: ' + (err?.message || err));
+        }
       }
       return;
     }
@@ -711,6 +1220,7 @@ window.addEventListener('load', async () => {
 
   // Initialize the modal-based void prompt
   setupVoidModal();
+  setupReturnModal();
 });
 
 // --- Override: view/print window as full-page Sales Invoice ---
@@ -760,6 +1270,8 @@ async function openReceiptWindow(r, opts = {}) {
     .meta .label{color:var(--muted)}
     .void-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
     .void-watermark span{transform:rotate(-25deg);font-size:120px;font-weight:900;color:rgba(220,53,69,.14);}
+    .return-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+    .return-watermark span{transform:rotate(-25deg);font-size:120px;font-weight:900;color:rgba(16,185,129,.14);}
 
     table{width:100%;border-collapse:collapse;margin-top:16px}
     thead th{font-size:12px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);padding:10px 8px;text-align:left}
@@ -796,30 +1308,108 @@ async function openReceiptWindow(r, opts = {}) {
   </style>`;
 
   const vendorTotals = {};
-  const rows = (r.items || []).map((it, idx) => {
-    const { finalPrice, original, discountAmount, reason, type, value } = deriveDiscount(it);
-    const hasDiscount = discountAmount > 0;
-    const discountSuffix = hasDiscount ? buildDiscountSuffix(type, value, discountAmount, reason, esc) : '';
-    const code = resolveCode(it);
-    const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
-    const unit = finalPrice;
-    const amount = qty * unit;
-    if (code) vendorTotals[code] = (vendorTotals[code] || 0) + amount;
-    return `
+  const returnQtyByKey = {};
+  let returnSubtotal = 0;
+  if (r.returned && r.returnInfo && Array.isArray(r.returnInfo.items)) {
+    r.returnInfo.items.forEach(it => {
+      const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+      const price = toMoneyNumber(it.price || 0);
+      const amount = qty * price;
+      returnSubtotal += amount;
+      const key = [
+        String(it.name || '').trim().toLowerCase(),
+        price.toFixed(2),
+        String(it.vendor || it.vendorCode || '').trim().toLowerCase()
+      ].join('|');
+      returnQtyByKey[key] = (returnQtyByKey[key] || 0) + qty;
+    });
+  }
+  const taxRate = Number(r.taxRate || 0);
+  const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
+  const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
+  const netTotal = toMoneyNumber((r.total || 0) - returnTotal);
+
+  const rows = (() => {
+    const out = [];
+    (r.items || []).forEach((it, idx) => {
+      const { finalPrice, original, discountAmount, reason, type, value } = deriveDiscount(it);
+      const hasDiscount = discountAmount > 0;
+      const discountSuffix = hasDiscount ? buildDiscountSuffix(type, value, discountAmount, reason, esc) : '';
+      const code = resolveCode(it);
+      const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+      const unit = finalPrice;
+      const key = [
+        String(it.name || '').trim().toLowerCase(),
+        unit.toFixed(2),
+        String(code || it.vendor || '').trim().toLowerCase()
+      ].join('|');
+      const returnedQty = returnQtyByKey[key] || 0;
+      const remainingQty = Math.max(0, qty - returnedQty);
+      const returnedTotal = toMoneyNumber(unit * returnedQty);
+      const remainingTotal = toMoneyNumber(unit * remainingQty);
+      const vendorContribution = toMoneyNumber(unit * qty);
+      const vendorReturnDeduction = toMoneyNumber(unit * returnedQty);
+      if (code) vendorTotals[code] = toMoneyNumber((vendorTotals[code] || 0) + vendorContribution - vendorReturnDeduction);
+      const fullyReturned = returnedQty >= qty && returnedQty > 0;
+      const partiallyReturned = returnedQty > 0 && returnedQty < qty;
+      const returnedNote = (fullyReturned || partiallyReturned) && r.returnInfo
+        ? `<div class="vendor" style="color:#16a34a;">Returned ${returnedQty}${qty > 1 ? ` of ${qty}` : ''}${r.returnInfo.when ? ` on ${new Date(r.returnInfo.when).toLocaleDateString()}` : ''}${r.returnInfo.user ? ` by ${esc(r.returnInfo.user)}` : ''}</div>`
+        : '';
+      const discountBlock = `
+          ${it.comment ? `<div class="vendor">${esc(it.comment)}</div>` : ''}
+          ${code ? `<div class="vendor">Vendor: ${esc(code)}</div>` : ''}
+          ${hasDiscount ? `<div class="vendor" style="text-decoration:line-through;">Original: $${money(original)}</div>` : ''}
+          ${hasDiscount ? `<div class="vendor" style="color:#dc3545;">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}`;
+
+      if (returnedQty > 0) {
+        out.push(`
+      <tr class="returned-line">
+        <td class="num">${idx + 1}</td>
+        <td>
+          <div class="desc" style="text-decoration:line-through;">${esc(it.name)}</div>
+          ${discountBlock}
+          <div class="vendor" style="text-decoration:line-through;">Returned ${returnedQty} @ $${money(unit)} = $${money(returnedTotal)}</div>
+          ${returnedNote}
+        </td>
+        <td class="num" style="text-decoration:line-through;">${returnedQty}</td>
+        <td class="num" style="text-decoration:line-through;">$${money(unit)}</td>
+        <td class="num" style="text-decoration:line-through;">-$${money(returnedTotal)}</td>
+      </tr>`);
+      }
+
+      if (remainingQty > 0) {
+        out.push(`
       <tr>
         <td class="num">${idx + 1}</td>
         <td>
           <div class="desc">${esc(it.name)}</div>
-          ${it.comment ? `<div class="vendor">${esc(it.comment)}</div>` : ''}
-          ${code ? `<div class="vendor">Vendor: ${esc(code)}</div>` : ''}
-          ${hasDiscount ? `<div class="vendor" style="text-decoration:line-through;">Original: $${money(original)}</div>` : ''}
-          ${hasDiscount ? `<div class="vendor" style="color:#dc3545;">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}
+          ${discountBlock}
+          ${qty > 1 ? `<div class="vendor">${remainingQty} @ $${money(unit)} = $${money(remainingTotal)}</div>` : ''}
+        </td>
+        <td class="num">${remainingQty}</td>
+        <td class="num">$${money(unit)}</td>
+        <td class="num">$${money(remainingTotal)}</td>
+      </tr>`);
+      }
+
+      if (returnedQty === 0 && remainingQty === 0) {
+        const amount = qty * unit;
+        out.push(`
+      <tr>
+        <td class="num">${idx + 1}</td>
+        <td>
+          <div class="desc">${esc(it.name)}</div>
+          ${discountBlock}
+          ${qty > 1 ? `<div class="vendor">Qty ${qty} @ $${money(unit)} = $${money(amount)}</div>` : ''}
         </td>
         <td class="num">${qty}</td>
         <td class="num">$${money(unit)}</td>
         <td class="num">$${money(amount)}</td>
-      </tr>`;
-  }).join('');
+      </tr>`);
+      }
+    });
+    return out.join('');
+  })();
 
   const codes = Object.keys(vendorTotals).sort();
   const vendorBlock = codes.length
@@ -828,7 +1418,7 @@ async function openReceiptWindow(r, opts = {}) {
         <h4>Vendor Subtotals</h4>
         <table>
           <tbody>
-            ${codes.map(c => `<tr><td class="vendor">• ${esc(c)}</td><td class="num">$${money(vendorTotals[c])}</td></tr>`).join('')}
+            ${codes.map(c => `<tr><td class="vendor">- ${esc(c)}</td><td class="num">$${money(vendorTotals[c])}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>`
@@ -843,6 +1433,17 @@ async function openReceiptWindow(r, opts = {}) {
         ${r.voidInfo?.when ? ` <span class="label">on ${new Date(r.voidInfo.when).toLocaleString()}</span>` : ''}
         </div>`
     : '';
+
+  const returnWatermark = (r.returned && !r.voided) ? `<div class="return-watermark"><span>RETURN</span></div>` : '';
+  const returnInline = r.returned
+    ? `
+        <div class="label">Returned</div>
+        <div><strong>${esc(r.returnInfo?.reason || 'Return recorded')}</strong>
+        ${r.returnInfo?.user ? ` - <span class="label">by ${esc(r.returnInfo.user)}</span>` : ''}
+        ${r.returnInfo?.when ? ` <span class="label">on ${new Date(r.returnInfo.when).toLocaleString()}</span>` : ''}
+        </div>`
+    : '';
+
 
   const displayDate = r.displayDate || (r.datetime ? new Date(r.datetime).toLocaleString() : '');
   const html = `
@@ -886,6 +1487,7 @@ async function openReceiptWindow(r, opts = {}) {
       <div class="sheet">
         <img class="bgmark" src="assets/MiddletonsStoreFrontLogoBW.png" alt="">
         ${voidWatermark}
+        ${returnWatermark}
         <div class="header">
           <div class="brand-wrap">
             <img src="assets/MiddletonsStoreFrontLogoBW.png" alt="Logo" width="96" height="96" style="border-radius:12px" />
@@ -903,6 +1505,7 @@ async function openReceiptWindow(r, opts = {}) {
           <div><div class="label">Cashier</div><div><strong>${esc(r.cashier || '-')}</strong></div></div>
           <div><div class="label">Payment</div><div><strong>${esc(r.payment || '-')}</strong></div></div>
           ${voidInline}
+          ${returnInline}
         </div>
 
         <table>
@@ -924,9 +1527,14 @@ async function openReceiptWindow(r, opts = {}) {
 
         <div class="totals">
           <div class="label">Subtotal</div><div class="val">$${money(r.subtotal)}</div>
-              <div class="label">${r.taxExempt ? 'Tax (Exempt)' : `Tax (${(Number(r.taxRate || 0) * 100).toFixed(2)}%)`}</div><div class="val">$${money(r.tax)}</div>
-              <div class="label grand">Total</div><div class="val grand">$${money(r.total)}</div>
-            </div>
+          <div class="label">${r.taxExempt ? 'Tax (Exempt)' : `Tax (${(Number(r.taxRate || 0) * 100).toFixed(2)}%)`}</div><div class="val">$${money(r.tax)}</div>
+          <div class="label grand">Total</div><div class="val grand">$${money(r.total)}</div>
+          ${r.returned && returnTotal > 0 ? `
+          <div class="label">Return Subtotal</div><div class="val">-$${money(returnSubtotal)}</div>
+          <div class="label">Return Tax</div><div class="val">-$${money(returnTax)}</div>
+          <div class="label grand">Return Total</div><div class="val grand">-$${money(returnTotal)}</div>
+          <div class="label grand">Net Total</div><div class="val grand">$${money(netTotal)}</div>` : ''}
+        </div>
             ${r.taxExempt ? `<div class="notes"><strong>Tax Exempt</strong>: ${esc(r.taxExemptName || '')} — ID: ${esc(r.taxExemptId || '')}</div>` : ''}
 
         <div class="notes">
