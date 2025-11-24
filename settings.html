@@ -91,11 +91,62 @@
           </div>
         </div>
       </div>
+      <div class="col-12 col-lg-6" id="brandingCard" style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Branding</h5>
+            <div class="mb-3">
+              <label for="bizName" class="form-label">Business Name</label>
+              <input type="text" id="bizName" class="form-control" placeholder="Your business name">
+            </div>
+            <div class="mb-3">
+              <label for="bizAddress" class="form-label">Street Address</label>
+              <input type="text" id="bizAddress" class="form-control" placeholder="Street, City, State ZIP">
+            </div>
+            <div class="mb-3">
+              <label for="bizPhone" class="form-label">Phone</label>
+              <input type="text" id="bizPhone" class="form-control" placeholder="(555) 555-5555">
+            </div>
+            <div class="mb-3">
+              <label for="logoInput" class="form-label">Logo for Receipts and Reports</label>
+              <input type="file" id="logoInput" class="form-control" accept="image/*">
+              <div class="form-text">If omitted, the built-in Middleton's logo is used.</div>
+              <div class="mt-2 d-flex align-items-center gap-2">
+                <div class="small text-muted">Current logo:</div>
+                <img id="logoPreview" src="" alt="Current logo preview" style="max-height:40px;border-radius:6px;display:none;">
+              </div>
+            </div>
+            <div class="d-grid d-md-flex justify-content-md-end">
+              <button id="saveBrandingBtn" class="btn btn-primary">Save Branding</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="text-muted small mt-4 text-center">
       App Version: <span id="appVersion">v</span>
     </div>
   </main>
+
+  <!-- Developer password modal -->
+  <div class="modal fade" id="devPwdModal" tabindex="-1" aria-labelledby="devPwdLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="devPwdLabel">Developer Mode</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <label for="devPwdInput" class="form-label">Enter developer password to enable Developer Mode</label>
+          <input type="password" class="form-control" id="devPwdInput" autocomplete="off" />
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="devPwdConfirm">Enable</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="settings.js"></script>
 </body>

@@ -17,6 +17,38 @@ let __allowNavigation = false;
 let __lastTotal = 0;
 let __suppressRefocusUntil = 0;
 let __qtyPickerOpen = false;
+// Branding (business name/address/phone/logo) applied across POS and receipts
+let __branding = {
+  bizName: "Middleton's Antiques & Uniques",
+  bizAddress: '1615 S 17th St, Lincoln, NE 68502',
+  bizPhone: '531-500-0135',
+  logoPath: ''
+};
+function __getBrandingName() {
+  return String(__branding?.bizName || "Middleton's Antiques & Uniques");
+}
+function __getBrandingAddressLine() {
+  const addr = String(__branding?.bizAddress || '').trim();
+  const phone = String(__branding?.bizPhone || '').trim();
+  if (addr && phone) return `${addr} · ${phone}`;
+  return addr || phone || '';
+}
+function __getBrandingLogoSrc(defaultPath) {
+  const src = String(__branding?.logoPath || '').trim();
+  return src || defaultPath;
+}
+function __applyBrandingToDocument() {
+  try {
+    const name = __getBrandingName();
+    const addrLine = __getBrandingAddressLine();
+    const navBrand = document.querySelector('.navbar-brand');
+    if (navBrand) navBrand.textContent = name;
+    const rcptBrand = document.querySelector('#print-root .brand');
+    if (rcptBrand) rcptBrand.textContent = name;
+    const addrEl = document.getElementById('rcpt-address');
+    if (addrEl) addrEl.textContent = addrLine || '';
+  } catch (_) { }
+}
 
 // Multi-sale tabs: per-cart state manager
 let __carts = new Map(); // id -> state
@@ -1449,6 +1481,10 @@ async function printReceipt() {
       </tr>`;
   }).join('');
 
+  const brandingName = __getBrandingName();
+  const brandingAddr = __getBrandingAddressLine();
+  const logoSrc = __getBrandingLogoSrc('assets/MiddletonsStoreFrontLogoBW.png');
+
   const html = `
     <html>
       <head>
@@ -1527,6 +1563,23 @@ async function printReceipt() {
       </body>
     </html>`;
 
+  // Apply dynamic branding (logo/name/address) into the HTML used for
+  // both silent printing and preview windows.
+  let brandedHtml = html;
+  try {
+    const safeName = escapeHtml(brandingName);
+    const safeAddr = escapeHtml(brandingAddr);
+    if (logoSrc) {
+      brandedHtml = brandedHtml.replace(/assets\/MiddletonsStoreFrontLogoBW\.png/g, logoSrc);
+    }
+    if (safeName) {
+      brandedHtml = brandedHtml.replace("Middleton's Antiques &amp; Uniques", safeName);
+    }
+    if (safeAddr) {
+      brandedHtml = brandedHtml.replace('1615 S 17th St, Lincoln, NE A� 531-500-0135', safeAddr);
+    }
+  } catch (_) { }
+
   // If back-dated, do not print; just reset POS state
   try {
     if (isBackdated) {
@@ -1567,7 +1620,7 @@ async function printReceipt() {
 
       let proceeded = false;
       const removeAlert = () => { try { alertEl.remove(); } catch (_) { } };
-      const proceedOnce = () => { if (proceeded) return; proceeded = true; try { removeAlert(); } catch (_) { }; try { completePrintWithHtml(html, { shouldPrint: wantsReceipt }); } catch (_) { } };
+      const proceedOnce = () => { if (proceeded) return; proceeded = true; try { removeAlert(); } catch (_) { }; try { completePrintWithHtml(brandedHtml, { shouldPrint: wantsReceipt }); } catch (_) { } };
       try { alertEl.addEventListener('closed.bs.alert', proceedOnce, { once: true }); } catch (_) { }
       const closeBtn = alertEl.querySelector('.btn-close');
       if (closeBtn) closeBtn.addEventListener('click', () => setTimeout(proceedOnce, 0), { once: true });
@@ -1582,7 +1635,7 @@ async function printReceipt() {
     }
   } catch (_) { }
 
-  completePrintWithHtml(html, { shouldPrint: wantsReceipt });
+  completePrintWithHtml(brandedHtml, { shouldPrint: wantsReceipt });
 }
 
 function resetAfterSale() {
@@ -1893,7 +1946,18 @@ window.addEventListener('load', async () => {
       sessionStorage.setItem(__SESSION_KEY, __sessionId);
     }
   } catch (_) { __sessionId = `S-${Date.now()}-${Math.floor(Math.random() * 100000)}`; }
-  try { const s = await ipcRenderer.invoke('settings:load'); const tr = Number(s?.taxRate); if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr; __silentPrint = !!s?.silentPrint; } catch (_) { }
+  try {
+    const s = await ipcRenderer.invoke('settings:load');
+    const tr = Number(s?.taxRate);
+    if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr;
+    __silentPrint = !!s?.silentPrint;
+    __branding = {
+      bizName: String(s?.bizName || __branding.bizName),
+      bizAddress: String(s?.bizAddress || __branding.bizAddress),
+      bizPhone: String(s?.bizPhone || __branding.bizPhone),
+      logoPath: String(s?.logoPath || '')
+    };
+  } catch (_) { }
   await loadCashiersIntoSelect();
   preparePaymentSelect();
   setupEntryDiscountControls();
@@ -1909,6 +1973,7 @@ window.addEventListener('load', async () => {
   try { setupPosReturnModal(); } catch (_) { }
   renderTable();
   updateTaxRateLabel();
+  try { __applyBrandingToDocument(); } catch (_) { }
   installNavigationGuards();
   // Clean up any stray overlays after startup
   try { cleanupStrayBackdrops(); } catch (_) { }
@@ -2161,6 +2226,17 @@ try {
     const tr = Number(payload?.taxRate);
     if (!isNaN(tr) && tr >= 0 && tr <= 1) { TAX_RATE = tr; renderTable(); updateTaxRateLabel(); }
     if (typeof payload?.silentPrint === 'boolean') { __silentPrint = !!payload.silentPrint; }
+    try {
+      if (payload) {
+        __branding = {
+          bizName: String(payload.bizName || __branding.bizName),
+          bizAddress: String(payload.bizAddress || __branding.bizAddress),
+          bizPhone: String(payload.bizPhone || __branding.bizPhone),
+          logoPath: String(payload.logoPath || __branding.logoPath || '')
+        };
+        __applyBrandingToDocument();
+      }
+    } catch (_) { }
     // After settings changes, clear any leftover overlays that might capture input
     try { setTimeout(() => cleanupStrayBackdrops(), 0); } catch (_) { }
   });

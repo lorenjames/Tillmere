@@ -6,6 +6,53 @@ let filtered = [];
 let currentPage = 1;
 let pageSize = 10;
 let selectedVendorKey = '';
+// Branding for receipts/reports views (name/address/phone/logo)
+let branding = {
+  bizName: "Middleton's Antiques & Uniques",
+  bizAddress: '1615 S 17th St, Lincoln, NE 68502',
+  bizPhone: '531-500-0135',
+  logoPath: ''
+};
+function getBrandingName() {
+  return String(branding?.bizName || "Middleton's Antiques & Uniques");
+}
+function getBrandingAddressLine() {
+  const addr = String(branding?.bizAddress || '').trim();
+  const phone = String(branding?.bizPhone || '').trim();
+  if (addr && phone) return `${addr} · ${phone}`;
+  return addr || phone || '';
+}
+function getBrandingLogoSrc(defaultPath) {
+  const src = String(branding?.logoPath || '').trim();
+  return src || defaultPath;
+}
+function applyBrandingToReceiptsPage() {
+  try {
+    const name = getBrandingName();
+    const navBrand = document.querySelector('.navbar-brand');
+    if (navBrand) navBrand.textContent = name;
+  } catch (_) { }
+}
+function applyBrandingToReceiptWindow(win) {
+  try {
+    if (!win || !win.document) return;
+    const name = getBrandingName();
+    const addrLine = getBrandingAddressLine();
+    const logoSrc = getBrandingLogoSrc('assets/MiddletonsStoreFrontLogoBW.png');
+    try {
+      const brandEl = win.document.querySelector('.brand-wrap .brand');
+      if (brandEl) brandEl.textContent = name;
+    } catch (_) { }
+    try {
+      const addrEl = win.document.querySelector('.brand-wrap .addr');
+      if (addrEl) addrEl.textContent = addrLine || '';
+    } catch (_) { }
+    try {
+      const imgs = win.document.querySelectorAll('img.bgmark, .brand-wrap img[alt="Logo"]');
+      imgs.forEach(img => { try { img.src = logoSrc; } catch (_) { } });
+    } catch (_) { }
+  } catch (_) { }
+}
 
 // Basic DOM/query helpers shared across this module.
 const $ = sel => document.querySelector(sel);
@@ -543,6 +590,7 @@ async function openReceiptWindowCompact(r, opts = {}) {
 
   const w = window.open('', '', 'width=420,height=700');
   w.document.write(html);
+  try { applyBrandingToReceiptWindow(w); } catch (_) { }
   w.document.close();
   return w;
 }
@@ -1208,6 +1256,13 @@ window.addEventListener('load', async () => {
   try {
     const s = await ipcRenderer.invoke('settings:load');
     const dev = !!s?.developerMode;
+    branding = {
+      bizName: String(s?.bizName || branding.bizName),
+      bizAddress: String(s?.bizAddress || branding.bizAddress),
+      bizPhone: String(s?.bizPhone || branding.bizPhone),
+      logoPath: String(s?.logoPath || '')
+    };
+    applyBrandingToReceiptsPage();
     const btn = document.getElementById('reindexBtn');
     if (btn) btn.style.display = dev ? '' : 'none';
   } catch (_) { }
@@ -1217,6 +1272,15 @@ window.addEventListener('load', async () => {
       const dev = !!payload?.developerMode;
       const btn = document.getElementById('reindexBtn');
       if (btn) btn.style.display = dev ? '' : 'none';
+      try {
+        branding = {
+          bizName: String(payload?.bizName || branding.bizName),
+          bizAddress: String(payload?.bizAddress || branding.bizAddress),
+          bizPhone: String(payload?.bizPhone || branding.bizPhone),
+          logoPath: String(payload?.logoPath || branding.logoPath || '')
+        };
+        applyBrandingToReceiptsPage();
+      } catch (_) { }
     });
   } catch (_) { }
 
@@ -1636,6 +1700,7 @@ async function openReceiptWindow(r, opts = {}) {
       nodes.forEach(n => n.textContent = txt);
     };
     setAddr();
+    applyBrandingToReceiptWindow(w);
   } catch (_) { }
   w.document.close();
   return w;

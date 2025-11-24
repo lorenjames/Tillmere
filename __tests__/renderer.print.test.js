@@ -96,5 +96,28 @@ describe('printReceipt validations and save', () => {
       items: expect.any(Array)
     }));
   });
-});
 
+  test('falls back to preview when silent print fails', async () => {
+    const { printReceipt } = require('../renderer.js');
+    ipcRenderer.invoke.mockImplementation(async (channel) => {
+      if (channel === 'vendors:load') return [{ name: 'Vendor A', code: 'V1' }];
+      if (channel === 'cashiers:load') return [{ name: 'Cashier' }];
+      if (channel === 'print:silent') return false;
+      if (channel === 'receipts:add') return true;
+      if (channel === 'settings:load') return { taxRate: 0.0725, silentPrint: true };
+      return undefined;
+    });
+    const openSpy = jest.spyOn(window, 'open').mockReturnValue({ document: { write: jest.fn(), close: jest.fn() } });
+    // add an item to allow print
+    document.getElementById('itemName').value = 'Lamp';
+    document.getElementById('itemPrice').value = '10';
+    document.getElementById('itemQty').value = '1';
+    document.getElementById('itemVendor').value = 'V1';
+    await addItem();
+    document.getElementById('cashierSelect').value = 'Cashier';
+    document.getElementById('paymentSelect').value = 'Card';
+    await printReceipt();
+    expect(openSpy).toHaveBeenCalled();
+    openSpy.mockRestore();
+  });
+});

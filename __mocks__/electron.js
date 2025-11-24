@@ -1,4 +1,5 @@
 const listeners = new Map();
+const handlers = new Map();
 
 const ipcRenderer = {
   invoke: jest.fn(async (channel, ...args) => {
@@ -29,8 +30,11 @@ const app = {
 };
 
 const BrowserWindow = function () { return {}; };
-const ipcMain = { handle: jest.fn() };
+BrowserWindow.getAllWindows = jest.fn(() => []);
+const ipcMain = {
+  handle: jest.fn((channel, fn) => { handlers.set(channel, fn); })
+};
+ipcMain.__handlers = handlers;
 const dialog = { showSaveDialog: jest.fn(), showOpenDialog: jest.fn() };
 
 module.exports = { ipcRenderer, app, BrowserWindow, ipcMain, dialog };
-

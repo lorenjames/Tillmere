@@ -11,6 +11,8 @@ const VENDOR_FILE = path.join(userDir, 'vendors.json');
 const CASHIER_FILE = path.join(userDir, 'cashiers.json');
 const RECEIPTS_FILE = path.join(userDir, 'receipts.json');
 const SETTINGS_FILE = path.join(userDir, 'settings.json');
+const APP_CONFIG_FILE = path.join(__dirname, 'config', 'app-config.json');
+const BRANDING_DIR = path.join(userDir, 'branding');
 
 function readJson(file, fallback) {
     try {
@@ -35,10 +37,28 @@ function writeJson(file, data) {
 }
 
 function readSettings() {
-    const def = { taxRate: 0.0725, developerMode: false, backupDir: '', silentPrint: true, printerName: '' };
+    const def = {
+        taxRate: 0.0725,
+        developerMode: false,
+        backupDir: '',
+        silentPrint: true,
+        printerName: '',
+        // Branding defaults (match existing hard-coded UI)
+        bizName: "Middleton's Antiques & Uniques",
+        bizAddress: '1615 S 17th St, Lincoln, NE 68502',
+        bizPhone: '531-500-0135',
+        logoPath: ''
+    };
     try {
         const cur = readJson(SETTINGS_FILE, def);
         // Ensure defaults for missing keys without dropping extras
+        return { ...def, ...(cur || {}) };
+    } catch (_) { return def; }
+}
+function readAppConfig() {
+    const def = { developerPassword: 'middleton' };
+    try {
+        const cur = readJson(APP_CONFIG_FILE, def);
         return { ...def, ...(cur || {}) };
     } catch (_) { return def; }
 }
@@ -238,6 +258,43 @@ ipcMain.handle('settings:save', (_evt, incoming) => {
     return saved;
 });
 
+// Save business branding (name/address/phone) and optional logo file
+ipcMain.handle('settings:saveBranding', async (_evt, incoming) => {
+    const current = readSettings();
+
+    let logoPath = String(current.logoPath || '').trim();
+    try {
+        const rawPath = String(incoming?.logoFilePath || '').trim();
+        if (rawPath) {
+            const src = rawPath;
+            try { fs.mkdirSync(BRANDING_DIR, { recursive: true }); } catch (_) { }
+            const ext = path.extname(src) || '.png';
+            const destFsPath = path.join(BRANDING_DIR, `logo${ext.toLowerCase()}`);
+            fs.copyFileSync(src, destFsPath);
+            const fileUrl = encodeURI('file://' + destFsPath.replace(/\\/g, '/'));
+            logoPath = fileUrl;
+        }
+    } catch (e) {
+        console.error('Failed to copy branding logo', e);
+    }
+
+    const safe = {
+        bizName: String(incoming?.bizName ?? current.bizName ?? '').trim(),
+        bizAddress: String(incoming?.bizAddress ?? current.bizAddress ?? '').trim(),
+        bizPhone: String(incoming?.bizPhone ?? current.bizPhone ?? '').trim(),
+        logoPath
+    };
+
+    const saved = saveSettings(safe);
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
 // Save only tax rate
 ipcMain.handle('settings:saveTax', (_evt, incoming) => {
     const current = readSettings();
@@ -257,14 +314,25 @@ ipcMain.handle('settings:saveTax', (_evt, incoming) => {
 
 // Save only developer mode
 ipcMain.handle('settings:saveDev', (_evt, incoming) => {
-    const current = readSettings();
-    const safe = {
-        taxRate: Math.max(0, Math.min(1, Number(current?.taxRate ?? 0.0725))),
-        developerMode: !!incoming?.developerMode
-    };
-    const saved = saveSettings(safe);
-    try {
-        const { BrowserWindow } = require('electron');
+      const config = readAppConfig();
+      const desired = !!incoming?.developerMode;
+      if (desired) {
+          const attempt = String(incoming?.password || '');
+          const expected = String(config?.developerPassword || '');
+          if (!attempt || attempt !== expected) {
+              const err = new Error('Invalid developer password');
+              err.code = 'INVALID_DEV_PASSWORD';
+              throw err;
+          }
+      }
+      const current = readSettings();
+      const safe = {
+          taxRate: Math.max(0, Math.min(1, Number(current?.taxRate ?? 0.0725))),
+          developerMode: desired
+      };
+      const saved = saveSettings(safe);
+      try {
+          const { BrowserWindow } = require('electron');
         BrowserWindow.getAllWindows().forEach(w => {
             try { w.webContents.send('settings:changed', saved); } catch (_) { }
         });

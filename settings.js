@@ -4,6 +4,59 @@ const { ipcRenderer } = require('electron');
 function toPct(val) { return (Number(val || 0) * 100).toFixed(2); }
 function fromPct(pct) { return Number(pct || 0) / 100; }
 
+function toBool(val) {
+  if (typeof val === 'string') {
+    const v = val.trim().toLowerCase();
+    if (['false', '0', 'no', 'off', 'disabled'].includes(v)) return false;
+    return v === 'true' || v === '1' || v === 'yes' || v === 'on' || v === 'enabled';
+  }
+  return Boolean(val);
+}
+
+function setBrandingVisibility(isDev) {
+  try {
+    const card = document.getElementById('brandingCard');
+    if (card) card.style.display = isDev ? '' : 'none';
+  } catch (_) { }
+}
+
+async function requestDevPassword() {
+  try {
+    const modalEl = document.getElementById('devPwdModal');
+    const input = document.getElementById('devPwdInput');
+    const confirmBtn = document.getElementById('devPwdConfirm');
+    if (modalEl && input && confirmBtn && typeof bootstrap !== 'undefined' && bootstrap?.Modal) {
+      input.value = '';
+      let resolved = false;
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      return await new Promise((resolve) => {
+        const cleanup = () => {
+          confirmBtn.removeEventListener('click', onConfirm);
+          modalEl.removeEventListener('hidden.bs.modal', onHidden);
+        };
+        const onConfirm = () => {
+          resolved = true;
+          cleanup();
+          modal.hide();
+          resolve(input.value || '');
+        };
+        const onHidden = () => {
+          if (!resolved) {
+            cleanup();
+            resolve('');
+          }
+        };
+        confirmBtn.addEventListener('click', onConfirm);
+        modalEl.addEventListener('hidden.bs.modal', onHidden, { once: true });
+        modal.show();
+        setTimeout(() => { try { input.focus(); } catch (_) {} }, 75);
+      });
+    }
+  } catch (_) { }
+  const attempt = window.prompt('Enter developer mode password:');
+  return attempt || '';
+}
+
 function showToast(message, opts = {}) {
   try {
     const hostId = 'toast-host';
@@ -42,12 +95,43 @@ async function loadSettings() {
     const s = await ipcRenderer.invoke('settings:load');
     const rate = Number(s?.taxRate ?? 0.0725);
     document.getElementById('taxRatePct').value = toPct(rate);
-    const dev = Boolean(s?.developerMode);
+    const dev = toBool(s?.developerMode);
     const devEl = document.getElementById('devMode');
     if (devEl) devEl.checked = dev;
+    setBrandingVisibility(dev);
     const sp = Boolean(s?.silentPrint);
     const spEl = document.getElementById('silentPrint');
     if (spEl) spEl.checked = sp;
+    // Branding fields
+    try {
+      const navBrand = document.querySelector('.navbar-brand');
+      if (navBrand && s?.bizName) navBrand.textContent = String(s.bizName);
+    } catch (_) { }
+    try {
+      const nameEl = document.getElementById('bizName');
+      if (nameEl) nameEl.value = String(s?.bizName || '');
+    } catch (_) { }
+    try {
+      const addrEl = document.getElementById('bizAddress');
+      if (addrEl) addrEl.value = String(s?.bizAddress || '');
+    } catch (_) { }
+    try {
+      const phoneEl = document.getElementById('bizPhone');
+      if (phoneEl) phoneEl.value = String(s?.bizPhone || '');
+    } catch (_) { }
+    try {
+      const logoPrev = document.getElementById('logoPreview');
+      const src = String(s?.logoPath || '').trim();
+      if (logoPrev) {
+        if (src) {
+          logoPrev.src = src;
+          logoPrev.style.display = '';
+        } else {
+          logoPrev.removeAttribute('src');
+          logoPrev.style.display = 'none';
+        }
+      }
+    } catch (_) { }
 
     // Populate printers
     try {
@@ -88,9 +172,29 @@ async function saveTaxSettings() {
 async function saveDevSettings() {
   try {
     const developerMode = !!document.getElementById('devMode')?.checked;
-    const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode });
-    showToast('Saved. Developer Mode: ' + (saved.developerMode ? 'On' : 'Off'), { type: 'success' });
-  } catch (e) { showToast('Failed to save developer mode: ' + (e?.message || e), { type: 'error' }); }
+    let password = '';
+    if (developerMode) {
+      password = await requestDevPassword();
+      if (!password) {
+        document.getElementById('devMode').checked = false;
+        setBrandingVisibility(false);
+        showToast('Developer mode not enabled (no password entered).', { type: 'error' });
+        return;
+      }
+    }
+    const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode, password });
+    const devSaved = toBool(saved?.developerMode);
+    document.getElementById('devMode').checked = devSaved;
+    setBrandingVisibility(devSaved);
+    showToast('Saved. Developer Mode: ' + (devSaved ? 'On' : 'Off'), { type: 'success' });
+  } catch (e) {
+    document.getElementById('devMode').checked = false;
+    setBrandingVisibility(false);
+    const msg = (e && (e.code === 'INVALID_DEV_PASSWORD' || String(e.message || '').toLowerCase().includes('invalid developer password')))
+      ? 'Invalid Password Entered.'
+      : 'Failed to save developer mode: ' + (e?.message || e);
+    showToast(msg, { type: 'error' });
+  }
 }
 
 async function savePrintSettings() {
@@ -102,10 +206,52 @@ async function savePrintSettings() {
   } catch (e) { showToast('Failed to save printing settings: ' + (e?.message || e), { type: 'error' }); }
 }
 
+async function saveBrandingSettings() {
+  try {
+    const bizName = document.getElementById('bizName')?.value || '';
+    const bizAddress = document.getElementById('bizAddress')?.value || '';
+    const bizPhone = document.getElementById('bizPhone')?.value || '';
+    const logoInput = document.getElementById('logoInput');
+    let logoFilePath = '';
+    try {
+      const file = logoInput && logoInput.files && logoInput.files[0];
+      if (file && file.path) logoFilePath = String(file.path || '');
+    } catch (_) { }
+    const saved = await ipcRenderer.invoke('settings:saveBranding', {
+      bizName,
+      bizAddress,
+      bizPhone,
+      logoFilePath
+    });
+    showToast('Branding saved.', { type: 'success' });
+    try {
+      const navBrand = document.querySelector('.navbar-brand');
+      if (navBrand && saved?.bizName) navBrand.textContent = String(saved.bizName);
+    } catch (_) { }
+    try {
+      const logoPrev = document.getElementById('logoPreview');
+      const src = String(saved?.logoPath || '').trim();
+      if (logoPrev) {
+        if (src) {
+          logoPrev.src = src;
+          logoPrev.style.display = '';
+        } else {
+          logoPrev.removeAttribute('src');
+          logoPrev.style.display = 'none';
+        }
+      }
+    } catch (_) { }
+    try {
+      if (logoInput) logoInput.value = '';
+    } catch (_) { }
+  } catch (e) { showToast('Failed to save branding: ' + (e?.message || e), { type: 'error' }); }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('saveBtn')?.addEventListener('click', saveTaxSettings);
   document.getElementById('saveDevBtn')?.addEventListener('click', saveDevSettings);
   document.getElementById('savePrintBtn')?.addEventListener('click', savePrintSettings);
+  document.getElementById('saveBrandingBtn')?.addEventListener('click', saveBrandingSettings);
   try {
     ipcRenderer.invoke('app:getVersion').then(v => {
       const el = document.getElementById('appVersion');
@@ -114,3 +260,15 @@ window.addEventListener('DOMContentLoaded', () => {
   } catch (_) {}
 });
 window.addEventListener('load', loadSettings);
+
+// Test-friendly exports (no impact in Electron runtime)
+try {
+  if (typeof module !== 'undefined' && module && module.exports) {
+    module.exports = {
+      toBool,
+      setBrandingVisibility,
+      loadSettings,
+      saveDevSettings
+    };
+  }
+} catch (_) { }

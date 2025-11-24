@@ -16,6 +16,46 @@ let receipts = [];
 let vendors = [];
 let vendorByCode = new Map();
 
+// Branding shared with POS/settings: business name, address, phone, logo
+let branding = {
+    bizName: "Middleton's Antiques & Uniques",
+    bizAddress: '1615 S 17th St, Lincoln, NE 68502',
+    bizPhone: '531-500-0135',
+    logoPath: ''
+};
+const getBrandingName = () =>
+    String(branding?.bizName || "Middleton's Antiques & Uniques");
+const getBrandingAddressLine = () => {
+    const addr = String(branding?.bizAddress || '').trim();
+    const phone = String(branding?.bizPhone || '').trim();
+    if (addr && phone) return `${addr} · ${phone}`;
+    return addr || phone || '';
+};
+const getBrandingLogoSrc = (fallback) => {
+    const src = String(branding?.logoPath || '').trim();
+    return src || fallback;
+};
+function applyBrandingToReportWindow(win) {
+    if (!win || !win.document) return;
+    const name = getBrandingName();
+    const addrLine = getBrandingAddressLine();
+    const logoSrc = getBrandingLogoSrc('assets/MiddletonsStoreFrontLogoBW.png');
+    try {
+        const brandEl = win.document.querySelector('.brand-wrap .brand');
+        if (brandEl) brandEl.textContent = name;
+    } catch (_) { }
+    try {
+        const headerAddr = win.document.querySelector('.brand-wrap .addr');
+        if (headerAddr) headerAddr.textContent = addrLine || '';
+        const muted = win.document.querySelectorAll('.addr.muted, #rcpt-address');
+        muted.forEach(n => { try { n.textContent = addrLine || ''; } catch (_) { } });
+    } catch (_) { }
+    try {
+        const imgs = win.document.querySelectorAll('img.logo, .brand-wrap img[alt="Logo"], img.bgmark');
+        imgs.forEach(img => { try { img.src = logoSrc; } catch (_) { } });
+    } catch (_) { }
+}
+
 const TENDERS = ['Cash', 'Card', 'Check', 'Gift Card'];
 const normalizeTender = (t) => {
     t = String(t || '').trim();
@@ -560,7 +600,9 @@ function openReceiptWindowFromReports(r) {
 
         const w = window.open('', '', 'width=1024,height=1100');
         w.document.write(html);
+        try { applyBrandingToReportWindow(w); } catch (_) { }
         w.document.close();
+        try { applyBrandingToReportWindow(w); } catch (_) { }
     } catch (e) {
         console.error('[reports] render receipt view failed', e);
         alert('Open failed: ' + (e?.message || e));
@@ -758,6 +800,7 @@ function printDetailedReport() {
 
         const w = window.open('', '', 'width=960,height=900');
         w.document.write(html);
+        try { applyBrandingToReportWindow(w); } catch (_) { }
         w.document.close();
         try { w.focus(); } catch (_) { }
     } catch (err) {
@@ -991,11 +1034,33 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     // Initial settings fetch
     try {
-        ipcRenderer.invoke('settings:load').then(s => setDevVisibility(!!s?.developerMode)).catch(() => {});
+        ipcRenderer.invoke('settings:load').then(s => {
+            try { setDevVisibility(!!s?.developerMode); } catch (_) { }
+            try {
+                branding = {
+                    bizName: String(s?.bizName || branding.bizName),
+                    bizAddress: String(s?.bizAddress || branding.bizAddress),
+                    bizPhone: String(s?.bizPhone || branding.bizPhone),
+                    logoPath: String(s?.logoPath || '')
+                };
+            } catch (_) { }
+        }).catch(() => {});
     } catch (_) { }
     // Live updates
     try {
-        ipcRenderer.on('settings:changed', (_evt, payload) => setDevVisibility(!!payload?.developerMode));
+        ipcRenderer.on('settings:changed', (_evt, payload) => {
+            try { setDevVisibility(!!payload?.developerMode); } catch (_) { }
+            try {
+                if (payload) {
+                    branding = {
+                        bizName: String(payload.bizName || branding.bizName),
+                        bizAddress: String(payload.bizAddress || branding.bizAddress),
+                        bizPhone: String(payload.bizPhone || branding.bizPhone),
+                        logoPath: String(payload.logoPath || branding.logoPath || '')
+                    };
+                }
+            } catch (_) { }
+        });
     } catch (_) { }
 
     if (runBtn) {
