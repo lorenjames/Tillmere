@@ -11,6 +11,38 @@ const $ = sel => document.querySelector(sel);
 const norm = s => String(s || '').trim().toLowerCase();
 function money(n) { return Number(n || 0).toFixed(2); }
 function esc(s) { return String(s || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
+function showToast(message, opts = {}) {
+  try {
+    const hostId = 'toast-host';
+    let host = document.getElementById(hostId);
+    if (!host) {
+      host = document.createElement('div');
+      host.id = hostId;
+      host.style.position = 'fixed';
+      host.style.zIndex = '5000';
+      host.style.right = '16px';
+      host.style.bottom = '16px';
+      host.style.display = 'flex';
+      host.style.flexDirection = 'column';
+      host.style.gap = '8px';
+      host.style.pointerEvents = 'none';
+      document.body.appendChild(host);
+    }
+    const el = document.createElement('div');
+    const tone = (opts.type === 'error') ? '#dc3545' : (opts.type === 'success') ? '#198754' : '#0d6efd';
+    el.textContent = String(message || '');
+    el.style.pointerEvents = 'none';
+    el.style.color = '#fff';
+    el.style.background = tone;
+    el.style.borderRadius = '8px';
+    el.style.padding = '10px 12px';
+    el.style.boxShadow = '0 6px 18px rgba(0,0,0,.18)';
+    el.style.fontSize = '14px';
+    host.appendChild(el);
+    const ms = Math.max(1000, Number(opts.duration || 2500));
+    setTimeout(() => { try { el.remove(); } catch (_) { } }, ms);
+  } catch (_) { }
+}
 function toMoneyNumber(n) {
   const num = Number(n);
   if (!Number.isFinite(num)) return 0;
@@ -589,6 +621,12 @@ async function populateVoidCashiers() {
   if (!sel) return;
   sel.innerHTML = '';
 
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select cashier';
+  placeholder.selected = true;
+  sel.appendChild(placeholder);
+
   const cashiers = await getCashiersList();
   cashiers.forEach((c, idx) => {
     const opt = document.createElement('option');
@@ -598,9 +636,6 @@ async function populateVoidCashiers() {
     opt.dataset.index = String(idx);
     sel.appendChild(opt);
   });
-
-  const currentFilter = (document.getElementById('cashierFilter')?.value || '').trim();
-  if (currentFilter) sel.value = currentFilter;
 }
 
 function setupVoidModal() {
@@ -622,10 +657,20 @@ function setupVoidModal() {
 
   confirmBtn.onclick = () => {
     const reason = (input.value || '').trim();
+    if (!reason) {
+      if (typeof showToast === 'function') { showToast('Please add a void reason.', { type: 'error' }); }
+      try { input.focus(); } catch (_) { }
+      return;
+    }
     const opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) {
+      if (typeof showToast === 'function') { showToast('Please add a cashier.', { type: 'error' }); }
+      try { sel.focus(); } catch (_) { }
+      return;
+    }
     let cashierObj = null;
     try { cashierObj = opt?.dataset?.cashier ? JSON.parse(opt.dataset.cashier) : null; } catch (_) { }
-    const user = (cashierObj?.name || sel.value || 'Manager').trim();
+    const user = (cashierObj?.name || sel.value || '').trim();
     finish({ reason, user, cashier: cashierObj });
   };
   cancelBtn.onclick = () => finish(null);
@@ -651,6 +696,12 @@ async function populateReturnCashiers() {
   if (!sel) return;
   sel.innerHTML = '';
 
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select cashier';
+  placeholder.selected = true;
+  sel.appendChild(placeholder);
+
   const cashiers = await getCashiersList();
   cashiers.forEach((c, idx) => {
     const opt = document.createElement('option');
@@ -660,9 +711,6 @@ async function populateReturnCashiers() {
     opt.dataset.index = String(idx);
     sel.appendChild(opt);
   });
-
-  const currentFilter = (document.getElementById('cashierFilter')?.value || '').trim();
-  if (currentFilter) sel.value = currentFilter;
 }
 
 async function loadReturnReceipt(receiptId) {
@@ -867,14 +915,20 @@ function setupReturnModal() {
     confirmBtn.onclick = () => {
       const receiptId = (receiptInput?.value || '').trim();
       if (!receiptId) {
-        alert('Enter a receipt number or ID.');
+        showToast('Enter a receipt number or ID.', { type: 'error' });
         receiptInput?.focus();
         return;
       }
       const reason = (reasonInput?.value || '').trim();
       if (!reason) {
-        alert('Please provide a reason for the return.');
+        showToast('Please provide a reason for the return.', { type: 'error' });
         reasonInput?.focus();
+        return;
+      }
+      const opt = sel?.options[sel.selectedIndex];
+      if (!opt || !opt.value) {
+        showToast('Please add a cashier.', { type: 'error' });
+        try { sel?.focus(); } catch (_) { }
         return;
       }
       const useEntire = !!(entireChk && entireChk.checked);
@@ -887,14 +941,13 @@ function setupReturnModal() {
           comment: String(it?.comment || '').trim()
         }))
         : [];
-      const opt = sel?.options[sel.selectedIndex];
       let cashierObj = null;
       try { cashierObj = opt?.dataset?.cashier ? JSON.parse(opt.dataset.cashier) : null; } catch (_) { }
-      const user = (cashierObj?.name || sel?.value || 'Manager').trim();
+      const user = (cashierObj?.name || sel?.value || '').trim();
       const items = gatherReturnItems();
       const mergedItems = useEntire ? items : [...existingItems, ...items];
       if (!mergedItems.length) {
-        alert('Select at least one item to return or choose entire receipt.');
+        showToast('Select at least one item to return or choose entire receipt.', { type: 'error' });
         return;
       }
       finish({ receiptId, reason, user, cashier: cashierObj, items: mergedItems });
@@ -988,14 +1041,14 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
 
     if (action === 'view') {
       const r = await ipcRenderer.invoke('receipts:get', id);
-      if (!r) return alert(`Receipt not found for id: ${id}`);
+      if (!r) { showToast(`Receipt not found for id: ${id}`, { type: 'error' }); return; }
       await openReceiptWindow(r, { autoPrint: false });
       return;
     }
 
     if (action === 'print') {
       const r = await ipcRenderer.invoke('receipts:get', id);
-      if (!r) return alert(`Receipt not found for id: ${id}`);
+      if (!r) { showToast(`Receipt not found for id: ${id}`, { type: 'error' }); return; }
       const w = await openReceiptWindow(r, { autoPrint: true });
       try { w.focus(); } catch (_) { }
       return;
@@ -1014,19 +1067,19 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
         try {
           const resp = await ipcRenderer.invoke('receipts:void', { id, reason, user, userObj: cashier });
           if (!resp) {
-            alert(`Unable to void receipt. ID sent: ${id}\nTip: click "Reindex IDs" and try again.`);
+            showToast(`Unable to void receipt. ID sent: ${id}. Tip: click "Reindex IDs" and try again.`, { type: 'error', duration: 4000 });
             btn.disabled = false; btn.textContent = prev;
             return;
           }
           await loadAll();
           applyFilters();
         } catch (err) {
-          alert('Error voiding receipt: ' + (err?.message || err));
+          showToast('Error voiding receipt: ' + (err?.message || err), { type: 'error' });
           btn.disabled = false; btn.textContent = prev;
         }
       } else {
         const resp = await ipcRenderer.invoke('receipts:void', { id, reason, user, userObj: cashier });
-        if (!resp) return alert(`Unable to void receipt. ID sent: ${id}`);
+        if (!resp) { showToast(`Unable to void receipt. ID sent: ${id}.`, { type: 'error' }); return; }
         await loadAll(); applyFilters();
       }
       return;
@@ -1040,7 +1093,7 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
       const { receiptId, reason, user, cashier, items } = info;
       const resolvedId = String(receiptId || id || '').trim();
       if (!resolvedId) {
-        alert('Receipt id missing for return.');
+        showToast('Receipt id missing for return.', { type: 'error' });
         return;
       }
 
@@ -1052,7 +1105,7 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
         }
         const resp = await ipcRenderer.invoke('receipts:return', payload);
         if (!resp) {
-          alert(`Unable to return receipt. ID sent: ${receiptId}`);
+          showToast(`Unable to return receipt. ID sent: ${receiptId}`, { type: 'error' });
           return false;
         }
         await loadAll();
@@ -1067,7 +1120,7 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
         try {
           await makeCall();
         } catch (err) {
-          alert('Error returning receipt: ' + (err?.message || err));
+          showToast('Error returning receipt: ' + (err?.message || err), { type: 'error' });
         } finally {
           btn.disabled = false;
           btn.textContent = prev;
@@ -1076,7 +1129,7 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
         try {
           await makeCall();
         } catch (err) {
-          alert('Error returning receipt: ' + (err?.message || err));
+          showToast('Error returning receipt: ' + (err?.message || err), { type: 'error' });
         }
       }
       return;
@@ -1084,7 +1137,7 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
 
   } catch (err) {
     console.error('Action error:', err);
-    alert('Unexpected error: ' + (err?.message || err));
+    showToast('Unexpected error: ' + (err?.message || err), { type: 'error' });
   }
 };
 
