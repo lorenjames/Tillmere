@@ -303,7 +303,7 @@ async function openReceiptWindowCompact(r, opts = {}) {
   const style = `
   <style>
     :root{--accent:#2b2b2b;--muted:#6c757d;--border:#e5e7eb;--bold:#111827;--danger:#dc3545;}
-    .rcpt{width:320px;margin:0 auto;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--bold);font-size:12px;line-height:1.35;}
+    .rcpt{width:320px;margin:0 auto;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--bold);font-size:12px;line-height:1.35;position:relative;}
     .rcpt hr{border:0;border-top:1px dashed var(--border);margin:10px 0;}
     .rcpt .center{text-align:center}.rcpt .muted{color:var(--muted)}
     .rcpt .hd{display:flex;align-items:center;gap:10px;margin-bottom:6px}
@@ -322,6 +322,19 @@ async function openReceiptWindowCompact(r, opts = {}) {
     .void-banner{background:var(--danger);color:#fff;text-align:center;font-weight:800;padding:4px 6px;margin:6px 0;border-radius:4px;letter-spacing:.5px}
     .void-meta{grid-column:1 / -1; color:var(--danger); font-weight:700;}
     .void-reason{grid-column:1 / -1;}
+    .price-line{line-height:1.3;}
+    .price-line.strike{text-decoration:line-through;color:var(--muted);}
+    .void-watermark,.return-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+    .void-watermark span{transform:rotate(-25deg);font-size:82px;font-weight:900;color:rgba(220,53,69,.14);}
+    .return-watermark span{transform:rotate(-25deg);font-size:82px;font-weight:900;color:rgba(16,185,129,.14);}
+    @media print{
+      .void-watermark,.return-watermark{
+        position: fixed !important;
+        inset: 0 !important;
+        align-items: center;
+        justify-content: center;
+      }
+    }
   </style>`;
 
 
@@ -376,45 +389,22 @@ async function openReceiptWindowCompact(r, opts = {}) {
           ${hasDiscount ? `<div class="vendor" style="text-decoration:line-through;">Original: $${money(original)}</div>` : ''}
           ${hasDiscount ? `<div class="vendor" style="color:#dc3545;">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}`;
 
-      if (returnedQty > 0) {
-        const returnedTotal = toMoneyNumber(finalPrice * returnedQty);
-        out.push(`
-      <tr class="returned-line">
+      const returnedTotal = toMoneyNumber(finalPrice * returnedQty);
+      const remainingTotal = toMoneyNumber(finalPrice * remainingQty);
+      const priceLines = [];
+      if (returnedQty > 0) priceLines.push(`<div class="price-line strike">${returnedQty} @ $${money(finalPrice)} = -$${money(returnedTotal)}</div>`);
+      if (remainingQty > 0) priceLines.push(`<div class="price-line">${remainingQty} @ $${money(finalPrice)} = $${money(remainingTotal)}</div>`);
+      if (!priceLines.length) priceLines.push(`<div class="price-line">${soldQty} @ $${money(finalPrice)} = $${money(toMoneyNumber(finalPrice * soldQty))}</div>`);
+
+      out.push(`
+      <tr>
         <td>
-          <span style="text-decoration:line-through;">${esc(it.name)}</span>
+          <span${returnedQty > 0 && remainingQty === 0 ? ' style="text-decoration:line-through;"' : ''}>${esc(it.name)}</span>
           ${discountBlock}
-          <div class="vendor" style="text-decoration:line-through;">Returned ${returnedQty} @ $${money(finalPrice)} = $${money(returnedTotal)}</div>
           ${returnedNote}
         </td>
-        <td class="price" style="text-decoration:line-through;">-$${money(returnedTotal)}</td>
+        <td class="price">${priceLines.join('')}</td>
       </tr>`);
-      }
-
-      if (remainingQty > 0) {
-        const remainingTotal = toMoneyNumber(finalPrice * remainingQty);
-        out.push(`
-      <tr>
-        <td>
-          <span>${esc(it.name)}</span>
-          ${discountBlock}
-          ${soldQty > 1 ? `<div class="vendor">${remainingQty} @ $${money(finalPrice)} = $${money(remainingTotal)}</div>` : ''}
-        </td>
-        <td class="price">$${money(remainingTotal)}</td>
-      </tr>`);
-      }
-
-      if (returnedQty === 0 && remainingQty === 0) {
-        const amount = toMoneyNumber(finalPrice * soldQty);
-        out.push(`
-      <tr>
-        <td>
-          <span>${esc(it.name)}</span>
-          ${discountBlock}
-          ${soldQty > 1 ? `<div class="vendor">Qty ${soldQty} @ $${money(finalPrice)} = $${money(amount)}</div>` : ''}
-        </td>
-        <td class="price">$${money(amount)}</td>
-      </tr>`);
-      }
     });
     return out.join('');
   })();
@@ -429,16 +419,17 @@ async function openReceiptWindowCompact(r, opts = {}) {
     : '';
 
   const voidBanner = r.voided ? `<div class="void-banner">VOIDED</div>` : '';
+  const voidWatermark = r.voided ? `<div class="void-watermark"><span>VOID</span></div>` : '';
+  const returnWatermark = (r.returned && !r.voided) ? `<div class="return-watermark"><span>RETURN</span></div>` : '';
   const voidMeta = r.voided
     ? `
       <div class="void-meta">VOIDED</div>
       <div class="void-reason"><span>Reason:</span> <strong>${esc(r.voidInfo?.reason || '')}</strong>
-        ${r.voidInfo?.user ? ` — <span class="muted">by ${esc(r.voidInfo.user)}</span>` : ''}
+        ${r.voidInfo?.user ? ` - <span class="muted">by ${esc(r.voidInfo.user)}</span>` : ''}
         ${r.voidInfo?.when ? ` <span class="muted">on ${new Date(r.voidInfo.when).toLocaleString()}</span>` : ''}
       </div>
     `
     : '';
-
   const html = `
   <html>
     <head>
@@ -449,6 +440,8 @@ async function openReceiptWindowCompact(r, opts = {}) {
     </head>
     <body>
     <div class="rcpt">
+      ${voidWatermark}
+      ${returnWatermark}
       ${voidBanner}
       <div class="hd">
         <img src="assets/MiddletonsStoreFrontLogoBW.png" alt="Logo" width="40" height="40">
@@ -1252,7 +1245,7 @@ async function openReceiptWindow(r, opts = {}) {
     body{background:var(--screenbg); margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:var(--ink);}
     .invoice{max-width:8.5in; margin:0 auto;}
     /* extra bottom padding to avoid overlap with QR block */
-    .sheet{position:relative; background:var(--sheet); margin:20px; padding:32px 40px 200px 40px; box-shadow:0 2px 10px rgba(0,0,0,.08);} 
+    .sheet{position:relative; background:var(--sheet); margin:20px; padding:28px 32px 180px 32px; box-shadow:0 2px 10px rgba(0,0,0,.08);} 
     .bgmark{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:70%; height:auto; opacity:.10; pointer-events:none; display:none;
       filter: blur(0.8px);
       -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
@@ -1263,26 +1256,28 @@ async function openReceiptWindow(r, opts = {}) {
     .print-btn{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer}
     .header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
     .brand-wrap{display:flex;gap:12px;align-items:center}
-    .brand{font-weight:800;font-size:20px;letter-spacing:.2px}
-    .addr{color:var(--muted);font-size:12px;margin-top:2px}
-    .title{font-size:22px;font-weight:800;letter-spacing:.5px;color:var(--emph);text-transform:uppercase}
-    .meta{display:grid;grid-template-columns: repeat(2,minmax(180px,1fr)); gap:8px 16px; margin-top:12px}
-    .meta .label{color:var(--muted)}
+    .brand{font-weight:800;font-size:18px;letter-spacing:.1px}
+    .addr{color:var(--muted);font-size:11px;margin-top:2px}
+    .title{font-size:18px;font-weight:800;letter-spacing:.3px;color:var(--emph);text-transform:uppercase}
+    .meta{display:grid;grid-template-columns: repeat(2,minmax(180px,1fr)); gap:6px 12px; margin-top:10px; font-size:12px;}
+    .meta .label{color:var(--muted); font-size:11px;}
     .void-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
     .void-watermark span{transform:rotate(-25deg);font-size:120px;font-weight:900;color:rgba(220,53,69,.14);}
     .return-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
     .return-watermark span{transform:rotate(-25deg);font-size:120px;font-weight:900;color:rgba(16,185,129,.14);}
 
-    table{width:100%;border-collapse:collapse;margin-top:16px}
-    thead th{font-size:12px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);padding:10px 8px;text-align:left}
-    tbody td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+    table{width:100%;border-collapse:collapse;margin-top:14px}
+    thead th{font-size:11px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);padding:8px 6px;text-align:left}
+    tbody td{padding:8px 6px;border-bottom:1px solid var(--border);vertical-align:top;font-size:12px}
     th.num, td.num{ text-align:right }
-    .desc{font-weight:600}
+    .desc{font-weight:600;font-size:12px}
+    .cell-line{line-height:1.2}
+    .cell-line.strike{text-decoration:line-through;color:var(--muted);}
     .vendor{color:var(--muted);font-size:11px}
     .totals{margin-top:12px;display:grid;grid-template-columns: 1fr auto;row-gap:6px}
-    .totals .label{color:var(--muted)}
-    .totals .val{min-width:120px;text-align:right}
-    .totals .grand{font-weight:800;font-size:16px;color:var(--emph)}
+    .totals .label{color:var(--muted); font-size:12px}
+    .totals .val{min-width:110px;text-align:right; font-size:12px}
+    .totals .grand{font-weight:800;font-size:14px;color:var(--emph)}
     .notes{margin-top:16px;color:var(--muted);font-size:12px}
     .vendor-sub{margin-top:10px}
     .vendor-sub h4{margin:10px 0 4px 0;font-size:12px}
@@ -1304,6 +1299,15 @@ async function openReceiptWindow(r, opts = {}) {
               mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 50%, rgba(0,0,0,0) 85%);
       -webkit-mask-size: 100% 100%;
               mask-size: 100% 100%; }
+      .void-watermark,
+      .return-watermark{
+        position: fixed !important;
+        inset: 0 !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
     }
   </style>`;
 
@@ -1361,52 +1365,38 @@ async function openReceiptWindow(r, opts = {}) {
           ${hasDiscount ? `<div class="vendor" style="text-decoration:line-through;">Original: $${money(original)}</div>` : ''}
           ${hasDiscount ? `<div class="vendor" style="color:#dc3545;">Discount: -$${money(discountAmount)}${discountSuffix}</div>` : ''}`;
 
+      const qtyLines = [];
+      const unitLines = [];
+      const amtLines = [];
       if (returnedQty > 0) {
-        out.push(`
-      <tr class="returned-line">
+        qtyLines.push(`<div class="cell-line strike">${returnedQty}</div>`);
+        unitLines.push(`<div class="cell-line strike">$${money(unit)}</div>`);
+        amtLines.push(`<div class="cell-line strike">-$${money(returnedTotal)}</div>`);
+      }
+      if (remainingQty > 0) {
+        qtyLines.push(`<div class="cell-line">${remainingQty}</div>`);
+        unitLines.push(`<div class="cell-line">$${money(unit)}</div>`);
+        amtLines.push(`<div class="cell-line">$${money(remainingTotal)}</div>`);
+      }
+      if (!qtyLines.length) {
+        const amount = qty * unit;
+        qtyLines.push(`<div class="cell-line">${qty}</div>`);
+        unitLines.push(`<div class="cell-line">$${money(unit)}</div>`);
+        amtLines.push(`<div class="cell-line">$${money(amount)}</div>`);
+      }
+
+      out.push(`
+      <tr>
         <td class="num">${idx + 1}</td>
         <td>
-          <div class="desc" style="text-decoration:line-through;">${esc(it.name)}</div>
+          <div class="desc">${esc(it.name)}</div>
           ${discountBlock}
-          <div class="vendor" style="text-decoration:line-through;">Returned ${returnedQty} @ $${money(unit)} = $${money(returnedTotal)}</div>
           ${returnedNote}
         </td>
-        <td class="num" style="text-decoration:line-through;">${returnedQty}</td>
-        <td class="num" style="text-decoration:line-through;">$${money(unit)}</td>
-        <td class="num" style="text-decoration:line-through;">-$${money(returnedTotal)}</td>
+        <td class="num">${qtyLines.join('')}</td>
+        <td class="num">${unitLines.join('')}</td>
+        <td class="num">${amtLines.join('')}</td>
       </tr>`);
-      }
-
-      if (remainingQty > 0) {
-        out.push(`
-      <tr>
-        <td class="num">${idx + 1}</td>
-        <td>
-          <div class="desc">${esc(it.name)}</div>
-          ${discountBlock}
-          ${qty > 1 ? `<div class="vendor">${remainingQty} @ $${money(unit)} = $${money(remainingTotal)}</div>` : ''}
-        </td>
-        <td class="num">${remainingQty}</td>
-        <td class="num">$${money(unit)}</td>
-        <td class="num">$${money(remainingTotal)}</td>
-      </tr>`);
-      }
-
-      if (returnedQty === 0 && remainingQty === 0) {
-        const amount = qty * unit;
-        out.push(`
-      <tr>
-        <td class="num">${idx + 1}</td>
-        <td>
-          <div class="desc">${esc(it.name)}</div>
-          ${discountBlock}
-          ${qty > 1 ? `<div class="vendor">Qty ${qty} @ $${money(unit)} = $${money(amount)}</div>` : ''}
-        </td>
-        <td class="num">${qty}</td>
-        <td class="num">$${money(unit)}</td>
-        <td class="num">$${money(amount)}</td>
-      </tr>`);
-      }
     });
     return out.join('');
   })();
