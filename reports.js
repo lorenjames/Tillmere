@@ -15,6 +15,35 @@ const esc = s => String(s || '')
 let receipts = [];
 let vendors = [];
 let vendorByCode = new Map();
+function populateVendorFilter() {
+    const sel = document.getElementById('vendorFilter');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">All vendors</option>';
+    const seen = new Set();
+    vendors
+        .map(v => ({
+            code: String(v.code || '').trim(),
+            name: String(v.name || '').trim()
+        }))
+        .sort((a, b) => (a.code || a.name || '').localeCompare(b.code || b.name || ''))
+        .forEach(v => {
+            const key = (v.code || v.name).toLowerCase();
+            if (!key || seen.has(key)) return;
+            seen.add(key);
+            const opt = document.createElement('option');
+            opt.value = key;
+            const label = v.code ? (v.name ? `${v.code} — ${v.name}` : v.code) : (v.name || '(Unnamed vendor)');
+            opt.textContent = label;
+            sel.appendChild(opt);
+        });
+    const hasUnassigned = receipts.some(r => (r.items || []).some(it => !String(it.vendorCode || it.vendor || '').trim()));
+    if (hasUnassigned) {
+        const opt = document.createElement('option');
+        opt.value = '__unassigned';
+        opt.textContent = 'Unassigned / none';
+        sel.appendChild(opt);
+    }
+}
 
 // Branding shared with POS/settings: business name, address, phone, logo
 let branding = {
@@ -104,6 +133,7 @@ async function initReports() {
     document.getElementById('fromDate')?.setAttribute('value', fmtLocal(from));
     document.getElementById('toDate')?.setAttribute('value', fmtLocal(to));
 
+    populateVendorFilter();
 
     runReport();
 }
@@ -111,6 +141,7 @@ async function initReports() {
 function runReport() {
     const fromVal = document.getElementById('fromDate').value;
     const toVal = document.getElementById('toDate').value;
+    const vendorFilterVal = (document.getElementById('vendorFilter')?.value || '').trim().toLowerCase();
     const from = fromVal ? new Date(fromVal + 'T00:00:00') : null;
     const to = toVal ? new Date(toVal + 'T23:59:59') : null;
 
@@ -139,6 +170,14 @@ function runReport() {
 
         const tender = normalizeTender(r.payment);
         (r.items || []).forEach(it => {
+            const vendorKey = String(it.vendorCode || it.vendor || '').trim().toLowerCase();
+            if (vendorFilterVal) {
+                if (vendorFilterVal === '__unassigned') {
+                    if (vendorKey) return;
+                } else if (vendorKey !== vendorFilterVal) {
+                    return;
+                }
+            }
             const code = String(it.vendorCode || '').trim();
             let key = code;
             let name = '';
@@ -264,6 +303,7 @@ function runReport() {
 function runDetailedReport() {
     const fromVal = document.getElementById('fromDate')?.value;
     const toVal = document.getElementById('toDate')?.value;
+    const vendorFilterVal = (document.getElementById('vendorFilter')?.value || '').trim().toLowerCase();
     const from = fromVal ? new Date(fromVal + 'T00:00:00') : null;
     const to = toVal ? new Date(toVal + 'T23:59:59') : null;
 
@@ -281,6 +321,14 @@ function runDetailedReport() {
         const tender = normalizeTender(r.payment);
 
         (r.items || []).forEach(it => {
+            const vendorKey = String(it.vendorCode || it.vendor || '').trim().toLowerCase();
+            if (vendorFilterVal) {
+                if (vendorFilterVal === '__unassigned') {
+                    if (vendorKey) return;
+                } else if (vendorKey !== vendorFilterVal) {
+                    return;
+                }
+            }
             const code = String(it.vendorCode || '').trim();
             let key = code;
             let name = '';
@@ -615,6 +663,7 @@ function printDetailedReport() {
     try {
         const fromVal = document.getElementById('fromDate')?.value;
         const toVal = document.getElementById('toDate')?.value;
+        const vendorFilterVal = (document.getElementById('vendorFilter')?.value || '').trim().toLowerCase();
         const from = fromVal ? new Date(fromVal + 'T00:00:00') : null;
         const to = toVal ? new Date(toVal + 'T23:59:59') : null;
 
@@ -627,6 +676,14 @@ function printDetailedReport() {
             if (to && when && when > to) return;
             const tender = normalizeTender(r.payment);
             (r.items || []).forEach(it => {
+                const vendorKey = String(it.vendorCode || it.vendor || '').trim().toLowerCase();
+                if (vendorFilterVal) {
+                    if (vendorFilterVal === '__unassigned') {
+                        if (vendorKey) return;
+                    } else if (vendorKey !== vendorFilterVal) {
+                        return;
+                    }
+                }
                 const code = String(it.vendorCode || '').trim();
                 let key = code, name = '';
                 if (code) {
@@ -1088,8 +1145,10 @@ window.addEventListener('DOMContentLoaded', () => {
             const fmtLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             const fromEl = document.getElementById('fromDate');
             const toEl = document.getElementById('toDate');
+            const vendorEl = document.getElementById('vendorFilter');
             if (fromEl) fromEl.value = fmtLocal(from);
             if (toEl) toEl.value = fmtLocal(to);
+            if (vendorEl) vendorEl.value = '';
             try { runReport(); } catch (e) { console.error(e); alert('Run failed: ' + (e?.message || e)); }
         };
         clearBtn.addEventListener('click', onClickClear);

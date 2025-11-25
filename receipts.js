@@ -1285,26 +1285,39 @@ window.addEventListener('load', async () => {
   } catch (_) { }
 
   // Quick filters: Today / Yesterday
+  const setDateRangeAndApply = (fromStr, toStr) => {
+    const from = document.getElementById('fromDate');
+    const to = document.getElementById('toDate');
+    if (from) from.value = fromStr;
+    if (to) to.value = toStr;
+    applyFilters();
+  };
   const todayBtn = document.getElementById('todayBtn');
   if (todayBtn) todayBtn.addEventListener('click', () => {
     const now = new Date();
     const ymd = toDateInputValue(now);
-    const from = document.getElementById('fromDate');
-    const to = document.getElementById('toDate');
-    if (from) from.value = ymd;
-    if (to) to.value = ymd;
-    applyFilters();
+    setDateRangeAndApply(ymd, ymd);
   });
   const yesterdayBtn = document.getElementById('yesterdayBtn');
   if (yesterdayBtn) yesterdayBtn.addEventListener('click', () => {
     const d = new Date();
     d.setDate(d.getDate() - 1);
     const ymd = toDateInputValue(d);
-    const from = document.getElementById('fromDate');
-    const to = document.getElementById('toDate');
-    if (from) from.value = ymd;
-    if (to) to.value = ymd;
-    applyFilters();
+    setDateRangeAndApply(ymd, ymd);
+  });
+  const thisMonthBtn = document.getElementById('thisMonthBtn');
+  if (thisMonthBtn) thisMonthBtn.addEventListener('click', () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    setDateRangeAndApply(toDateInputValue(start), toDateInputValue(end));
+  });
+  const lastMonthBtn = document.getElementById('lastMonthBtn');
+  if (lastMonthBtn) lastMonthBtn.addEventListener('click', () => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0);
+    setDateRangeAndApply(toDateInputValue(start), toDateInputValue(end));
   });
 
   // Pagination wiring
