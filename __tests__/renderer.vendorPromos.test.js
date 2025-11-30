@@ -12,6 +12,11 @@ function ymd(date) {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+function ymdDaysFrom(offset) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return ymd(d);
+}
 
 function setupDom() {
   document.body.innerHTML = `
@@ -115,5 +120,58 @@ describe('vendor promotions auto-apply', () => {
     expect(typeEl.value).toBe('none');
     expect(valueEl.value).toBe('');
     expect(reasonEl.value).toBe('');
+  });
+
+  test('drops overlapping promos for the same vendor and keeps earliest', () => {
+    const typeEl = document.getElementById('discountType');
+    const valueEl = document.getElementById('discountValue');
+    const reasonEl = document.getElementById('discountReason');
+
+    __test.setVendorPromotions([
+      { vendorCode: 'V1', vendorName: 'Vendor A', type: 'percent', value: 5, startDate: today, endDate: tomorrow },
+      { vendorCode: 'V1', vendorName: 'Vendor A', type: 'amount', value: 9, startDate: today, endDate: tomorrow },
+    ]);
+
+    __test.applyVendorPromoToFields('V1', typeEl, valueEl, reasonEl);
+    expect(typeEl.value).toBe('percent');
+    expect(valueEl.value).toBe('5');
+  });
+
+  test('allows non-overlapping future promos for same vendor', () => {
+    const typeEl = document.getElementById('discountType');
+    const valueEl = document.getElementById('discountValue');
+    const reasonEl = document.getElementById('discountReason');
+
+    const startFuture = ymdDaysFrom(3);
+    const endFuture = ymdDaysFrom(4);
+    __test.setVendorPromotions([
+      { vendorCode: 'V1', vendorName: 'Vendor A', type: 'percent', value: 5, startDate: today, endDate: tomorrow },
+      { vendorCode: 'V1', vendorName: 'Vendor A', type: 'amount', value: 9, startDate: startFuture, endDate: endFuture },
+    ]);
+
+    const promoNow = __test.findActiveVendorPromo('V1', 'Vendor A', new Date());
+    expect(promoNow?.value).toBe(5);
+
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + 3);
+    const promoFuture = __test.findActiveVendorPromo('V1', 'Vendor A', futureDate);
+    expect(promoFuture?.value).toBe(9);
+  });
+
+  test('normalization drops past-dated promos when setting promo list manually', () => {
+    const typeEl = document.getElementById('discountType');
+    const valueEl = document.getElementById('discountValue');
+    const reasonEl = document.getElementById('discountReason');
+
+    const pastStart = ymdDaysFrom(-5);
+    const pastEnd = ymdDaysFrom(-3);
+    __test.setVendorPromotions([
+      { vendorCode: 'V1', vendorName: 'Vendor A', type: 'percent', value: 5, startDate: pastStart, endDate: pastEnd },
+      { vendorCode: 'V1', vendorName: 'Vendor A', type: 'percent', value: 10, startDate: today, endDate: tomorrow },
+    ]);
+
+    __test.applyVendorPromoToFields('V1', typeEl, valueEl, reasonEl);
+    expect(typeEl.value).toBe('percent');
+    expect(valueEl.value).toBe('10');
   });
 });

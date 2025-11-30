@@ -22,9 +22,30 @@ const DEFAULT_DISCOUNT_REASONS = [
     'Store Approved'
 ];
 
+function ensureNonOverlappingPromos(promos) {
+    const byVendor = new Map();
+    (Array.isArray(promos) ? promos : []).forEach(p => {
+        const key = String(p.vendorCode || '').trim().toLowerCase();
+        if (!key) return;
+        if (!byVendor.has(key)) byVendor.set(key, []);
+        byVendor.get(key).push(p);
+    });
+    const result = [];
+    byVendor.forEach(list => {
+        const sorted = list.slice().sort((a, b) => (a.startTs || 0) - (b.startTs || 0));
+        let lastEnd = -Infinity;
+        sorted.forEach(p => {
+            if (Number.isFinite(p.startTs) && Number.isFinite(p.endTs) && p.startTs > lastEnd) {
+                result.push(p);
+                lastEnd = p.endTs;
+            }
+        });
+    });
+    return result;
+}
 function normalizeVendorPromotions(list) {
     const arr = Array.isArray(list) ? list : [];
-    return arr
+    const normalized = arr
         .map((p) => {
             const vendorCode = String(p?.vendorCode || '').trim();
             const vendorName = String(p?.vendorName || '').trim();
@@ -40,7 +61,7 @@ function normalizeVendorPromotions(list) {
             if (!vendorCode || !startDate || !endDate) return null;
             if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return null;
             if (value <= 0) return null;
-            const [safeStart, safeEnd] = startTs <= endTs ? [startDate, endDate] : [endDate, startDate];
+            const swap = startTs > endTs;
             const id = String(p?.id || `promo-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
             return {
                 id,
@@ -48,11 +69,23 @@ function normalizeVendorPromotions(list) {
                 vendorName,
                 type,
                 value,
-                startDate: safeStart,
-                endDate: safeEnd
+                startDate: swap ? endDate : startDate,
+                endDate: swap ? startDate : endDate,
+                startTs: swap ? endTs : startTs,
+                endTs: swap ? startTs : endTs
             };
         })
         .filter(Boolean);
+    const nonOverlap = ensureNonOverlappingPromos(normalized);
+    return nonOverlap.map(p => ({
+        id: p.id,
+        vendorCode: p.vendorCode,
+        vendorName: p.vendorName,
+        type: p.type,
+        value: p.value,
+        startDate: p.startDate,
+        endDate: p.endDate
+    }));
 }
 
 function readJson(file, fallback) {

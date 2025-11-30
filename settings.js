@@ -111,8 +111,11 @@ function writeDiscountReasonsToTextarea(list) {
 // --- Vendor promotions (settings UI only) ---
 let __vendorPromotions = [];
 let __promoModal = null;
+let __promoEditModal = null;
 let __promoEditingIndex = -1;
 let __vendorList = [];
+let __promoDeleteModal = null;
+let __promoDeleteIndex = -1;
 
 function todayYmdLocal() {
   const d = new Date();
@@ -121,9 +124,46 @@ function todayYmdLocal() {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+function todayStartTs() {
+  const t = todayYmdLocal();
+  return Date.parse(`${t}T00:00:00`);
+}
+function ensureNonOverlappingPromos(list) {
+  const byVendor = new Map();
+  (Array.isArray(list) ? list : []).forEach(p => {
+    const key = String(p.vendorCode || '').trim().toLowerCase();
+    if (!key) return;
+    if (!byVendor.has(key)) byVendor.set(key, []);
+    byVendor.get(key).push(p);
+  });
+  const result = [];
+  byVendor.forEach(arr => {
+    const sorted = arr.slice().sort((a, b) => (a.startTs || 0) - (b.startTs || 0));
+    let lastEnd = -Infinity;
+    sorted.forEach(p => {
+      if (Number.isFinite(p.startTs) && Number.isFinite(p.endTs) && p.startTs > lastEnd) {
+        result.push(p);
+        lastEnd = p.endTs;
+      }
+    });
+  });
+  return result;
+}
+function promoRangesOverlap(a, b) {
+  if (!a || !b) return false;
+  const keyA = String(a.vendorCode || '').trim().toLowerCase();
+  const keyB = String(b.vendorCode || '').trim().toLowerCase();
+  if (!keyA || !keyB || keyA !== keyB) return false;
+  const aStart = Date.parse(`${a.startDate}T00:00:00`);
+  const aEnd = Date.parse(`${a.endDate}T23:59:59`);
+  const bStart = Date.parse(`${b.startDate}T00:00:00`);
+  const bEnd = Date.parse(`${b.endDate}T23:59:59`);
+  if (![aStart, aEnd, bStart, bEnd].every(Number.isFinite)) return false;
+  return (aStart <= bEnd) && (bStart <= aEnd);
+}
 function normalizeVendorPromotions(list) {
   const arr = Array.isArray(list) ? list : [];
-  return arr
+  const normalized = arr
     .map((p) => {
       const vendorCode = String(p?.vendorCode || '').trim();
       const vendorName = String(p?.vendorName || '').trim();
@@ -139,18 +179,31 @@ function normalizeVendorPromotions(list) {
       if (!vendorCode || !startDate || !endDate) return null;
       if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return null;
       if (value <= 0) return null;
-      const [safeStart, safeEnd] = startTs <= endTs ? [startDate, endDate] : [endDate, startDate];
+      const swap = startTs > endTs;
       return {
         id: String(p?.id || `promo-${Date.now()}-${Math.floor(Math.random() * 1000)}`),
         vendorCode,
         vendorName,
         type,
         value,
-        startDate: safeStart,
-        endDate: safeEnd
+        startDate: swap ? endDate : startDate,
+        endDate: swap ? startDate : endDate,
+        startTs: swap ? endTs : startTs,
+        endTs: swap ? startTs : endTs
       };
     })
-    .filter(Boolean)
+    .filter(Boolean);
+  const nonOverlap = ensureNonOverlappingPromos(normalized);
+  return nonOverlap
+    .map(p => ({
+      id: p.id,
+      vendorCode: p.vendorCode,
+      vendorName: p.vendorName,
+      type: p.type,
+      value: p.value,
+      startDate: p.startDate,
+      endDate: p.endDate
+    }))
     .sort((a, b) => {
       const v = a.vendorCode.localeCompare(b.vendorCode, undefined, { sensitivity: 'base' });
       if (v !== 0) return v;
@@ -179,8 +232,8 @@ function renderVendorPromoSummary() {
   const more = __vendorPromotions.length > snippets.length ? ` (+${__vendorPromotions.length - snippets.length} more)` : '';
   el.textContent = `${__vendorPromotions.length} promotion${__vendorPromotions.length === 1 ? '' : 's'} configured. ${snippets.join('; ')}${more}`;
 }
-function populatePromoVendorSelect() {
-  const sel = document.getElementById('promoVendorSelect');
+function populatePromoVendorSelect(target) {
+  const sel = target || document.getElementById('promoVendorSelect');
   if (!sel) return;
   const previous = sel.value || '';
   sel.innerHTML = '';
@@ -205,7 +258,8 @@ async function loadVendorsForPromos() {
   try {
     const list = await ipcRenderer.invoke('vendors:load');
     __vendorList = Array.isArray(list) ? list : [];
-    populatePromoVendorSelect();
+    populatePromoVendorSelect(document.getElementById('promoVendorSelect'));
+    populatePromoVendorSelect(document.getElementById('editPromoVendorSelect'));
     renderVendorPromoTable();
   } catch (_) { }
 }
@@ -219,6 +273,8 @@ function resetVendorPromoForm() {
     const startEl = document.getElementById('promoStart');
     const endEl = document.getElementById('promoEnd');
     const today = todayYmdLocal();
+    if (startEl) startEl.min = today;
+    if (endEl) endEl.min = today;
     if (startEl) startEl.value = today;
     if (endEl) endEl.value = today;
     const btn = document.getElementById('saveVendorPromoBtn');
@@ -254,12 +310,13 @@ function renderVendorPromoTable() {
     const editBtn = tr.querySelector('[data-role="edit"]');
     const delBtn = tr.querySelector('[data-role="delete"]');
     if (editBtn) editBtn.addEventListener('click', () => editVendorPromo(idx));
-    if (delBtn) delBtn.addEventListener('click', () => deleteVendorPromo(idx));
+    if (delBtn) delBtn.addEventListener('click', () => openVendorPromoDeleteModal(idx));
     tbody.appendChild(tr);
   });
 }
 function openVendorPromoModal() {
   try {
+    resetVendorPromoForm();
     if (!__promoModal) {
       const el = document.getElementById('vendorPromoModal');
       if (el && window.bootstrap) __promoModal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
@@ -273,13 +330,13 @@ function openVendorPromoModal() {
   } catch (_) { }
   loadVendorsForPromos();
 }
-async function persistVendorPromos() {
+async function persistVendorPromos(message = 'Vendor promotions saved.') {
   try {
     const saved = await ipcRenderer.invoke('settings:saveVendorPromotions', { vendorPromotions: __vendorPromotions });
     __vendorPromotions = normalizeVendorPromotions(saved?.vendorPromotions || __vendorPromotions);
     renderVendorPromoSummary();
     renderVendorPromoTable();
-    showToast('Vendor promotions saved.', { type: 'success' });
+    showToast(message, { type: 'success' });
   } catch (e) {
     showToast('Failed to save vendor promotions: ' + (e?.message || e), { type: 'error' });
   }
@@ -298,10 +355,12 @@ async function addOrUpdateVendorPromo() {
   const startTs = Date.parse(`${startDate}T00:00:00`);
   const endTs = Date.parse(`${endDate}T23:59:59`);
   if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) { showToast('Enter valid start/end dates.', { type: 'error' }); return; }
+  const todayTs = todayStartTs();
+  if (startTs < todayTs || endTs < todayTs) { showToast('Promotions cannot be set in the past.', { type: 'error' }); return; }
   const vendorObj = (__vendorList || []).find(v => String(v?.code || '').trim().toLowerCase() === vendorCode.toLowerCase());
   const vendorName = vendorObj?.name || vendorCode;
   const promo = {
-    id: (__promoEditingIndex >= 0 && __vendorPromotions[__promoEditingIndex]) ? __vendorPromotions[__promoEditingIndex].id : `promo-${Date.now()}`,
+    id: `promo-${Date.now()}`,
     vendorCode,
     vendorName,
     type,
@@ -309,13 +368,14 @@ async function addOrUpdateVendorPromo() {
     startDate: startTs <= endTs ? startDate : endDate,
     endDate: startTs <= endTs ? endDate : startDate
   };
-  if (__promoEditingIndex >= 0 && __vendorPromotions[__promoEditingIndex]) {
-    __vendorPromotions[__promoEditingIndex] = promo;
-  } else {
-    __vendorPromotions.push(promo);
+  const collision = __vendorPromotions.find((p) => promoRangesOverlap(p, promo));
+  if (collision) {
+    showToast('Another promotion for this vendor overlaps this date range. Only one active promo per vendor at a time.', { type: 'error' });
+    return;
   }
+  __vendorPromotions.push(promo);
   __vendorPromotions = normalizeVendorPromotions(__vendorPromotions);
-  await persistVendorPromos();
+  await persistVendorPromos('Promotion added.');
   resetVendorPromoForm();
 }
 function editVendorPromo(idx) {
@@ -323,23 +383,116 @@ function editVendorPromo(idx) {
   if (!promo) return;
   __promoEditingIndex = idx;
   try {
-    document.getElementById('promoVendorSelect').value = promo.vendorCode || '';
-    document.getElementById('promoType').value = promo.type === 'amount' ? 'amount' : 'percent';
-    document.getElementById('promoValue').value = promo.value;
-    document.getElementById('promoStart').value = promo.startDate || '';
-    document.getElementById('promoEnd').value = promo.endDate || '';
-    const btn = document.getElementById('saveVendorPromoBtn');
-    if (btn) btn.textContent = 'Update Promotion';
+    ensurePromoEditModal();
+    const vendorSel = document.getElementById('editPromoVendorSelect');
+    const typeEl = document.getElementById('editPromoType');
+    const valueEl = document.getElementById('editPromoValue');
+    const startEl = document.getElementById('editPromoStart');
+    const endEl = document.getElementById('editPromoEnd');
+    const today = todayYmdLocal();
+    if (startEl) startEl.min = today;
+    if (endEl) endEl.min = today;
+    if (vendorSel) vendorSel.value = promo.vendorCode || '';
+    if (typeEl) typeEl.value = promo.type === 'amount' ? 'amount' : 'percent';
+    if (valueEl) valueEl.value = promo.value;
+    if (startEl) startEl.value = promo.startDate || '';
+    if (endEl) endEl.value = promo.endDate || '';
     renderVendorPromoTable();
+    __promoEditModal?.show();
+    setTimeout(() => { try { vendorSel?.focus(); } catch (_) { } }, 80);
   } catch (_) { }
 }
 async function deleteVendorPromo(idx) {
   const promo = __vendorPromotions[idx];
   if (!promo) return;
-  if (!window.confirm('Delete this vendor promotion?')) return;
   __vendorPromotions.splice(idx, 1);
-  await persistVendorPromos();
+  await persistVendorPromos('Promotion deleted.');
   resetVendorPromoForm();
+}
+function ensurePromoEditModal() {
+  if (__promoEditModal) return __promoEditModal;
+  const el = document.getElementById('vendorPromoEditModal');
+  if (el && window.bootstrap) __promoEditModal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+  const btn = document.getElementById('updateVendorPromoBtn');
+  if (btn && !btn.dataset._wired) {
+    btn.addEventListener('click', () => updateVendorPromoFromModal());
+    btn.dataset._wired = '1';
+  }
+  if (el && !el.dataset._wiredHide) {
+    el.addEventListener('hidden.bs.modal', () => { __promoEditingIndex = -1; });
+    el.dataset._wiredHide = '1';
+  }
+  return __promoEditModal;
+}
+async function updateVendorPromoFromModal() {
+  const vendorCode = String(document.getElementById('editPromoVendorSelect')?.value || '').trim();
+  const type = document.getElementById('editPromoType')?.value === 'amount' ? 'amount' : 'percent';
+  const valueRaw = Number(document.getElementById('editPromoValue')?.value || 0);
+  const startDate = String(document.getElementById('editPromoStart')?.value || '').trim();
+  const endDate = String(document.getElementById('editPromoEnd')?.value || '').trim();
+  if (__promoEditingIndex < 0 || !__vendorPromotions[__promoEditingIndex]) { try { __promoEditModal?.hide(); } catch (_) { } return; }
+  if (!vendorCode) { showToast('Select a vendor for the promotion.', { type: 'error' }); return; }
+  if (!startDate || !endDate) { showToast('Enter a start and end date.', { type: 'error' }); return; }
+  let value = Math.max(0, valueRaw);
+  if (type === 'percent') value = Math.min(100, value);
+  if (value <= 0) { showToast('Enter a discount greater than zero.', { type: 'error' }); return; }
+  const startTs = Date.parse(`${startDate}T00:00:00`);
+  const endTs = Date.parse(`${endDate}T23:59:59`);
+  if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) { showToast('Enter valid start/end dates.', { type: 'error' }); return; }
+  const todayTs = todayStartTs();
+  if (startTs < todayTs || endTs < todayTs) { showToast('Promotions cannot be set in the past.', { type: 'error' }); return; }
+  const vendorObj = (__vendorList || []).find(v => String(v?.code || '').trim().toLowerCase() === vendorCode.toLowerCase());
+  const vendorName = vendorObj?.name || vendorCode;
+  const promo = {
+    id: __vendorPromotions[__promoEditingIndex].id,
+    vendorCode,
+    vendorName,
+    type,
+    value,
+    startDate: startTs <= endTs ? startDate : endDate,
+    endDate: startTs <= endTs ? endDate : startDate
+  };
+  const collision = __vendorPromotions.find((p, idx) => idx !== __promoEditingIndex && promoRangesOverlap(p, promo));
+  if (collision) {
+    showToast('Another promotion for this vendor overlaps this date range. Only one active promo per vendor at a time.', { type: 'error' });
+    return;
+  }
+  __vendorPromotions[__promoEditingIndex] = promo;
+  __vendorPromotions = normalizeVendorPromotions(__vendorPromotions);
+  await persistVendorPromos('Promotion updated.');
+  __promoEditModal?.hide();
+  __promoEditingIndex = -1;
+  resetVendorPromoForm();
+}
+function ensureVendorPromoDeleteModal() {
+  if (__promoDeleteModal) return __promoDeleteModal;
+  const el = document.getElementById('vendorPromoDeleteModal');
+  if (el && window.bootstrap) __promoDeleteModal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+  const confirmBtn = document.getElementById('confirmVendorPromoDeleteBtn');
+  if (confirmBtn && !confirmBtn.dataset._wired) {
+    confirmBtn.addEventListener('click', async () => {
+      const idx = __promoDeleteIndex;
+      __promoDeleteIndex = -1;
+      try { __promoDeleteModal?.hide(); } catch (_) { }
+      if (idx >= 0) await deleteVendorPromo(idx);
+    });
+    confirmBtn.dataset._wired = '1';
+  }
+  if (el && !el.dataset._wiredHide) {
+    el.addEventListener('hidden.bs.modal', () => { __promoDeleteIndex = -1; });
+    el.dataset._wiredHide = '1';
+  }
+  return __promoDeleteModal;
+}
+function openVendorPromoDeleteModal(idx) {
+  const promo = __vendorPromotions[idx];
+  if (!promo) return;
+  __promoDeleteIndex = idx;
+  const label = document.getElementById('vendorPromoDeleteLabel');
+  const vendorLabel = getVendorLabel(promo.vendorCode, promo.vendorName || promo.vendorCode);
+  if (label) label.textContent = `${vendorLabel} • ${promo.startDate} - ${promo.endDate}`;
+  const modal = ensureVendorPromoDeleteModal();
+  try { modal?.show(); } catch (_) { }
 }
 
 async function loadSettings() {
@@ -529,6 +682,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }).catch(() => {});
   } catch (_) {}
   loadVendorsForPromos();
+  try { ensurePromoEditModal(); } catch (_) { }
 });
 window.addEventListener('load', loadSettings);
 

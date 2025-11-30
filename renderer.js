@@ -817,9 +817,30 @@ function applyDiscountTypeState(typeEl, valueEl, opts = {}) {
     valueEl.removeAttribute('max');
   }
 }
+function ensureNonOverlappingPromos(list) {
+  const byVendor = new Map();
+  (Array.isArray(list) ? list : []).forEach(p => {
+    const key = String(p.vendorCode || '').trim().toLowerCase();
+    if (!key) return;
+    if (!byVendor.has(key)) byVendor.set(key, []);
+    byVendor.get(key).push(p);
+  });
+  const result = [];
+  byVendor.forEach(arr => {
+    const sorted = arr.slice().sort((a, b) => (a.startTs || 0) - (b.startTs || 0));
+    let lastEnd = -Infinity;
+    sorted.forEach(p => {
+      if (Number.isFinite(p.startTs) && Number.isFinite(p.endTs) && p.startTs > lastEnd) {
+        result.push(p);
+        lastEnd = p.endTs;
+      }
+    });
+  });
+  return result;
+}
 function normalizeVendorPromotions(list) {
   const arr = Array.isArray(list) ? list : [];
-  return arr
+  const normalized = arr
     .map((p) => {
       const vendorCode = String(p?.vendorCode || '').trim();
       const vendorName = String(p?.vendorName || '').trim();
@@ -851,6 +872,7 @@ function normalizeVendorPromotions(list) {
       };
     })
     .filter(Boolean);
+  return ensureNonOverlappingPromos(normalized);
 }
 function promoDateRangeIncludes(promo, dateObj) {
   if (!promo || !dateObj) return false;
