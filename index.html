@@ -224,8 +224,14 @@
                             </div>
                             <div class="col-12 col-sm-4">
                                 <label for="discountReason" class="form-label">Reason</label>
-                                <input type="text" id="discountReason" class="form-control"
-                                    placeholder="e.g., VIP customer">
+                                <select id="discountReason" class="form-select">
+                                    <option value="" selected disabled>Select reason</option>
+                                    <option value="Store Promo">Store Promo</option>
+                                    <option value="Vendor Promo">Vendor Promo</option>
+                                    <option value="Dolly Purrton Promo">Dolly Purrton Promo</option>
+                                    <option value="Vendor Approved">Vendor Approved</option>
+                                    <option value="Store Approved">Store Approved</option>
+                                </select>
                             </div>
                             <div class="col-12">
                                 <label for="itemComment" class="form-label">Comment (optional)</label>
@@ -590,7 +596,14 @@
                         </div>
                         <div class="col-12 col-sm-4">
                             <label for="edit_discountReason" class="form-label">Reason</label>
-                            <input id="edit_discountReason" class="form-control" placeholder="e.g., VIP customer">
+                            <select id="edit_discountReason" class="form-select">
+                                <option value="" selected disabled>Select reason</option>
+                                <option value="Store Promo">Store Promo</option>
+                                <option value="Vendor Promo">Vendor Promo</option>
+                                <option value="Dolly Purrton Promo">Dolly Purrton Promo</option>
+                                <option value="Vendor Approved">Vendor Approved</option>
+                                <option value="Store Approved">Store Approved</option>
+                            </select>
                         </div>
                         <div class="col-12">
                             <label for="edit_comment" class="form-label">Comment</label>

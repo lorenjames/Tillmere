@@ -16,7 +16,10 @@ function setupPrintDom() {
       <input id="itemComment" />
       <select id="discountType"><option value="none">none</option><option value="percent">percent</option><option value="amount">amount</option></select>
       <input id="discountValue" />
-      <input id="discountReason" />
+      <select id="discountReason">
+        <option value="">Select...</option>
+        <option value="Store Promo">Store Promo</option>
+      </select>
       <table id="itemTable"><tbody></tbody></table>
       <span id="subtotal"></span>
       <span id="tax"></span>

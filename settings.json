@@ -7,5 +7,12 @@
   "bizName": "Middleton's Antiques & Uniques",
   "bizAddress": "1615 S 17th St, Lincoln, NE 68502",
   "bizPhone": "531-500-0135",
-  "logoPath": ""
+  "logoPath": "",
+  "discountReasons": [
+    "Store Promo",
+    "Vendor Promo",
+    "Dolly Purrton Promo",
+    "Vendor Approved",
+    "Store Approved"
+  ]
 }

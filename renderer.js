@@ -17,6 +17,13 @@ let __allowNavigation = false;
 let __lastTotal = 0;
 let __suppressRefocusUntil = 0;
 let __qtyPickerOpen = false;
+let __discountReasons = [
+  'Store Promo',
+  'Vendor Promo',
+  'Dolly Purrton Promo',
+  'Vendor Approved',
+  'Store Approved'
+];
 // Branding (business name/address/phone/logo) applied across POS and receipts
 let __branding = {
   bizName: "Middleton's Antiques & Uniques",
@@ -169,8 +176,9 @@ function __applyStateToUI(state) {
     const reasonEl = document.getElementById('discountReason');
     if (typeEl) typeEl.value = state?.entryDiscountType || 'none';
     if (valueEl) valueEl.value = state?.entryDiscountValue || '';
-    if (reasonEl) reasonEl.value = state?.entryDiscountReason || '';
+    if (reasonEl) setDiscountReasonOptions(reasonEl, __discountReasons, state?.entryDiscountReason || '');
     if (typeEl && valueEl) applyDiscountTypeState(typeEl, valueEl, { preserveValue: true });
+    if (typeEl && reasonEl) syncDiscountReasonDisabledState(typeEl, reasonEl);
   } catch (_) { }
 }
 function __renderTabs() {
@@ -719,6 +727,42 @@ function ensurePlaceholder(selectEl) {
   selectEl.value = '';
 }
 function resetSelectToPlaceholder(selectEl) { ensurePlaceholder(selectEl); selectEl.value = ''; }
+function setDiscountReasonOptions(selectEl, reasons, selectedValue = '') {
+  if (!selectEl) return;
+  const list = Array.isArray(reasons) && reasons.length ? reasons : __discountReasons || [];
+  selectEl.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select reason';
+  placeholder.disabled = true;
+  placeholder.selected = true;
+  selectEl.appendChild(placeholder);
+  list.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r;
+    opt.textContent = r;
+    selectEl.appendChild(opt);
+  });
+  const val = String(selectedValue || '');
+  if (val) {
+    const exists = [...selectEl.options].some(o => String(o.value || '') === val);
+    if (!exists) {
+      const extra = document.createElement('option');
+      extra.value = val;
+      extra.textContent = val;
+      selectEl.appendChild(extra);
+    }
+    selectEl.value = val;
+  }
+}
+function syncDiscountReasonDisabledState(typeEl, reasonEl) {
+  try {
+    if (!reasonEl || !typeEl) return;
+    const isNone = typeEl.value === 'none';
+    reasonEl.disabled = isNone;
+    if (isNone) resetSelectToPlaceholder(reasonEl);
+  } catch (_) { }
+}
 function applyDiscountTypeState(typeEl, valueEl, opts = {}) {
   if (!typeEl || !valueEl) return;
   const type = typeEl.value;
@@ -747,13 +791,12 @@ function setupEntryDiscountControls() {
   const typeEl = document.getElementById('discountType');
   const valueEl = document.getElementById('discountValue');
   const reasonEl = document.getElementById('discountReason');
+  try { setDiscountReasonOptions(reasonEl, __discountReasons); } catch (_) { }
   if (!typeEl || !valueEl) return;
   const syncState = () => {
     applyDiscountTypeState(typeEl, valueEl);
-    if (typeEl.value === 'none') {
-      valueEl.value = '';
-      if (reasonEl) reasonEl.placeholder = reasonEl.placeholder || 'e.g., VIP customer';
-    }
+    syncDiscountReasonDisabledState(typeEl, reasonEl);
+    if (typeEl.value === 'none' && valueEl) valueEl.value = '';
   };
   typeEl.addEventListener('change', syncState);
   syncState();
@@ -1084,8 +1127,9 @@ function clearItemEntry() {
     if (commentEl) commentEl.value = '';
     if (discountTypeEl) discountTypeEl.value = 'none';
     if (discountValueEl) discountValueEl.value = '';
-    if (discountReasonEl) discountReasonEl.value = '';
+    if (discountReasonEl) resetSelectToPlaceholder(discountReasonEl);
     if (discountTypeEl && discountValueEl) applyDiscountTypeState(discountTypeEl, discountValueEl);
+    if (discountTypeEl && discountReasonEl) syncDiscountReasonDisabledState(discountTypeEl, discountReasonEl);
 
     try { nameEl?.focus(); } catch (_) { }
     // Persist current tab state after clearing
@@ -1106,8 +1150,12 @@ function ensureEditModal() {
     if (el && window.bootstrap) __editModal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: true });
     const typeEl = document.getElementById('edit_discountType');
     const valueEl = document.getElementById('edit_discountValue');
+    const reasonEl = document.getElementById('edit_discountReason');
     if (typeEl && valueEl && !typeEl.dataset._wired) {
-      typeEl.addEventListener('change', () => applyDiscountTypeState(typeEl, valueEl, { preserveValue: true }));
+      typeEl.addEventListener('change', () => {
+        applyDiscountTypeState(typeEl, valueEl, { preserveValue: true });
+        syncDiscountReasonDisabledState(typeEl, reasonEl);
+      });
       typeEl.dataset._wired = '1';
     }
   }
@@ -1135,7 +1183,8 @@ function openEditModal(i) {
     else editValueEl.value = '';
     applyDiscountTypeState(editTypeEl, editValueEl, { preserveValue: true });
   }
-  if (editReasonEl) editReasonEl.value = hasDisc ? (it.discountReason || '') : '';
+  if (editReasonEl) setDiscountReasonOptions(editReasonEl, __discountReasons, hasDisc ? (it.discountReason || '') : '');
+  if (editTypeEl && editReasonEl) syncDiscountReasonDisabledState(editTypeEl, editReasonEl);
   const saveBtn = document.getElementById('edit_save_btn');
   saveBtn.dataset.index = String(i);
   __editModal?.show();
@@ -1951,6 +2000,11 @@ window.addEventListener('load', async () => {
     const tr = Number(s?.taxRate);
     if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr;
     __silentPrint = !!s?.silentPrint;
+    try {
+      const list = Array.isArray(s?.discountReasons) ? s.discountReasons : [];
+      const cleaned = list.map(r => String(r || '').trim()).filter(Boolean);
+      if (cleaned.length) __discountReasons = cleaned;
+    } catch (_) { }
     __branding = {
       bizName: String(s?.bizName || __branding.bizName),
       bizAddress: String(s?.bizAddress || __branding.bizAddress),
@@ -1961,6 +2015,7 @@ window.addEventListener('load', async () => {
   await loadCashiersIntoSelect();
   preparePaymentSelect();
   setupEntryDiscountControls();
+  try { setDiscountReasonOptions(document.getElementById('edit_discountReason'), __discountReasons); } catch (_) { }
   await loadVendorsIntoDatalist();
   try {
     const priceEl = document.getElementById('itemPrice');
@@ -2235,6 +2290,16 @@ try {
           logoPath: String(payload.logoPath || __branding.logoPath || '')
         };
         __applyBrandingToDocument();
+      }
+    } catch (_) { }
+    try {
+      if (Array.isArray(payload?.discountReasons)) {
+        const cleaned = payload.discountReasons.map(r => String(r || '').trim()).filter(Boolean);
+        if (cleaned.length) __discountReasons = cleaned;
+        setDiscountReasonOptions(document.getElementById('discountReason'), __discountReasons);
+        setDiscountReasonOptions(document.getElementById('edit_discountReason'), __discountReasons);
+        syncDiscountReasonDisabledState(document.getElementById('discountType'), document.getElementById('discountReason'));
+        syncDiscountReasonDisabledState(document.getElementById('edit_discountType'), document.getElementById('edit_discountReason'));
       }
     } catch (_) { }
     // After settings changes, clear any leftover overlays that might capture input

@@ -13,6 +13,13 @@ const RECEIPTS_FILE = path.join(userDir, 'receipts.json');
 const SETTINGS_FILE = path.join(userDir, 'settings.json');
 const APP_CONFIG_FILE = path.join(__dirname, 'config', 'app-config.json');
 const BRANDING_DIR = path.join(userDir, 'branding');
+const DEFAULT_DISCOUNT_REASONS = [
+    'Store Promo',
+    'Vendor Promo',
+    'Dolly Purrton Promo',
+    'Vendor Approved',
+    'Store Approved'
+];
 
 function readJson(file, fallback) {
     try {
@@ -47,7 +54,8 @@ function readSettings() {
         bizName: "Middleton's Antiques & Uniques",
         bizAddress: '1615 S 17th St, Lincoln, NE 68502',
         bizPhone: '531-500-0135',
-        logoPath: ''
+        logoPath: '',
+        discountReasons: DEFAULT_DISCOUNT_REASONS
     };
     try {
         const cur = readJson(SETTINGS_FILE, def);
@@ -248,6 +256,25 @@ ipcMain.handle('settings:save', (_evt, incoming) => {
         taxRate: Math.max(0, Math.min(1, Number(incoming?.taxRate ?? 0.0725))),
         developerMode: !!incoming?.developerMode
     };
+    const saved = saveSettings(safe);
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
+// Save discount reasons (array of strings)
+ipcMain.handle('settings:saveDiscountReasons', (_evt, incoming) => {
+    const list = Array.isArray(incoming?.discountReasons) ? incoming.discountReasons : [];
+    const cleaned = list
+        .map(r => String(r || '').trim())
+        .filter(r => r)
+        .filter((r, idx, arr) => arr.findIndex(x => x.toLowerCase() === r.toLowerCase()) === idx);
+    const fallback = DEFAULT_DISCOUNT_REASONS;
+    const safe = { discountReasons: cleaned.length ? cleaned : fallback };
     const saved = saveSettings(safe);
     try {
         const { BrowserWindow } = require('electron');

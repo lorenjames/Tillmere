@@ -33,7 +33,10 @@ function setupPosDom() {
       <option value="amount">amount</option>
     </select>
     <input id="discountValue" />
-    <input id="discountReason" />
+    <select id="discountReason">
+      <option value="">Select...</option>
+      <option value="Store Promo">Store Promo</option>
+    </select>
 
     <input id="backdateDate" />
     <input type="checkbox" id="backdateToggle" />

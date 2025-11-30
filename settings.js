@@ -90,6 +90,24 @@ function showToast(message, opts = {}) {
   } catch (_) {}
 }
 
+function readDiscountReasonsFromTextarea() {
+  const textarea = document.getElementById('discountReasonsInput');
+  if (!textarea) return [];
+  return (textarea.value || '')
+    .split(/\r?\n/)
+    .map(line => String(line || '').trim())
+    .filter(Boolean);
+}
+
+function writeDiscountReasonsToTextarea(list) {
+  try {
+    const textarea = document.getElementById('discountReasonsInput');
+    if (!textarea) return;
+    const lines = Array.isArray(list) && list.length ? list : [];
+    textarea.value = lines.join('\n');
+  } catch (_) { }
+}
+
 async function loadSettings() {
   try {
     const s = await ipcRenderer.invoke('settings:load');
@@ -157,6 +175,9 @@ async function loadSettings() {
         sel.value = savedName || '';
       }
     } catch (_) { /* ignore */ }
+
+    // Discount reasons
+    writeDiscountReasonsToTextarea(s?.discountReasons || []);
   } catch (e) { showToast('Failed to load settings: ' + (e?.message || e), { type: 'error' }); }
 }
 
@@ -247,11 +268,21 @@ async function saveBrandingSettings() {
   } catch (e) { showToast('Failed to save branding: ' + (e?.message || e), { type: 'error' }); }
 }
 
+async function saveDiscountReasons() {
+  try {
+    const reasons = readDiscountReasonsFromTextarea();
+    const saved = await ipcRenderer.invoke('settings:saveDiscountReasons', { discountReasons: reasons });
+    writeDiscountReasonsToTextarea(saved?.discountReasons || reasons);
+    showToast('Saved discount reasons.', { type: 'success' });
+  } catch (e) { showToast('Failed to save discount reasons: ' + (e?.message || e), { type: 'error' }); }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('saveBtn')?.addEventListener('click', saveTaxSettings);
   document.getElementById('saveDevBtn')?.addEventListener('click', saveDevSettings);
   document.getElementById('savePrintBtn')?.addEventListener('click', savePrintSettings);
   document.getElementById('saveBrandingBtn')?.addEventListener('click', saveBrandingSettings);
+  document.getElementById('saveDiscountReasonsBtn')?.addEventListener('click', saveDiscountReasons);
   try {
     ipcRenderer.invoke('app:getVersion').then(v => {
       const el = document.getElementById('appVersion');
