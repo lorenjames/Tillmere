@@ -125,6 +125,20 @@
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm">
           <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h5 class="card-title mb-1">Vendor Promotions</h5>
+                <div class="text-muted small">Auto-applied vendor discounts on POS for current-date sales.</div>
+              </div>
+              <button id="openVendorPromosBtn" class="btn btn-primary btn-sm">Manage</button>
+            </div>
+            <div class="small text-muted mt-3" id="vendorPromoSummary">No promotions configured.</div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="card shadow-sm">
+          <div class="card-body">
             <h5 class="card-title mb-3">Discount Reasons</h5>
             <label for="discountReasonsInput" class="form-label">Reasons (one per line)</label>
             <textarea id="discountReasonsInput" class="form-control" rows="5" placeholder="Store Promo&#10;Vendor Promo&#10;Dolly Purrton Promo&#10;Vendor Approved&#10;Store Approved"></textarea>
@@ -140,6 +154,68 @@
       App Version: <span id="appVersion">v</span>
     </div>
   </main>
+
+  <!-- Vendor Promotions Modal -->
+  <div class="modal fade" id="vendorPromoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Vendor Promotions</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small" role="alert">
+            Promotions auto-apply as discounts on the POS page when the vendor matches and today is within the promo dates. They are skipped for back-dated sales.
+          </div>
+          <form id="vendorPromoForm" class="row g-3">
+            <div class="col-12">
+              <label for="promoVendorSelect" class="form-label">Vendor</label>
+              <select id="promoVendorSelect" class="form-select" required>
+                <option value="" disabled selected>Select vendor</option>
+              </select>
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="promoType" class="form-label">Discount Type</label>
+              <select id="promoType" class="form-select">
+                <option value="percent">Percent off (%)</option>
+                <option value="amount">Amount off ($)</option>
+              </select>
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="promoValue" class="form-label">Value</label>
+              <input type="number" step="0.01" min="0" id="promoValue" class="form-control" placeholder="0.00">
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="promoStart" class="form-label">Start Date</label>
+              <input type="date" id="promoStart" class="form-control">
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="promoEnd" class="form-label">End Date</label>
+              <input type="date" id="promoEnd" class="form-control">
+            </div>
+          </form>
+          <div class="table-responsive mt-4">
+            <table class="table table-sm align-middle" id="vendorPromoTable">
+              <thead class="table-light">
+                <tr>
+                  <th>Vendor</th>
+                  <th>Discount</th>
+                  <th>Dates</th>
+                  <th style="width: 140px;"></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="text-muted small" id="vendorPromoEmpty">No promotions yet.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" id="saveVendorPromoBtn">Add Promotion</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Developer password modal -->
   <div class="modal fade" id="devPwdModal" tabindex="-1" aria-labelledby="devPwdLabel" aria-hidden="true">

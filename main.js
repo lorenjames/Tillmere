@@ -13,6 +13,7 @@ const RECEIPTS_FILE = path.join(userDir, 'receipts.json');
 const SETTINGS_FILE = path.join(userDir, 'settings.json');
 const APP_CONFIG_FILE = path.join(__dirname, 'config', 'app-config.json');
 const BRANDING_DIR = path.join(userDir, 'branding');
+const DEFAULT_VENDOR_PROMOTIONS = [];
 const DEFAULT_DISCOUNT_REASONS = [
     'Store Promo',
     'Vendor Promo',
@@ -20,6 +21,39 @@ const DEFAULT_DISCOUNT_REASONS = [
     'Vendor Approved',
     'Store Approved'
 ];
+
+function normalizeVendorPromotions(list) {
+    const arr = Array.isArray(list) ? list : [];
+    return arr
+        .map((p) => {
+            const vendorCode = String(p?.vendorCode || '').trim();
+            const vendorName = String(p?.vendorName || '').trim();
+            const type = p?.type === 'amount' ? 'amount' : 'percent';
+            const rawValue = Number(p?.value || 0);
+            const value = type === 'percent'
+                ? Math.max(0, Math.min(100, rawValue))
+                : Math.max(0, rawValue);
+            const startDate = String(p?.startDate || '').trim();
+            const endDate = String(p?.endDate || '').trim();
+            const startTs = Date.parse(`${startDate}T00:00:00`);
+            const endTs = Date.parse(`${endDate}T23:59:59`);
+            if (!vendorCode || !startDate || !endDate) return null;
+            if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return null;
+            if (value <= 0) return null;
+            const [safeStart, safeEnd] = startTs <= endTs ? [startDate, endDate] : [endDate, startDate];
+            const id = String(p?.id || `promo-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
+            return {
+                id,
+                vendorCode,
+                vendorName,
+                type,
+                value,
+                startDate: safeStart,
+                endDate: safeEnd
+            };
+        })
+        .filter(Boolean);
+}
 
 function readJson(file, fallback) {
     try {
@@ -55,12 +89,14 @@ function readSettings() {
         bizAddress: '1615 S 17th St, Lincoln, NE 68502',
         bizPhone: '531-500-0135',
         logoPath: '',
-        discountReasons: DEFAULT_DISCOUNT_REASONS
+        discountReasons: DEFAULT_DISCOUNT_REASONS,
+        vendorPromotions: DEFAULT_VENDOR_PROMOTIONS
     };
     try {
         const cur = readJson(SETTINGS_FILE, def);
-        // Ensure defaults for missing keys without dropping extras
-        return { ...def, ...(cur || {}) };
+        const merged = { ...def, ...(cur || {}) };
+        merged.vendorPromotions = normalizeVendorPromotions(merged.vendorPromotions || []);
+        return merged;
     } catch (_) { return def; }
 }
 function readAppConfig() {
@@ -74,6 +110,11 @@ function saveSettings(patch) {
     try {
         const cur = readSettings();
         const next = { ...cur, ...(patch || {}) };
+        try {
+            next.vendorPromotions = normalizeVendorPromotions(next.vendorPromotions || cur.vendorPromotions || []);
+        } catch (_) {
+            next.vendorPromotions = [];
+        }
         writeJson(SETTINGS_FILE, next);
         return next;
     } catch (e) { console.error('Failed to save settings', e); return readSettings(); }
@@ -275,6 +316,20 @@ ipcMain.handle('settings:saveDiscountReasons', (_evt, incoming) => {
         .filter((r, idx, arr) => arr.findIndex(x => x.toLowerCase() === r.toLowerCase()) === idx);
     const fallback = DEFAULT_DISCOUNT_REASONS;
     const safe = { discountReasons: cleaned.length ? cleaned : fallback };
+    const saved = saveSettings(safe);
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
+// Save vendor promotions (vendor-level discounts with date windows)
+ipcMain.handle('settings:saveVendorPromotions', (_evt, incoming) => {
+    const list = normalizeVendorPromotions(incoming?.vendorPromotions ?? incoming);
+    const safe = { vendorPromotions: list };
     const saved = saveSettings(safe);
     try {
         const { BrowserWindow } = require('electron');

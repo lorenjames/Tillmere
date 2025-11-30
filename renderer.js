@@ -24,6 +24,7 @@ let __discountReasons = [
   'Vendor Approved',
   'Store Approved'
 ];
+let __vendorPromotions = [];
 // Branding (business name/address/phone/logo) applied across POS and receipts
 let __branding = {
   bizName: "Middleton's Antiques & Uniques",
@@ -179,6 +180,7 @@ function __applyStateToUI(state) {
     if (reasonEl) setDiscountReasonOptions(reasonEl, __discountReasons, state?.entryDiscountReason || '');
     if (typeEl && valueEl) applyDiscountTypeState(typeEl, valueEl, { preserveValue: true });
     if (typeEl && reasonEl) syncDiscountReasonDisabledState(typeEl, reasonEl);
+    try { applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
   } catch (_) { }
 }
 function __renderTabs() {
@@ -270,6 +272,7 @@ async function __cancelActiveCart() {
       const ok = await __confirmCancelActiveCart();
       if (!ok) return;
     }
+    clearPosErrors();
     const tabCount = (__carts && typeof __carts.size === 'number') ? __carts.size : 0;
     // If only one tab, refresh it in-place and keep label as Sale 1
     if (tabCount <= 1) {
@@ -508,6 +511,33 @@ function showToast(message, opts = {}) {
     host.appendChild(el);
     const ms = Math.max(1000, Number(opts.duration || 2500));
     setTimeout(() => { try { el.remove(); } catch (_) { } }, ms);
+  } catch (_) { }
+}
+function clearFieldError(el) {
+  try { el?.classList?.remove('is-invalid'); } catch (_) { }
+}
+function markFieldError(el, validator) {
+  try {
+    if (!el) return;
+    clearFieldError(el);
+    const handler = () => {
+      try {
+        const ok = validator ? validator(el) : Boolean(String(el.value || '').trim());
+        if (ok) {
+          clearFieldError(el);
+          el.removeEventListener('input', handler);
+          el.removeEventListener('change', handler);
+        }
+      } catch (_) { }
+    };
+    el.classList.add('is-invalid');
+    el.addEventListener('input', handler);
+    el.addEventListener('change', handler);
+  } catch (_) { }
+}
+function clearPosErrors() {
+  try {
+    document.querySelectorAll('.is-invalid').forEach(el => clearFieldError(el));
   } catch (_) { }
 }
 function cleanupStrayBackdrops() {
@@ -787,6 +817,162 @@ function applyDiscountTypeState(typeEl, valueEl, opts = {}) {
     valueEl.removeAttribute('max');
   }
 }
+function normalizeVendorPromotions(list) {
+  const arr = Array.isArray(list) ? list : [];
+  return arr
+    .map((p) => {
+      const vendorCode = String(p?.vendorCode || '').trim();
+      const vendorName = String(p?.vendorName || '').trim();
+      const type = p?.type === 'amount' ? 'amount' : 'percent';
+      const rawValue = Number(p?.value || 0);
+      const value = type === 'percent' ? Math.max(0, Math.min(100, rawValue)) : Math.max(0, rawValue);
+      const startDate = String(p?.startDate || '').trim();
+      const endDate = String(p?.endDate || '').trim();
+      const startTsRaw = Date.parse(`${startDate}T00:00:00`);
+      const endTsRaw = Date.parse(`${endDate}T23:59:59`);
+      if (!vendorCode || !startDate || !endDate) return null;
+      if (!Number.isFinite(startTsRaw) || !Number.isFinite(endTsRaw)) return null;
+      if (value <= 0) return null;
+      const swap = startTsRaw > endTsRaw;
+      const startTs = swap ? endTsRaw : startTsRaw;
+      const endTs = swap ? startTsRaw : endTsRaw;
+      return {
+        id: String(p?.id || `promo-${Date.now()}-${Math.floor(Math.random() * 1000)}`),
+        vendorCode,
+        vendorName,
+        type,
+        value,
+        startDate: swap ? endDate : startDate,
+        endDate: swap ? startDate : endDate,
+        startTs,
+        endTs,
+        vendorCodeLower: vendorCode.toLowerCase(),
+        vendorNameLower: vendorName.toLowerCase()
+      };
+    })
+    .filter(Boolean);
+}
+function promoDateRangeIncludes(promo, dateObj) {
+  if (!promo || !dateObj) return false;
+  try {
+    const d = new Date(dateObj);
+    const compareTs = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    return Number.isFinite(promo.startTs) && Number.isFinite(promo.endTs)
+      ? (compareTs >= promo.startTs && compareTs <= promo.endTs)
+      : false;
+  } catch (_) { return false; }
+}
+function currentSaleDateForPromos() {
+  try {
+    const bd = document.getElementById('backdateToggle');
+    if (bd && bd.checked) return null;
+  } catch (_) { }
+  return new Date();
+}
+function findActiveVendorPromo(vendorCode, vendorName, saleDate) {
+  const dateToUse = saleDate || currentSaleDateForPromos();
+  if (!dateToUse) return null;
+  const codeLc = String(vendorCode || '').trim().toLowerCase();
+  const nameLc = String(vendorName || '').trim().toLowerCase();
+  if (!__vendorPromotions || !__vendorPromotions.length) return null;
+  return __vendorPromotions.find(p => {
+    const matches = (p.vendorCodeLower && codeLc && p.vendorCodeLower === codeLc) ||
+      (p.vendorNameLower && nameLc && p.vendorNameLower === nameLc);
+    if (!matches) return false;
+    return promoDateRangeIncludes(p, dateToUse);
+  }) || null;
+}
+function clearAutoVendorPromo(typeEl, valueEl, reasonEl) {
+  const isAuto = !!(typeEl && typeEl.dataset && typeEl.dataset.autoVendorPromo === '1');
+  if (!isAuto) return;
+  if (typeEl) {
+    typeEl.value = 'none';
+    try { delete typeEl.dataset.autoVendorPromo; delete typeEl.dataset.manualDiscount; } catch (_) { }
+  }
+  if (valueEl) valueEl.value = '';
+  if (reasonEl) resetSelectToPlaceholder(reasonEl);
+  syncDiscountReasonDisabledState(typeEl, reasonEl);
+}
+function markDiscountManual(typeEl, valueEl, reasonEl) {
+  [typeEl, valueEl, reasonEl].forEach(el => {
+    try {
+      if (el && el.dataset) {
+        el.dataset.manualDiscount = '1';
+        delete el.dataset.autoVendorPromo;
+      }
+    } catch (_) { }
+  });
+}
+function applyVendorPromoToFields(vendorValue, typeEl, valueEl, reasonEl, options = {}) {
+  if (!typeEl || !valueEl) return null;
+  const saleDate = currentSaleDateForPromos();
+  if (!saleDate) {
+    clearAutoVendorPromo(typeEl, valueEl, reasonEl);
+    return null;
+  }
+  const vendorRaw = String(vendorValue || '').trim();
+  if (!vendorRaw) {
+    if (options.clearWhenMissingVendor) clearAutoVendorPromo(typeEl, valueEl, reasonEl);
+    return null;
+  }
+  const vendorObj = findVendorStrict(__vendorsCache, vendorRaw) || bestVendorMatch(__vendorsCache, vendorRaw);
+  const vendorCode = vendorObj?.code || vendorRaw;
+  const vendorName = vendorObj?.name || vendorRaw;
+  const promo = findActiveVendorPromo(vendorCode, vendorName, saleDate);
+  const isAuto = !!(typeEl.dataset && typeEl.dataset.autoVendorPromo === '1');
+  const hasManual = !!(typeEl.dataset && typeEl.dataset.manualDiscount === '1');
+  const hasDiscountSet = (typeEl.value && typeEl.value !== 'none') || !!valueEl.value;
+  if (!promo) {
+    clearAutoVendorPromo(typeEl, valueEl, reasonEl);
+    return null;
+  }
+  if (options.onlyWhenEmptyOrAuto && !isAuto && hasDiscountSet) return promo;
+  if (options.respectManual !== false && hasManual && !isAuto) return promo;
+
+  typeEl.value = promo.type === 'amount' ? 'amount' : 'percent';
+  applyDiscountTypeState(typeEl, valueEl, { preserveValue: true });
+  valueEl.value = promo.value;
+  if (reasonEl) {
+    const reasonVal = 'Vendor Promo';
+    const exists = [...reasonEl.options].some(o => String(o.value || '') === reasonVal);
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = reasonVal;
+      opt.textContent = reasonVal;
+      reasonEl.appendChild(opt);
+    }
+    reasonEl.disabled = false;
+    reasonEl.value = reasonVal;
+  }
+  syncDiscountReasonDisabledState(typeEl, reasonEl);
+  [typeEl, valueEl, reasonEl].forEach(el => {
+    try {
+      if (el && el.dataset) {
+        el.dataset.autoVendorPromo = '1';
+        el.dataset.manualDiscount = '0';
+      }
+    } catch (_) { }
+  });
+  return promo;
+}
+function applyVendorPromoToEntry(options = {}) {
+  try {
+    const vendorEl = document.getElementById('itemVendor');
+    const typeEl = document.getElementById('discountType');
+    const valueEl = document.getElementById('discountValue');
+    const reasonEl = document.getElementById('discountReason');
+    return applyVendorPromoToFields(vendorEl?.value || '', typeEl, valueEl, reasonEl, options);
+  } catch (_) { return null; }
+}
+function applyVendorPromoToEdit(options = {}) {
+  try {
+    const vendorEl = document.getElementById('edit_vendor');
+    const typeEl = document.getElementById('edit_discountType');
+    const valueEl = document.getElementById('edit_discountValue');
+    const reasonEl = document.getElementById('edit_discountReason');
+    return applyVendorPromoToFields(vendorEl?.value || '', typeEl, valueEl, reasonEl, options);
+  } catch (_) { return null; }
+}
 function setupEntryDiscountControls() {
   const typeEl = document.getElementById('discountType');
   const valueEl = document.getElementById('discountValue');
@@ -798,7 +984,9 @@ function setupEntryDiscountControls() {
     syncDiscountReasonDisabledState(typeEl, reasonEl);
     if (typeEl.value === 'none' && valueEl) valueEl.value = '';
   };
-  typeEl.addEventListener('change', syncState);
+  typeEl.addEventListener('change', () => { markDiscountManual(typeEl, valueEl, reasonEl); syncState(); });
+  try { valueEl.addEventListener('input', () => markDiscountManual(typeEl, valueEl, reasonEl)); } catch (_) { }
+  try { reasonEl?.addEventListener('change', () => markDiscountManual(typeEl, valueEl, reasonEl)); } catch (_) { }
   syncState();
 }
 function installNavigationGuards() {
@@ -1065,21 +1253,50 @@ async function addItem() {
   if (!Number.isFinite(qty) || qty < 1) qty = 1;
   const vendorName = (vendorEl.value || '').trim();
   const comment = (commentEl?.value || '').trim();
+  clearFieldError(nameEl); clearFieldError(priceEl); clearFieldError(vendorEl); clearFieldError(discountReasonEl);
+  try { applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
   const priceProvided = String(priceRaw || '').trim() !== '';
-  if (!name || !priceProvided || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { nameEl?.focus(); } catch (_) { } return; }
+  if (!name || !priceProvided || isNaN(price)) {
+    showToast('Enter a valid item name and price.', { type: 'error' });
+    try { nameEl?.focus(); } catch (_) { }
+    markFieldError(nameEl);
+    markFieldError(priceEl, () => {
+      const raw = priceEl?.value;
+      const provided = String(raw || '').trim() !== '';
+      const num = toMoneyNumber(raw);
+      return provided && !isNaN(num);
+    });
+    return;
+  }
   // Safeguard: vendor is required to add to cart
-  if (!vendorName) { showToast('Please enter a vendor (name or code).', { type: 'error' }); try { vendorEl?.focus(); } catch (_) { } return; }
+  if (!vendorName) {
+    showToast('Please enter a vendor (name or code).', { type: 'error' });
+    try { vendorEl?.focus(); } catch (_) { }
+    markFieldError(vendorEl);
+    return;
+  }
   const originalPrice = toMoneyNumber(price);
   const typeVal = discountTypeEl?.value || 'none';
   const discountValueRaw = discountValueEl?.value;
   const discountReasonRaw = (discountReasonEl?.value || '').trim();
   const discount = computeDiscount(originalPrice, typeVal, discountValueRaw, discountReasonRaw);
-  if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { discountReasonEl?.focus(); } catch (_) { } return; }
+  if (discount.amount > 0 && !discount.reason) {
+    showToast('Please enter a discount reason.', { type: 'error' });
+    try { discountReasonEl?.focus(); } catch (_) { }
+    markFieldError(discountReasonEl);
+    return;
+  }
   const finalPrice = finalPriceFrom(originalPrice, discount.amount);
 
   const list = __vendorsCache.length ? __vendorsCache : await fetchVendors();
   __vendorsCache = Array.isArray(list) ? list : [];
   const v = findVendorStrict(__vendorsCache, vendorName);
+  if (__vendorsCache.length && !v) {
+    showToast('Please Enter a Valid Vendor.', { type: 'error' });
+    try { vendorEl?.focus(); } catch (_) { }
+    markFieldError(vendorEl, () => !!findVendorStrict(__vendorsCache, (vendorEl?.value || '').trim()));
+    return;
+  }
   const vendorFinal = v ? (v.code || v.name) : (vendorName || 'Unknown');
 
   items.push({
@@ -1119,6 +1336,7 @@ function clearItemEntry() {
     const discountTypeEl = document.getElementById('discountType');
     const discountValueEl = document.getElementById('discountValue');
     const discountReasonEl = document.getElementById('discountReason');
+    clearPosErrors();
 
     if (nameEl) nameEl.value = '';
     if (priceEl) priceEl.value = '';
@@ -1128,6 +1346,7 @@ function clearItemEntry() {
     if (discountTypeEl) discountTypeEl.value = 'none';
     if (discountValueEl) discountValueEl.value = '';
     if (discountReasonEl) resetSelectToPlaceholder(discountReasonEl);
+    try { [discountTypeEl, discountValueEl, discountReasonEl].forEach(el => { if (el && el.dataset) { delete el.dataset.autoVendorPromo; delete el.dataset.manualDiscount; } }); } catch (_) { }
     if (discountTypeEl && discountValueEl) applyDiscountTypeState(discountTypeEl, discountValueEl);
     if (discountTypeEl && discountReasonEl) syncDiscountReasonDisabledState(discountTypeEl, discountReasonEl);
 
@@ -1153,9 +1372,12 @@ function ensureEditModal() {
     const reasonEl = document.getElementById('edit_discountReason');
     if (typeEl && valueEl && !typeEl.dataset._wired) {
       typeEl.addEventListener('change', () => {
+        markDiscountManual(typeEl, valueEl, reasonEl);
         applyDiscountTypeState(typeEl, valueEl, { preserveValue: true });
         syncDiscountReasonDisabledState(typeEl, reasonEl);
       });
+      try { valueEl.addEventListener('input', () => markDiscountManual(typeEl, valueEl, reasonEl)); } catch (_) { }
+      try { reasonEl?.addEventListener('change', () => markDiscountManual(typeEl, valueEl, reasonEl)); } catch (_) { }
       typeEl.dataset._wired = '1';
     }
   }
@@ -1185,6 +1407,7 @@ function openEditModal(i) {
   }
   if (editReasonEl) setDiscountReasonOptions(editReasonEl, __discountReasons, hasDisc ? (it.discountReason || '') : '');
   if (editTypeEl && editReasonEl) syncDiscountReasonDisabledState(editTypeEl, editReasonEl);
+  try { applyVendorPromoToEdit({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
   const saveBtn = document.getElementById('edit_save_btn');
   saveBtn.dataset.index = String(i);
   __editModal?.show();
@@ -1193,25 +1416,54 @@ async function saveEditFromModal() {
   const btn = document.getElementById('edit_save_btn');
   const idx = Number(btn?.dataset?.index || -1);
   if (!(idx >= 0 && items[idx])) { __editModal?.hide(); return; }
-  const name = (document.getElementById('edit_name').value || '').trim();
-  const priceRaw = document.getElementById('edit_price').value;
+  const nameEl = document.getElementById('edit_name');
+  const priceEl = document.getElementById('edit_price');
+  const qtyEl = document.getElementById('edit_qty');
+  const vendorEl = document.getElementById('edit_vendor');
+  const commentEl = document.getElementById('edit_comment');
+  const name = (nameEl?.value || '').trim();
+  const priceRaw = priceEl?.value;
   const price = toMoneyNumber(priceRaw);
-  let qty = parseInt((document.getElementById('edit_qty')?.value || '1'), 10); if (!Number.isFinite(qty) || qty < 1) qty = 1;
-  const vendorName = (document.getElementById('edit_vendor').value || '').trim();
-  const comment = (document.getElementById('edit_comment').value || '').trim();
+  let qty = parseInt((qtyEl?.value || '1'), 10); if (!Number.isFinite(qty) || qty < 1) qty = 1;
+  const vendorName = (vendorEl?.value || '').trim();
+  const comment = (commentEl?.value || '').trim();
+  clearFieldError(nameEl); clearFieldError(priceEl); clearFieldError(vendorEl);
+  try { applyVendorPromoToEdit({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
   const priceProvided = String(priceRaw || '').trim() !== '';
-  if (!name || !priceProvided || isNaN(price)) { showToast('Enter a valid item name and price.', { type: 'error' }); try { document.getElementById('edit_name')?.focus(); } catch (_) { } return; }
+  if (!name || !priceProvided || isNaN(price)) {
+    showToast('Enter a valid item name and price.', { type: 'error' });
+    try { nameEl?.focus(); } catch (_) { }
+    markFieldError(nameEl);
+    markFieldError(priceEl, () => {
+      const raw = priceEl?.value;
+      const provided = String(raw || '').trim() !== '';
+      const num = toMoneyNumber(raw);
+      return provided && !isNaN(num);
+    });
+    return;
+  }
   // Safeguard: vendor is required when saving edits
-  if (!vendorName) { showToast('Please enter a vendor (name or code).', { type: 'error' }); try { document.getElementById('edit_vendor')?.focus(); } catch (_) { } return; }
+  if (!vendorName) {
+    showToast('Please enter a vendor (name or code).', { type: 'error' });
+    try { vendorEl?.focus(); } catch (_) { }
+    markFieldError(vendorEl);
+    return;
+  }
   const originalPrice = toMoneyNumber(price);
   const typeEl = document.getElementById('edit_discountType');
   const valueEl = document.getElementById('edit_discountValue');
   const reasonEl = document.getElementById('edit_discountReason');
+  clearFieldError(reasonEl);
   const discountType = typeEl?.value || 'none';
   const discountValue = valueEl?.value;
   const discountReason = (reasonEl?.value || '').trim();
   const discount = computeDiscount(originalPrice, discountType, discountValue, discountReason);
-  if (discount.amount > 0 && !discount.reason) { showToast('Please enter a discount reason.', { type: 'error' }); try { document.getElementById('edit_discountReason')?.focus(); } catch (_) { } return; }
+  if (discount.amount > 0 && !discount.reason) {
+    showToast('Please enter a discount reason.', { type: 'error' });
+    try { reasonEl?.focus(); } catch (_) { }
+    markFieldError(reasonEl);
+    return;
+  }
   const finalPrice = finalPriceFrom(originalPrice, discount.amount);
 
   const list = __vendorsCache.length ? __vendorsCache : await fetchVendors();
@@ -1308,33 +1560,82 @@ function playCashRegisterSound() {
 // ---------- Print & save ----------
 async function printReceipt() {
   // Prevent printing/saving when cart is empty
-  try { if (!cartHasItems()) { showToast('Please add at least one item before printing & saving.', { type: 'error' }); try { document.getElementById('itemName')?.focus(); } catch (_) { } return; } } catch (_) { }
+  try {
+    if (!cartHasItems()) {
+      const nameEl = document.getElementById('itemName');
+      clearFieldError(nameEl);
+      showToast('Please add at least one item before printing & saving.', { type: 'error' });
+      try { nameEl?.focus(); } catch (_) { }
+      markFieldError(nameEl, () => cartHasItems());
+      return;
+    }
+  } catch (_) { }
 
   const cashierSelect = document.getElementById('cashierSelect');
   const paymentSelect = document.getElementById('paymentSelect');
+  const cashEl = document.getElementById('cashReceived');
+  clearFieldError(cashierSelect); clearFieldError(paymentSelect); clearFieldError(cashEl);
   const cashier = cashierSelect?.value || '';
   const payment = paymentSelect?.value || '';
   const isBackdated = !!document.getElementById('backdateToggle')?.checked;
   const receiptToggle = document.getElementById('receiptWanted');
   const wantsReceipt = receiptToggle ? !!receiptToggle.checked : true;
-  if (!cashier) { showToast('Please select a cashier.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) { } return; }
-  if (!payment) { showToast('Please select a payment type.', { type: 'error' }); try { paymentSelect?.focus(); } catch (_) { } return; }
+  if (!cashier) {
+    showToast('Please select a cashier.', { type: 'error' });
+    try { cashierSelect?.focus(); } catch (_) { }
+    markFieldError(cashierSelect);
+    return;
+  }
+  if (!payment) {
+    showToast('Please select a payment type.', { type: 'error' });
+    try { paymentSelect?.focus(); } catch (_) { }
+    markFieldError(paymentSelect);
+    return;
+  }
   // If Cash is selected, require a cash tendered amount
   if ((payment || '') === 'Cash' && !isBackdated) {
-    const cashEl = document.getElementById('cashReceived');
     const raw = String(cashEl?.value ?? '').trim();
-    if (!raw) { showToast('Enter the cash received from the customer.', { type: 'error' }); try { cashEl?.focus(); } catch (_) { } return; }
+    if (!raw) {
+      showToast('Enter the cash received from the customer.', { type: 'error' });
+      try { cashEl?.focus(); } catch (_) { }
+      markFieldError(cashEl);
+      return;
+    }
     const cashNum = toMoneyNumber(raw);
-    if (isNaN(cashNum) || cashNum < 0) { showToast('Enter a valid non-negative cash amount.', { type: 'error' }); try { cashEl?.focus(); } catch (_) { } return; }
+    if (isNaN(cashNum) || cashNum < 0) {
+      showToast('Enter a valid non-negative cash amount.', { type: 'error' });
+      try { cashEl?.focus(); } catch (_) { }
+      markFieldError(cashEl, () => {
+        const rawVal = String(cashEl?.value ?? '').trim();
+        const parsed = toMoneyNumber(rawVal);
+        return rawVal !== '' && !isNaN(parsed) && parsed >= 0;
+      });
+      return;
+    }
   }
   const cashiersList = await fetchCashiers();
-  if (!Array.isArray(cashiersList) || !cashiersList.length) { showToast('Add at least one cashier in Manage Cashiers before saving sales.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) { } return; }
-  if (!findCashierStrict(cashiersList, cashier)) { showToast('Please select a cashier that exists in Manage Cashiers.', { type: 'error' }); try { cashierSelect?.focus(); } catch (_) { } return; }
+  if (!Array.isArray(cashiersList) || !cashiersList.length) {
+    showToast('Add at least one cashier in Manage Cashiers before saving sales.', { type: 'error' });
+    try { cashierSelect?.focus(); } catch (_) { }
+    markFieldError(cashierSelect);
+    return;
+  }
+  if (!findCashierStrict(cashiersList, cashier)) {
+    showToast('Please select a cashier that exists in Manage Cashiers.', { type: 'error' });
+    try { cashierSelect?.focus(); } catch (_) { }
+    markFieldError(cashierSelect, () => !!findCashierStrict(cashiersList, (cashierSelect?.value || '').trim()));
+    return;
+  }
   const vendors = await fetchVendors();
   const vendorListForValidation = Array.isArray(vendors) ? vendors : [];
   if (vendorListForValidation.length) {
     const invalidItem = items.find(it => !findVendorStrict(vendorListForValidation, it.vendorName));
-    if (invalidItem) { showToast(`Vendor "${invalidItem.vendorName || 'Unknown'}" is not in Manage Vendors.`, { type: 'error' }); try { document.getElementById('itemVendor')?.focus(); } catch (_) { } return; }
+    if (invalidItem) {
+      showToast(`Vendor "${invalidItem.vendorName || 'Unknown'}" is not in Manage Vendors.`, { type: 'error' });
+      try { document.getElementById('itemVendor')?.focus(); } catch (_) { }
+      markFieldError(document.getElementById('itemVendor'), el => !!findVendorStrict(vendorListForValidation, (el?.value || '').trim()));
+      return;
+    }
   }
   try { playCashRegisterSound(); } catch (_) { }
 
@@ -2005,6 +2306,9 @@ window.addEventListener('load', async () => {
       const cleaned = list.map(r => String(r || '').trim()).filter(Boolean);
       if (cleaned.length) __discountReasons = cleaned;
     } catch (_) { }
+    try {
+      __vendorPromotions = normalizeVendorPromotions(s?.vendorPromotions || []);
+    } catch (_) { __vendorPromotions = []; }
     __branding = {
       bizName: String(s?.bizName || __branding.bizName),
       bizAddress: String(s?.bizAddress || __branding.bizAddress),
@@ -2017,6 +2321,7 @@ window.addEventListener('load', async () => {
   setupEntryDiscountControls();
   try { setDiscountReasonOptions(document.getElementById('edit_discountReason'), __discountReasons); } catch (_) { }
   await loadVendorsIntoDatalist();
+  try { applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
   try {
     const priceEl = document.getElementById('itemPrice');
     if (priceEl) {
@@ -2108,8 +2413,8 @@ window.addEventListener('load', async () => {
     }
     itemVendorEl.addEventListener('input', () => updateVendorDatalistForValue(itemVendorEl.value || ''));
     itemVendorEl.addEventListener('focus', () => updateVendorDatalistForValue(itemVendorEl.value || ''));
-    itemVendorEl.addEventListener('change', () => normalizeVendorInput(itemVendorEl));
-    itemVendorEl.addEventListener('blur', () => normalizeVendorInput(itemVendorEl));
+    itemVendorEl.addEventListener('change', () => { normalizeVendorInput(itemVendorEl); applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); });
+    itemVendorEl.addEventListener('blur', () => { normalizeVendorInput(itemVendorEl); applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); });
     itemVendorEl.addEventListener('keydown', (e) => {
       if (e.key === 'Tab' || e.key === 'Enter') {
         // If a vendor option is highlighted in the datalist, commit it before leaving the field
@@ -2118,6 +2423,7 @@ window.addEventListener('load', async () => {
         normalizeVendorLocal(itemVendorEl);
         // Also kick off async normalization as a fallback (no need to wait)
         try { normalizeVendorInput(itemVendorEl); } catch (_) { }
+        try { applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
       }
     });
   }
@@ -2138,10 +2444,13 @@ window.addEventListener('load', async () => {
         if (v && v.code) el.value = v.code;
       } catch (_) { }
     }
+    editVendorEl.addEventListener('change', () => { normalizeVendorInput(editVendorEl); applyVendorPromoToEdit({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); });
+    editVendorEl.addEventListener('blur', () => { normalizeVendorInput(editVendorEl); applyVendorPromoToEdit({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); });
     editVendorEl.addEventListener('keydown', (e) => {
       if (e.key === 'Tab' || e.key === 'Enter') {
         try { applyFirstVendorOption(editVendorEl); } catch (_) { }
         normalizeEditVendorLocal(editVendorEl);
+        try { applyVendorPromoToEdit({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
       }
     });
   }
@@ -2182,7 +2491,10 @@ window.addEventListener('load', async () => {
     const bdDate = document.getElementById('backdateDate');
     const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (bdDate) bdDate.value = fmtLocal(new Date());
-    const sync = () => { try { if (bdWrap) bdWrap.classList.toggle('d-none', !bdToggle.checked); } catch (_) { } };
+    const sync = () => {
+      try { if (bdWrap) bdWrap.classList.toggle('d-none', !bdToggle.checked); } catch (_) { }
+      try { applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
+    };
     if (bdToggle) bdToggle.addEventListener('change', sync);
     sync();
   } catch (_) { }
@@ -2212,8 +2524,19 @@ window.addEventListener('load', async () => {
       const nameVal = String(nameEl?.value || '').trim();
       const idVal = String(idEl?.value || '').trim();
       const okId = /^[a-z0-9]+$/i.test(idVal);
-      if (!nameVal) { try { showToast('Please enter a name or organization.', { type: 'error' }); } catch (_) { } try { nameEl?.focus(); } catch (_) { } return; }
-      if (!okId) { try { showToast('Tax ID must be alphanumeric (no spaces).', { type: 'error' }); } catch (_) { } try { idEl?.focus(); } catch (_) { } return; }
+      clearFieldError(nameEl); clearFieldError(idEl);
+      if (!nameVal) {
+        try { showToast('Please enter a name or organization.', { type: 'error' }); } catch (_) { }
+        try { nameEl?.focus(); } catch (_) { }
+        markFieldError(nameEl);
+        return;
+      }
+      if (!okId) {
+        try { showToast('Tax ID must be alphanumeric (no spaces).', { type: 'error' }); } catch (_) { }
+        try { idEl?.focus(); } catch (_) { }
+        markFieldError(idEl, el => /^[a-z0-9]+$/i.test(String(el?.value || '').trim()));
+        return;
+      }
       __taxExempt = true;
       __taxExemptInfo = { id: idVal, name: nameVal };
       try { updateTaxRateLabel(); renderTable(); } catch (_) { }
@@ -2302,6 +2625,12 @@ try {
         syncDiscountReasonDisabledState(document.getElementById('edit_discountType'), document.getElementById('edit_discountReason'));
       }
     } catch (_) { }
+    try {
+      if (Array.isArray(payload?.vendorPromotions)) {
+        __vendorPromotions = normalizeVendorPromotions(payload.vendorPromotions);
+        applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true });
+      }
+    } catch (_) { }
     // After settings changes, clear any leftover overlays that might capture input
     try { setTimeout(() => cleanupStrayBackdrops(), 0); } catch (_) { }
   });
@@ -2346,6 +2675,11 @@ try {
         setTaxExempt: (b) => { try { __taxExempt = !!b; updateTaxRateLabel(); } catch (_) { } },
         resetCart: () => { try { items = []; } catch (_) { } },
         getItems: () => { try { return items.slice(); } catch (_) { return []; } },
+        setVendorPromotions: (list) => { try { __vendorPromotions = normalizeVendorPromotions(list); } catch (_) { __vendorPromotions = []; } },
+        setVendorsCache: (list) => { try { __vendorsCache = Array.isArray(list) ? list : []; } catch (_) { __vendorsCache = []; } },
+        applyVendorPromoToFields,
+        findActiveVendorPromo,
+        promoDateRangeIncludes,
       }
     };
   }

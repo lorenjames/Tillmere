@@ -63,6 +63,16 @@ describe('renderer utils and discount math', () => {
     expect(none.amount).toBe(0);
   });
 
+  test('computeDiscount clamps percent and floors amount to price', () => {
+    const overPct = computeDiscount(50, 'percent', 150, 'over');
+    expect(overPct.value).toBe(100);
+    expect(overPct.amount).toBe(50);
+
+    const hugeAmount = computeDiscount(40, 'amount', 999, 'big');
+    expect(hugeAmount.amount).toBe(40);
+    expect(hugeAmount.value).toBe(40);
+  });
+
   test('price helpers', () => {
     expect(finalPriceFrom(100, 15)).toBe(85);
     expect(finalPriceFrom(100, 150)).toBe(0);
@@ -73,4 +83,3 @@ describe('renderer utils and discount math', () => {
     expect(itemHasDiscount({ price: 10 })).toBe(false);
   });
 });
-

@@ -108,6 +108,240 @@ function writeDiscountReasonsToTextarea(list) {
   } catch (_) { }
 }
 
+// --- Vendor promotions (settings UI only) ---
+let __vendorPromotions = [];
+let __promoModal = null;
+let __promoEditingIndex = -1;
+let __vendorList = [];
+
+function todayYmdLocal() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+function normalizeVendorPromotions(list) {
+  const arr = Array.isArray(list) ? list : [];
+  return arr
+    .map((p) => {
+      const vendorCode = String(p?.vendorCode || '').trim();
+      const vendorName = String(p?.vendorName || '').trim();
+      const type = p?.type === 'amount' ? 'amount' : 'percent';
+      const rawValue = Number(p?.value || 0);
+      const value = type === 'percent'
+        ? Math.max(0, Math.min(100, rawValue))
+        : Math.max(0, rawValue);
+      const startDate = String(p?.startDate || '').trim();
+      const endDate = String(p?.endDate || '').trim();
+      const startTs = Date.parse(`${startDate}T00:00:00`);
+      const endTs = Date.parse(`${endDate}T23:59:59`);
+      if (!vendorCode || !startDate || !endDate) return null;
+      if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return null;
+      if (value <= 0) return null;
+      const [safeStart, safeEnd] = startTs <= endTs ? [startDate, endDate] : [endDate, startDate];
+      return {
+        id: String(p?.id || `promo-${Date.now()}-${Math.floor(Math.random() * 1000)}`),
+        vendorCode,
+        vendorName,
+        type,
+        value,
+        startDate: safeStart,
+        endDate: safeEnd
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      const v = a.vendorCode.localeCompare(b.vendorCode, undefined, { sensitivity: 'base' });
+      if (v !== 0) return v;
+      return a.startDate.localeCompare(b.startDate);
+    });
+}
+function getVendorLabel(code, fallbackName = '') {
+  const safeCode = String(code || '').trim();
+  if (!safeCode) return fallbackName || '';
+  const v = (__vendorList || []).find(vv => String(vv?.code || '').trim().toLowerCase() === safeCode.toLowerCase());
+  if (v && v.name) return `${v.name} (${safeCode})`;
+  if (fallbackName) return `${fallbackName} (${safeCode})`;
+  return safeCode;
+}
+function renderVendorPromoSummary() {
+  const el = document.getElementById('vendorPromoSummary');
+  if (!el) return;
+  if (!Array.isArray(__vendorPromotions) || __vendorPromotions.length === 0) {
+    el.textContent = 'No promotions configured.';
+    return;
+  }
+  const snippets = __vendorPromotions.slice(0, 3).map(p => {
+    const vendor = getVendorLabel(p.vendorCode, p.vendorName || p.vendorCode);
+    return `${vendor}: ${p.startDate} - ${p.endDate}`;
+  });
+  const more = __vendorPromotions.length > snippets.length ? ` (+${__vendorPromotions.length - snippets.length} more)` : '';
+  el.textContent = `${__vendorPromotions.length} promotion${__vendorPromotions.length === 1 ? '' : 's'} configured. ${snippets.join('; ')}${more}`;
+}
+function populatePromoVendorSelect() {
+  const sel = document.getElementById('promoVendorSelect');
+  if (!sel) return;
+  const previous = sel.value || '';
+  sel.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select vendor';
+  placeholder.disabled = true;
+  placeholder.selected = true;
+  sel.appendChild(placeholder);
+  (__vendorList || []).forEach(v => {
+    const code = String(v?.code || '').trim();
+    const label = v?.name ? `${v.name} (${code || v.name})` : (code || 'Vendor');
+    if (!code && !label) return;
+    const opt = document.createElement('option');
+    opt.value = code || label;
+    opt.textContent = label;
+    sel.appendChild(opt);
+  });
+  if (previous && [...sel.options].some(o => o.value === previous)) sel.value = previous;
+}
+async function loadVendorsForPromos() {
+  try {
+    const list = await ipcRenderer.invoke('vendors:load');
+    __vendorList = Array.isArray(list) ? list : [];
+    populatePromoVendorSelect();
+    renderVendorPromoTable();
+  } catch (_) { }
+}
+function resetVendorPromoForm() {
+  __promoEditingIndex = -1;
+  try {
+    const vendorSel = document.getElementById('promoVendorSelect');
+    if (vendorSel) vendorSel.selectedIndex = 0;
+    document.getElementById('promoType').value = 'percent';
+    document.getElementById('promoValue').value = '';
+    const startEl = document.getElementById('promoStart');
+    const endEl = document.getElementById('promoEnd');
+    const today = todayYmdLocal();
+    if (startEl) startEl.value = today;
+    if (endEl) endEl.value = today;
+    const btn = document.getElementById('saveVendorPromoBtn');
+    if (btn) btn.textContent = 'Add Promotion';
+  } catch (_) { }
+}
+function renderVendorPromoTable() {
+  const tbody = document.querySelector('#vendorPromoTable tbody');
+  const empty = document.getElementById('vendorPromoEmpty');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!Array.isArray(__vendorPromotions) || __vendorPromotions.length === 0) {
+    if (empty) empty.style.display = '';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  __vendorPromotions.forEach((p, idx) => {
+    const tr = document.createElement('tr');
+    const discountLabel = p.type === 'percent'
+      ? `${p.value}% off`
+      : `$${Number(p.value || 0).toFixed(2)} off`;
+    const vendor = getVendorLabel(p.vendorCode, p.vendorName || p.vendorCode);
+    tr.innerHTML = `
+      <td>${vendor}</td>
+      <td>${discountLabel}</td>
+      <td>${p.startDate} - ${p.endDate}</td>
+      <td>
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-primary" data-role="edit">Edit</button>
+          <button class="btn btn-outline-danger" data-role="delete">Delete</button>
+        </div>
+      </td>`;
+    const editBtn = tr.querySelector('[data-role="edit"]');
+    const delBtn = tr.querySelector('[data-role="delete"]');
+    if (editBtn) editBtn.addEventListener('click', () => editVendorPromo(idx));
+    if (delBtn) delBtn.addEventListener('click', () => deleteVendorPromo(idx));
+    tbody.appendChild(tr);
+  });
+}
+function openVendorPromoModal() {
+  try {
+    if (!__promoModal) {
+      const el = document.getElementById('vendorPromoModal');
+      if (el && window.bootstrap) __promoModal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+    }
+    resetVendorPromoForm();
+    renderVendorPromoTable();
+    if (__promoModal) {
+      __promoModal.show();
+      setTimeout(() => { try { document.getElementById('promoVendorSelect')?.focus(); } catch (_) { } }, 80);
+    }
+  } catch (_) { }
+  loadVendorsForPromos();
+}
+async function persistVendorPromos() {
+  try {
+    const saved = await ipcRenderer.invoke('settings:saveVendorPromotions', { vendorPromotions: __vendorPromotions });
+    __vendorPromotions = normalizeVendorPromotions(saved?.vendorPromotions || __vendorPromotions);
+    renderVendorPromoSummary();
+    renderVendorPromoTable();
+    showToast('Vendor promotions saved.', { type: 'success' });
+  } catch (e) {
+    showToast('Failed to save vendor promotions: ' + (e?.message || e), { type: 'error' });
+  }
+}
+async function addOrUpdateVendorPromo() {
+  const vendorCode = String(document.getElementById('promoVendorSelect')?.value || '').trim();
+  const type = document.getElementById('promoType')?.value === 'amount' ? 'amount' : 'percent';
+  const valueRaw = Number(document.getElementById('promoValue')?.value || 0);
+  const startDate = String(document.getElementById('promoStart')?.value || '').trim();
+  const endDate = String(document.getElementById('promoEnd')?.value || '').trim();
+  if (!vendorCode) { showToast('Select a vendor for the promotion.', { type: 'error' }); return; }
+  if (!startDate || !endDate) { showToast('Enter a start and end date.', { type: 'error' }); return; }
+  let value = Math.max(0, valueRaw);
+  if (type === 'percent') value = Math.min(100, value);
+  if (value <= 0) { showToast('Enter a discount greater than zero.', { type: 'error' }); return; }
+  const startTs = Date.parse(`${startDate}T00:00:00`);
+  const endTs = Date.parse(`${endDate}T23:59:59`);
+  if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) { showToast('Enter valid start/end dates.', { type: 'error' }); return; }
+  const vendorObj = (__vendorList || []).find(v => String(v?.code || '').trim().toLowerCase() === vendorCode.toLowerCase());
+  const vendorName = vendorObj?.name || vendorCode;
+  const promo = {
+    id: (__promoEditingIndex >= 0 && __vendorPromotions[__promoEditingIndex]) ? __vendorPromotions[__promoEditingIndex].id : `promo-${Date.now()}`,
+    vendorCode,
+    vendorName,
+    type,
+    value,
+    startDate: startTs <= endTs ? startDate : endDate,
+    endDate: startTs <= endTs ? endDate : startDate
+  };
+  if (__promoEditingIndex >= 0 && __vendorPromotions[__promoEditingIndex]) {
+    __vendorPromotions[__promoEditingIndex] = promo;
+  } else {
+    __vendorPromotions.push(promo);
+  }
+  __vendorPromotions = normalizeVendorPromotions(__vendorPromotions);
+  await persistVendorPromos();
+  resetVendorPromoForm();
+}
+function editVendorPromo(idx) {
+  const promo = __vendorPromotions[idx];
+  if (!promo) return;
+  __promoEditingIndex = idx;
+  try {
+    document.getElementById('promoVendorSelect').value = promo.vendorCode || '';
+    document.getElementById('promoType').value = promo.type === 'amount' ? 'amount' : 'percent';
+    document.getElementById('promoValue').value = promo.value;
+    document.getElementById('promoStart').value = promo.startDate || '';
+    document.getElementById('promoEnd').value = promo.endDate || '';
+    const btn = document.getElementById('saveVendorPromoBtn');
+    if (btn) btn.textContent = 'Update Promotion';
+    renderVendorPromoTable();
+  } catch (_) { }
+}
+async function deleteVendorPromo(idx) {
+  const promo = __vendorPromotions[idx];
+  if (!promo) return;
+  if (!window.confirm('Delete this vendor promotion?')) return;
+  __vendorPromotions.splice(idx, 1);
+  await persistVendorPromos();
+  resetVendorPromoForm();
+}
+
 async function loadSettings() {
   try {
     const s = await ipcRenderer.invoke('settings:load');
@@ -178,6 +412,9 @@ async function loadSettings() {
 
     // Discount reasons
     writeDiscountReasonsToTextarea(s?.discountReasons || []);
+    __vendorPromotions = normalizeVendorPromotions(s?.vendorPromotions || []);
+    renderVendorPromoSummary();
+    renderVendorPromoTable();
   } catch (e) { showToast('Failed to load settings: ' + (e?.message || e), { type: 'error' }); }
 }
 
@@ -283,12 +520,15 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('savePrintBtn')?.addEventListener('click', savePrintSettings);
   document.getElementById('saveBrandingBtn')?.addEventListener('click', saveBrandingSettings);
   document.getElementById('saveDiscountReasonsBtn')?.addEventListener('click', saveDiscountReasons);
+  document.getElementById('openVendorPromosBtn')?.addEventListener('click', openVendorPromoModal);
+  document.getElementById('saveVendorPromoBtn')?.addEventListener('click', addOrUpdateVendorPromo);
   try {
     ipcRenderer.invoke('app:getVersion').then(v => {
       const el = document.getElementById('appVersion');
       if (el) el.textContent = 'v' + (v || '');
     }).catch(() => {});
   } catch (_) {}
+  loadVendorsForPromos();
 });
 window.addEventListener('load', loadSettings);
 
