@@ -1,6 +1,9 @@
 // settings.js
 const { ipcRenderer } = require('electron');
 
+let __managerMode = false;
+let __developerMode = false;
+
 function toPct(val) { return (Number(val || 0) * 100).toFixed(2); }
 function fromPct(pct) { return Number(pct || 0) / 100; }
 
@@ -17,6 +20,13 @@ function setBrandingVisibility(isDev) {
   try {
     const card = document.getElementById('brandingCard');
     if (card) card.style.display = isDev ? '' : 'none';
+  } catch (_) { }
+}
+
+function syncDevModeControl(enabled) {
+  try {
+    const toggle = document.getElementById('devMode');
+    if (toggle) toggle.checked = !!enabled;
   } catch (_) { }
 }
 
@@ -55,6 +65,158 @@ async function requestDevPassword() {
   } catch (_) { }
   const attempt = window.prompt('Enter developer mode password:');
   return attempt || '';
+}
+
+function setDeveloperMode(enabled) {
+  __developerMode = !!enabled;
+  syncDevModeControl(__developerMode);
+  setBrandingVisibility(__developerMode);
+  try {
+    const btn = document.getElementById('devModeBtn');
+    if (btn) {
+      btn.textContent = __developerMode ? 'Disable Developer Mode' : 'Enable Developer Mode';
+      btn.classList.toggle('btn-outline-danger', __developerMode);
+      btn.classList.toggle('btn-primary', !__developerMode);
+    }
+  } catch (_) { }
+  try {
+    const badge = document.getElementById('devModeStatus');
+    if (badge) {
+      badge.textContent = __developerMode ? 'Enabled' : 'Disabled';
+      badge.className = __developerMode ? 'badge bg-success' : 'badge bg-secondary';
+    }
+  } catch (_) { }
+}
+
+async function enableDeveloperMode() {
+  const password = await requestDevPassword();
+  if (!password) {
+    setDeveloperMode(false);
+    showToast('Developer Mode not enabled (no password entered).', { type: 'error' });
+    return;
+  }
+  try {
+    const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode: true, password });
+    const devSaved = toBool(saved?.developerMode);
+    setDeveloperMode(devSaved);
+    showToast(`Developer Mode: ${devSaved ? 'On' : 'Off'}`, { type: devSaved ? 'success' : 'error' });
+  } catch (e) {
+    setDeveloperMode(false);
+    const msg = (e && (e.code === 'INVALID_DEV_PASSWORD' || String(e.message || '').toLowerCase().includes('invalid developer password')))
+      ? 'Invalid developer password.'
+      : 'Failed to enable Developer Mode: ' + (e?.message || e);
+    showToast(msg, { type: 'error' });
+  }
+}
+
+async function disableDeveloperMode() {
+  try {
+    const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode: false });
+    const devSaved = toBool(saved?.developerMode);
+    setDeveloperMode(devSaved);
+    showToast('Developer Mode: Off', { type: 'success' });
+  } catch (e) {
+    const msg = 'Failed to disable Developer Mode: ' + (e?.message || e);
+    showToast(msg, { type: 'error' });
+  }
+}
+
+async function toggleDeveloperMode() {
+  if (__developerMode) {
+    await disableDeveloperMode();
+  } else {
+    await enableDeveloperMode();
+  }
+}
+
+function setManagerMode(enabled) {
+  __managerMode = !!enabled;
+  try {
+    document.querySelectorAll('[data-requires-manager]').forEach(el => {
+      el.style.display = __managerMode ? '' : 'none';
+    });
+  } catch (_) { }
+  try {
+    const btn = document.getElementById('managerModeBtn');
+    if (btn) {
+      btn.textContent = __managerMode ? 'Disable Manager Mode' : 'Enable Manager Mode';
+      btn.classList.toggle('btn-outline-danger', __managerMode);
+      btn.classList.toggle('btn-primary', !__managerMode);
+    }
+  } catch (_) { }
+  try {
+    const badge = document.getElementById('managerModeStatus');
+    if (badge) {
+      badge.textContent = __managerMode ? 'Enabled' : 'Locked';
+      badge.className = __managerMode ? 'badge bg-success' : 'badge bg-secondary';
+    }
+  } catch (_) { }
+  if (!__managerMode) {
+    try { __promoModal?.hide(); } catch (_) { }
+    try { __promoEditModal?.hide(); } catch (_) { }
+    try { __promoDeleteModal?.hide(); } catch (_) { }
+  }
+}
+
+async function requestManagerPassword() {
+  try {
+    const modalEl = document.getElementById('managerPwdModal');
+    const input = document.getElementById('managerPwdInput');
+    const confirmBtn = document.getElementById('managerPwdConfirm');
+    if (modalEl && input && confirmBtn && typeof bootstrap !== 'undefined' && bootstrap?.Modal) {
+      input.value = '';
+      let resolved = false;
+      const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      return await new Promise((resolve) => {
+        const cleanup = () => {
+          confirmBtn.removeEventListener('click', onConfirm);
+          modalEl.removeEventListener('hidden.bs.modal', onHidden);
+        };
+        const onConfirm = () => {
+          resolved = true;
+          cleanup();
+          modal.hide();
+          resolve(input.value || '');
+        };
+        const onHidden = () => {
+          if (!resolved) {
+            cleanup();
+            resolve('');
+          }
+        };
+        confirmBtn.addEventListener('click', onConfirm);
+        modalEl.addEventListener('hidden.bs.modal', onHidden, { once: true });
+        modal.show();
+        setTimeout(() => { try { input.focus(); } catch (_) {} }, 75);
+      });
+    }
+  } catch (_) { }
+  const attempt = window.prompt('Enter manager password to enable Manager Mode:');
+  return attempt || '';
+}
+
+async function toggleManagerMode() {
+  if (__managerMode) {
+    setManagerMode(false);
+    showToast('Manager Mode disabled.', { type: 'success' });
+    return;
+  }
+  const password = await requestManagerPassword();
+  if (!password) {
+    showToast('Manager Mode not enabled (no password entered).', { type: 'error' });
+    return;
+  }
+  try {
+    await ipcRenderer.invoke('settings:enableManagerMode', { password });
+    setManagerMode(true);
+    showToast('Manager Mode enabled.', { type: 'success' });
+  } catch (e) {
+    setManagerMode(false);
+    const msg = (e && (e.code === 'INVALID_MANAGER_PASSWORD' || String(e.message || '').toLowerCase().includes('invalid manager password')))
+      ? 'Invalid manager password.'
+      : 'Failed to enable Manager Mode: ' + (e?.message || e);
+    showToast(msg, { type: 'error' });
+  }
 }
 
 function showToast(message, opts = {}) {
@@ -232,6 +394,34 @@ function renderVendorPromoSummary() {
   const more = __vendorPromotions.length > snippets.length ? ` (+${__vendorPromotions.length - snippets.length} more)` : '';
   el.textContent = `${__vendorPromotions.length} promotion${__vendorPromotions.length === 1 ? '' : 's'} configured. ${snippets.join('; ')}${more}`;
 }
+function renderVendorPromoInlineTable() {
+  const tbody = document.querySelector('#vendorPromoInline tbody');
+  const empty = document.getElementById('vendorPromoInlineEmpty');
+  const table = document.getElementById('vendorPromoInline');
+  if (!tbody || !table) return;
+  tbody.innerHTML = '';
+  const hasPromos = Array.isArray(__vendorPromotions) && __vendorPromotions.length > 0;
+  if (!hasPromos) {
+    if (empty) empty.style.display = '';
+    table.style.display = 'none';
+    return;
+  }
+  table.style.display = '';
+  if (empty) empty.style.display = 'none';
+  __vendorPromotions.forEach(p => {
+    const tr = document.createElement('tr');
+    const discountLabel = p.type === 'percent'
+      ? `${p.value}% off`
+      : `$${Number(p.value || 0).toFixed(2)} off`;
+    const vendor = getVendorLabel(p.vendorCode, p.vendorName || p.vendorCode);
+    tr.innerHTML = `
+      <td>${vendor}</td>
+      <td>${discountLabel}</td>
+      <td>${p.startDate} - ${p.endDate}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
 function populatePromoVendorSelect(target) {
   const sel = target || document.getElementById('promoVendorSelect');
   if (!sel) return;
@@ -313,8 +503,13 @@ function renderVendorPromoTable() {
     if (delBtn) delBtn.addEventListener('click', () => openVendorPromoDeleteModal(idx));
     tbody.appendChild(tr);
   });
+  renderVendorPromoInlineTable();
 }
 function openVendorPromoModal() {
+  if (!__managerMode) {
+    showToast('Enable Manager Mode to manage vendor promotions.', { type: 'error' });
+    return;
+  }
   try {
     resetVendorPromoForm();
     if (!__promoModal) {
@@ -335,6 +530,7 @@ async function persistVendorPromos(message = 'Vendor promotions saved.') {
     const saved = await ipcRenderer.invoke('settings:saveVendorPromotions', { vendorPromotions: __vendorPromotions });
     __vendorPromotions = normalizeVendorPromotions(saved?.vendorPromotions || __vendorPromotions);
     renderVendorPromoSummary();
+    renderVendorPromoInlineTable();
     renderVendorPromoTable();
     showToast(message, { type: 'success' });
   } catch (e) {
@@ -501,9 +697,7 @@ async function loadSettings() {
     const rate = Number(s?.taxRate ?? 0.0725);
     document.getElementById('taxRatePct').value = toPct(rate);
     const dev = toBool(s?.developerMode);
-    const devEl = document.getElementById('devMode');
-    if (devEl) devEl.checked = dev;
-    setBrandingVisibility(dev);
+    setDeveloperMode(dev);
     const sp = Boolean(s?.silentPrint);
     const spEl = document.getElementById('silentPrint');
     if (spEl) spEl.checked = sp;
@@ -567,6 +761,7 @@ async function loadSettings() {
     writeDiscountReasonsToTextarea(s?.discountReasons || []);
     __vendorPromotions = normalizeVendorPromotions(s?.vendorPromotions || []);
     renderVendorPromoSummary();
+    renderVendorPromoInlineTable();
     renderVendorPromoTable();
   } catch (e) { showToast('Failed to load settings: ' + (e?.message || e), { type: 'error' }); }
 }
@@ -581,31 +776,7 @@ async function saveTaxSettings() {
 }
 
 async function saveDevSettings() {
-  try {
-    const developerMode = !!document.getElementById('devMode')?.checked;
-    let password = '';
-    if (developerMode) {
-      password = await requestDevPassword();
-      if (!password) {
-        document.getElementById('devMode').checked = false;
-        setBrandingVisibility(false);
-        showToast('Developer mode not enabled (no password entered).', { type: 'error' });
-        return;
-      }
-    }
-    const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode, password });
-    const devSaved = toBool(saved?.developerMode);
-    document.getElementById('devMode').checked = devSaved;
-    setBrandingVisibility(devSaved);
-    showToast('Saved. Developer Mode: ' + (devSaved ? 'On' : 'Off'), { type: 'success' });
-  } catch (e) {
-    document.getElementById('devMode').checked = false;
-    setBrandingVisibility(false);
-    const msg = (e && (e.code === 'INVALID_DEV_PASSWORD' || String(e.message || '').toLowerCase().includes('invalid developer password')))
-      ? 'Invalid Password Entered.'
-      : 'Failed to save developer mode: ' + (e?.message || e);
-    showToast(msg, { type: 'error' });
-  }
+  await toggleDeveloperMode();
 }
 
 async function savePrintSettings() {
@@ -660,6 +831,10 @@ async function saveBrandingSettings() {
 
 async function saveDiscountReasons() {
   try {
+    if (!__managerMode) {
+      showToast('Enable Manager Mode to edit discount reasons.', { type: 'error' });
+      return;
+    }
     const reasons = readDiscountReasonsFromTextarea();
     const saved = await ipcRenderer.invoke('settings:saveDiscountReasons', { discountReasons: reasons });
     writeDiscountReasonsToTextarea(saved?.discountReasons || reasons);
@@ -668,13 +843,16 @@ async function saveDiscountReasons() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  setManagerMode(false);
+  setDeveloperMode(false);
   document.getElementById('saveBtn')?.addEventListener('click', saveTaxSettings);
-  document.getElementById('saveDevBtn')?.addEventListener('click', saveDevSettings);
+  document.getElementById('devModeBtn')?.addEventListener('click', toggleDeveloperMode);
   document.getElementById('savePrintBtn')?.addEventListener('click', savePrintSettings);
   document.getElementById('saveBrandingBtn')?.addEventListener('click', saveBrandingSettings);
   document.getElementById('saveDiscountReasonsBtn')?.addEventListener('click', saveDiscountReasons);
   document.getElementById('openVendorPromosBtn')?.addEventListener('click', openVendorPromoModal);
   document.getElementById('saveVendorPromoBtn')?.addEventListener('click', addOrUpdateVendorPromo);
+  document.getElementById('managerModeBtn')?.addEventListener('click', toggleManagerMode);
   try {
     ipcRenderer.invoke('app:getVersion').then(v => {
       const el = document.getElementById('appVersion');
@@ -693,7 +871,9 @@ try {
       toBool,
       setBrandingVisibility,
       loadSettings,
-      saveDevSettings
+      saveDevSettings,
+      toggleDeveloperMode,
+      setDeveloperMode
     };
   }
 } catch (_) { }

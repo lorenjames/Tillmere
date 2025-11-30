@@ -133,7 +133,7 @@ function readSettings() {
     } catch (_) { return def; }
 }
 function readAppConfig() {
-    const def = { developerPassword: 'middleton' };
+    const def = { developerPassword: 'middleton', managerPassword: 'middleton' };
     try {
         const cur = readJson(APP_CONFIG_FILE, def);
         return { ...def, ...(cur || {}) };
@@ -453,6 +453,19 @@ ipcMain.handle('settings:saveDev', (_evt, incoming) => {
         });
     } catch (_) { }
     return saved;
+});
+
+// Manager Mode: simple password check (UI-only gate on settings page)
+ipcMain.handle('settings:enableManagerMode', (_evt, incoming) => {
+    const config = readAppConfig();
+    const attempt = String(incoming?.password || '');
+    const expected = String(config?.managerPassword || config?.developerPassword || '');
+    if (!attempt || !expected || attempt !== expected) {
+        const err = new Error('Invalid manager password');
+        err.code = 'INVALID_MANAGER_PASSWORD';
+        throw err;
+    }
+    return { ok: true };
 });
 
 // (auth handlers removed - rollback per request)

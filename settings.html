@@ -36,6 +36,20 @@
 
   <main class="container py-4">
     <div class="row g-3">
+      <div class="col-12">
+        <div class="card shadow-sm border-warning">
+          <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between">
+            <div>
+              <h5 class="card-title mb-1">Manager Mode</h5>
+              <div class="text-muted small">Unlocks vendor promotions and discount reasons for editing.</div>
+              <div class="mt-2"><span id="managerModeStatus" class="badge bg-secondary">Locked</span></div>
+            </div>
+            <div class="d-grid d-md-block mt-3 mt-md-0">
+              <button class="btn btn-primary" id="managerModeBtn">Enable Manager Mode</button>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm">
           <div class="card-body">
@@ -57,14 +71,13 @@
       <div class="col-12 col-lg-6">
         <div class="card shadow-sm">
           <div class="card-body">
-            <h5 class="card-title mb-3">Developer</h5>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="devMode">
-              <label class="form-check-label" for="devMode">Developer Mode</label>
-            </div>
-            <div class="text-muted small mt-2">Shows developer options like "Reindex IDs" on the Receipts page.</div>
-            <div class="mt-3">
-              <button id="saveDevBtn" class="btn btn-primary">Save</button>
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h5 class="card-title mb-1">Developer Mode</h5>
+                <div class="text-muted small">Shows developer options like "Reindex IDs" on the Receipts page.</div>
+                <div class="mt-2"><span id="devModeStatus" class="badge bg-secondary">Disabled</span></div>
+              </div>
+              <button id="devModeBtn" class="btn btn-primary btn-sm">Enable Developer Mode</button>
             </div>
           </div>
         </div>
@@ -122,7 +135,7 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-6">
+      <div class="col-12 col-lg-6" data-requires-manager style="display:none;">
         <div class="card shadow-sm">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-start">
@@ -133,10 +146,23 @@
               <button id="openVendorPromosBtn" class="btn btn-primary btn-sm">Manage</button>
             </div>
             <div class="small text-muted mt-3" id="vendorPromoSummary">No promotions configured.</div>
+            <div class="table-responsive mt-3">
+              <table class="table table-sm align-middle mb-1" id="vendorPromoInline">
+                <thead class="table-light">
+                  <tr>
+                    <th>Vendor</th>
+                    <th>Discount</th>
+                    <th>Dates</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div class="text-muted small" id="vendorPromoInlineEmpty">No promotions configured.</div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-6">
+      <div class="col-12 col-lg-6" data-requires-manager style="display:none;">
         <div class="card shadow-sm">
           <div class="card-body">
             <h5 class="card-title mb-3">Discount Reasons</h5>
@@ -277,6 +303,26 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="button" class="btn btn-danger" id="confirmVendorPromoDeleteBtn">Delete Promotion</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manager password modal -->
+  <div class="modal fade" id="managerPwdModal" tabindex="-1" aria-labelledby="managerPwdLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="managerPwdLabel">Manager Mode</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <label for="managerPwdInput" class="form-label">Enter manager password to enable Manager Mode</label>
+          <input type="password" class="form-control" id="managerPwdInput" autocomplete="off" />
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="managerPwdConfirm">Enable</button>
         </div>
       </div>
     </div>
