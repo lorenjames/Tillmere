@@ -3,6 +3,7 @@ const { ipcRenderer } = require('electron');
 
 let cache = [];
 let __cashierEditIndex = -1;
+let __pinModalIndex = -1;
 function escapeHtml(s) { return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
 
 function showToast(message, opts = {}) {
@@ -57,10 +58,14 @@ async function render() {
     cache.forEach((c, i) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-      <td>${escapeHtml(c.name || '')}</td>
+      <td>
+        <div>${escapeHtml(c.name || '')}</div>
+        <div class="small text-muted">${c.pinSet ? 'PIN set' : 'PIN not set'}</div>
+      </td>
       <td>
         <div class="btn-group btn-group-sm">
           <button class="btn btn-outline-primary" onclick="openCashierEdit(${i})">Edit</button>
+          <button class="btn btn-outline-success" onclick="openSetPinModal(${i})">Set PIN</button>
           <button class="btn btn-outline-danger" onclick="deleteCashier(${i})">Delete</button>
         </div>
       </td>
@@ -74,7 +79,7 @@ window.addCashier = async function () {
     if (!name) { showToast('Cashier name is required.', { type: 'error' }); focusElement('#newCashier'); return; }
     await load();
     if (cache.some(c => (c.name || '').toLowerCase() === name.toLowerCase())) { showToast('Cashier already exists.', { type: 'error' }); focusElement('#newCashier'); return; }
-    cache.push({ name });
+    cache.push({ name, pinSet: false });
     await save();
     inp.value = '';
     render();
@@ -118,6 +123,59 @@ window.saveCashierEdit = async function () {
     __cashierEditIndex = -1;
     render();
 };
+window.openSetPinModal = async function (i) {
+    await load();
+    if (!cache[i]) return;
+    __pinModalIndex = i;
+    try {
+        document.getElementById('pinModalTitle').textContent = `Set PIN - ${cache[i].name}`;
+        document.getElementById('pinModalValue').value = '';
+        document.getElementById('pinModalConfirm').value = '';
+        const curWrap = document.getElementById('pinModalCurrentWrap');
+        const curInput = document.getElementById('pinModalCurrent');
+        if (curWrap) curWrap.classList.toggle('d-none', !cache[i].pinSet);
+        if (curInput) curInput.value = '';
+    } catch (_) { }
+    try {
+        const el = document.getElementById('cashierPinModal');
+        if (el && window.bootstrap && window.bootstrap.Modal) {
+            const m = window.bootstrap.Modal.getOrCreateInstance(el, { backdrop: 'static' });
+            m.show();
+            setTimeout(() => { try { document.getElementById('pinModalValue')?.focus(); } catch (_) { } }, 150);
+        } else {
+            el?.classList.add('show');
+            el?.setAttribute('style', 'display:block');
+        }
+    } catch (_) { }
+};
+window.applyPinModal = async function () {
+    if (__pinModalIndex < 0) return;
+    await load();
+    const row = cache[__pinModalIndex];
+    if (!row) return;
+    const name = row.name;
+    const currentPin = String(document.getElementById('pinModalCurrent')?.value || '').trim();
+    const pin = String(document.getElementById('pinModalValue')?.value || '').trim();
+    const confirm = String(document.getElementById('pinModalConfirm')?.value || '').trim();
+    if (!pin || !confirm) { showToast('Enter PIN and confirm.', { type: 'error' }); return; }
+    if (pin !== confirm) { showToast('PINs do not match.', { type: 'error' }); return; }
+    if (!/^[0-9]{4,8}$/.test(pin)) { showToast('PIN must be 4-8 digits.', { type: 'error' }); return; }
+    if (row.pinSet && !currentPin) { showToast('Enter current PIN.', { type: 'error' }); return; }
+    try {
+        await ipcRenderer.invoke('cashiers:setPin', { name, pin, currentPin });
+        showToast('PIN updated.', { type: 'success' });
+        __pinModalIndex = -1;
+        try {
+            const el = document.getElementById('cashierPinModal');
+            if (el && window.bootstrap && window.bootstrap.Modal) window.bootstrap.Modal.getOrCreateInstance(el).hide();
+            else { el?.classList.remove('show'); el?.setAttribute('style', 'display:none'); }
+        } catch (_) { }
+        await render();
+    } catch (e) {
+        console.error(e);
+        showToast('Failed to set PIN: ' + (e?.message || ''), { type: 'error' });
+    }
+};
 window.deleteCashier = async function (i) {
     await load();
     if (!cache[i]) return;
@@ -130,5 +188,6 @@ window.deleteCashier = async function (i) {
 
 window.onload = function(){
   try { document.getElementById('cashier_edit_save_btn')?.addEventListener('click', () => { try { saveCashierEdit(); } catch(_){} }); } catch(_){}
+  try { document.getElementById('cashier_pin_save_btn')?.addEventListener('click', () => { try { applyPinModal(); } catch(_){} }); } catch(_){}
   render();
 };

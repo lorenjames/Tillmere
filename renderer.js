@@ -1084,6 +1084,11 @@ function installNavigationGuards() {
         // Only guard real navigations
         const href = el.tagName === 'A' ? (el.getAttribute('href') || '') : '';
         const willNavigate = href && href !== '#' && !href.startsWith('javascript:');
+        const allowNav = el.getAttribute('data-allow-nav') === 'true';
+        if (willNavigate && allowNav) {
+          __allowNavigation = true;
+          return;
+        }
         if (willNavigate && hasDirtyCart()) {
           e.preventDefault();
           e.stopPropagation();
@@ -1210,6 +1215,7 @@ function findCashierStrict(cashiers, input) {
   return safe.find(c => norm(c.name || '') === s) || null;
 }
 
+
 // Choose the closest vendor match for partial input.
 function bestVendorMatch(vendors, input) {
   const s = norm(input);
@@ -1244,8 +1250,8 @@ async function normalizeVendorInput(el) {
 }
 
 // ---------- Cashiers ----------
-async function loadCashiersIntoSelect() {
-  const sel = document.getElementById('cashierSelect');
+async function loadCashiersIntoSelect(target = 'cashierSelect') {
+  const sel = typeof target === 'string' ? document.getElementById(target) : target;
   if (!sel) return;
   const prev = sel.value || '';
   sel.innerHTML = '';

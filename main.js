@@ -1,7 +1,8 @@
 // main.js
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 let mainWindow;
 let splashWindow;
@@ -11,7 +12,9 @@ const VENDOR_FILE = path.join(userDir, 'vendors.json');
 const CASHIER_FILE = path.join(userDir, 'cashiers.json');
 const RECEIPTS_FILE = path.join(userDir, 'receipts.json');
 const SETTINGS_FILE = path.join(userDir, 'settings.json');
+const DRAWER_FILE = path.join(userDir, 'drawer-sessions.json');
 const APP_CONFIG_FILE = path.join(__dirname, 'config', 'app-config.json');
+const APP_RESET_TOKEN = path.join(__dirname, 'config', 'reset-token.txt');
 const BRANDING_DIR = path.join(userDir, 'branding');
 const DEFAULT_VENDOR_PROMOTIONS = [];
 const DEFAULT_DISCOUNT_REASONS = [
@@ -21,6 +24,14 @@ const DEFAULT_DISCOUNT_REASONS = [
     'Vendor Approved',
     'Store Approved'
 ];
+const DRAWER_DENOMS = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
+const MODE_TIMEOUT_MS = 20 * 60 * 1000;
+
+function defaultDenominationTargets() {
+    const safe = {};
+    DRAWER_DENOMS.forEach(denom => { safe[String(denom)] = 0; });
+    return safe;
+}
 
 function ensureNonOverlappingPromos(promos) {
     const byVendor = new Map();
@@ -88,6 +99,44 @@ function normalizeVendorPromotions(list) {
     }));
 }
 
+// ---------- Cashier PIN helpers ----------
+function hashPin(pin, salt) {
+    try {
+        const cleanPin = String(pin || '');
+        const cleanSalt = String(salt || '');
+        return crypto.createHash('sha256').update(`${cleanSalt}:${cleanPin}`).digest('hex');
+    } catch (_) {
+        return '';
+    }
+}
+function generateSalt() {
+    try { return crypto.randomBytes(8).toString('hex'); } catch (_) { return `${Date.now()}`; }
+}
+function normalizeCashierRecord(c) {
+    return {
+        name: String(c?.name || '').trim(),
+        pinHash: String(c?.pinHash || ''),
+        pinSalt: String(c?.pinSalt || ''),
+        active: c?.active !== false
+    };
+}
+function sanitizeCashierForClient(c) {
+    return { name: c.name, active: c.active !== false, pinSet: !!c.pinHash };
+}
+function findCashierByName(list, name) {
+    const target = String(name || '').trim().toLowerCase();
+    if (!target) return null;
+    return (Array.isArray(list) ? list : []).find(c => String(c?.name || '').trim().toLowerCase() === target) || null;
+}
+function verifyCashierPin(name, pin, listIn) {
+    const list = Array.isArray(listIn) ? listIn : readJson(CASHIER_FILE, []);
+    const match = findCashierByName(list, name);
+    if (!match || !match.pinHash) return false;
+    const salt = String(match.pinSalt || '');
+    const computed = hashPin(pin, salt);
+    return computed && computed === match.pinHash;
+}
+
 function readJson(file, fallback) {
     try {
         if (!fs.existsSync(file)) return fallback;
@@ -122,22 +171,113 @@ function readSettings() {
         bizAddress: '1615 S 17th St, Lincoln, NE 68502',
         bizPhone: '531-500-0135',
         logoPath: '',
+        dailyDrawerTotal: 0,
+        drawerDenominationTargets: defaultDenominationTargets(),
         discountReasons: DEFAULT_DISCOUNT_REASONS,
-        vendorPromotions: DEFAULT_VENDOR_PROMOTIONS
+        vendorPromotions: DEFAULT_VENDOR_PROMOTIONS,
+        developerModeExpiresAt: 0
     };
     try {
         const cur = readJson(SETTINGS_FILE, def);
         const merged = { ...def, ...(cur || {}) };
         merged.vendorPromotions = normalizeVendorPromotions(merged.vendorPromotions || []);
+        merged.drawerDenominationTargets = normalizeCounts(merged.drawerDenominationTargets || {});
         return merged;
     } catch (_) { return def; }
+}
+function canEncryptConfig() {
+    try {
+        if (app && typeof app.isReady === 'function' && !app.isReady()) return false;
+        return !!(safeStorage && typeof safeStorage.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable());
+    }
+    catch (_) { return false; }
 }
 function readAppConfig() {
     const def = { developerPassword: 'middleton', managerPassword: 'middleton' };
     try {
-        const cur = readJson(APP_CONFIG_FILE, def);
-        return { ...def, ...(cur || {}) };
-    } catch (_) { return def; }
+        if (!fs.existsSync(APP_CONFIG_FILE)) return def;
+        const raw = fs.readFileSync(APP_CONFIG_FILE, 'utf-8');
+        const parsed = JSON.parse(raw);
+        const hasEnvelope = parsed && typeof parsed.encrypted === 'string';
+        if (hasEnvelope) {
+            if (!canEncryptConfig()) {
+                console.warn('App config is encrypted but encryption is unavailable; falling back to defaults.');
+                return def;
+            }
+            try {
+                const decrypted = safeStorage.decryptString(Buffer.from(parsed.encrypted, 'base64'));
+                const data = JSON.parse(decrypted);
+                return { ...def, ...(data || {}) };
+            } catch (e) {
+                console.error('Failed to decrypt app config; falling back to defaults.', e);
+                return def;
+            }
+        }
+        return { ...def, ...(parsed || {}) };
+    } catch (e) {
+        console.error('Failed reading app config', e);
+        return def;
+    }
+}
+function writeAppConfig(data) {
+    try {
+        fs.mkdirSync(path.dirname(APP_CONFIG_FILE), { recursive: true });
+        const merged = { ...data };
+        if (canEncryptConfig()) {
+            try {
+                const payload = JSON.stringify(merged);
+                const encrypted = safeStorage.encryptString(payload).toString('base64');
+                fs.writeFileSync(APP_CONFIG_FILE, JSON.stringify({ encrypted, version: 1 }, null, 2), 'utf-8');
+                return true;
+            } catch (e) {
+                console.error('Failed to encrypt app config, writing plain JSON.', e);
+            }
+        }
+        fs.writeFileSync(APP_CONFIG_FILE, JSON.stringify(merged, null, 2), 'utf-8');
+        return true;
+    } catch (e) {
+        console.error('Failed writing app config', e);
+        return false;
+    }
+}
+function saveAppConfig(patch) {
+    const current = readAppConfig();
+    const next = { ...current, ...(patch || {}) };
+    if (!next.managerPassword) next.managerPassword = next.developerPassword;
+    writeAppConfig(next);
+    return next;
+}
+function performStartupPasswordReset() {
+    try {
+        if (process.env.JEST_WORKER_ID) return null; // avoid test side effects
+        const reasons = [];
+        const hasFlag = !!(app?.commandLine?.hasSwitch && app.commandLine.hasSwitch('reset-passwords'));
+        const envReset = ['RESET_MIDDLETONS_PASSWORDS', 'MIDDLETON_RESET_PASSWORDS'].some(k => String(process.env[k] || '') === '1');
+        const tokenExists = fs.existsSync(APP_RESET_TOKEN);
+        if (hasFlag) reasons.push('--reset-passwords flag');
+        if (envReset) reasons.push('reset env var');
+        if (tokenExists) reasons.push('reset-token file');
+        if (!reasons.length) return null;
+        const saved = saveAppConfig({ developerPassword: 'middleton', managerPassword: 'middleton' });
+        try { if (tokenExists) fs.unlinkSync(APP_RESET_TOKEN); } catch (_) { }
+        console.warn('[app-config] Passwords reset to defaults via', reasons.join(', '), '-> developer/manager:', saved.developerPassword ? '(set)' : '(empty)');
+        return { reset: true, reasons };
+    } catch (e) {
+        console.error('Failed to perform startup password reset', e);
+        return null;
+    }
+}
+function getAppConfigStatus() {
+    try {
+        const exists = fs.existsSync(APP_CONFIG_FILE);
+        if (!exists) return { exists: false, encrypted: false, encryptionAvailable: canEncryptConfig() };
+        const raw = fs.readFileSync(APP_CONFIG_FILE, 'utf-8');
+        const parsed = JSON.parse(raw);
+        const encrypted = !!(parsed && typeof parsed.encrypted === 'string');
+        return { exists: true, encrypted, encryptionAvailable: canEncryptConfig() };
+    } catch (_) {
+        return { exists: false, encrypted: false, encryptionAvailable: canEncryptConfig() };
+    }
 }
 function saveSettings(patch) {
     try {
@@ -148,6 +288,7 @@ function saveSettings(patch) {
         } catch (_) {
             next.vendorPromotions = [];
         }
+        next.drawerDenominationTargets = normalizeCounts(next.drawerDenominationTargets || {});
         writeJson(SETTINGS_FILE, next);
         return next;
     } catch (e) { console.error('Failed to save settings', e); return readSettings(); }
@@ -161,7 +302,14 @@ function ensureDataFiles() {
     if (!fs.existsSync(VENDOR_FILE)) writeJson(VENDOR_FILE, []);
     if (!fs.existsSync(CASHIER_FILE)) writeJson(CASHIER_FILE, []);
     if (!fs.existsSync(RECEIPTS_FILE)) writeJson(RECEIPTS_FILE, []);
-    if (!fs.existsSync(SETTINGS_FILE)) writeJson(SETTINGS_FILE, { taxRate: 0.0725 });
+    if (!fs.existsSync(SETTINGS_FILE)) {
+        writeJson(SETTINGS_FILE, {
+            taxRate: 0.0725,
+            dailyDrawerTotal: 0,
+            drawerDenominationTargets: defaultDenominationTargets()
+        });
+    }
+    if (!fs.existsSync(DRAWER_FILE)) writeJson(DRAWER_FILE, []);
 }
 
 // ---------- Helpers for robust receipt IDs ----------
@@ -177,6 +325,101 @@ function migrateReceipts(list) {
         return { ...r, id: chosenId, number: chosenNumber };
     });
     return { out, changed };
+}
+
+// ---------- Drawer helpers ----------
+function todayYmd() { return formatLocalDate(new Date()); }
+function normalizeCounts(counts) {
+    const safe = {};
+    DRAWER_DENOMS.forEach(d => {
+        const key = String(d);
+        const raw = counts && (counts[key] ?? counts[d]);
+        const num = Math.max(0, Math.floor(Number(raw || 0)));
+        safe[key] = Number.isFinite(num) ? num : 0;
+    });
+    return safe;
+}
+function drawerTotal(counts) {
+    let total = 0;
+    Object.keys(counts || {}).forEach(k => {
+        const denom = Number(k);
+        const qty = Math.max(0, Math.floor(Number((counts || {})[k] || 0)));
+        if (Number.isFinite(denom) && Number.isFinite(qty)) {
+            total += denom * qty;
+        }
+    });
+    return Math.round(total * 100) / 100;
+}
+function readDrawerList() {
+    return (readJson(DRAWER_FILE, []) || []).map(d => ({
+        date: String(d?.date || '').trim(),
+        denominations: Array.isArray(d?.denominations) && d.denominations.length ? d.denominations : DRAWER_DENOMS,
+        opening: d?.opening || null,
+        closing: d?.closing || null,
+        approved: d?.approved || null,
+        status: d?.status || 'none',
+        variance: Number(d?.variance || 0)
+    }));
+}
+function writeDrawerList(list) { writeJson(DRAWER_FILE, list); }
+function computeDrawerStatus(rec) {
+    if (rec?.approved) return 'approved';
+    if (rec?.closing && rec.closing.submitted) return 'closing-submitted';
+    if (rec?.closing) return 'closing-draft';
+    if (rec?.opening && rec.opening.submitted) return 'opening-submitted';
+    if (rec?.opening) return 'opening-draft';
+    return 'none';
+}
+function sanitizeDrawer(rec) {
+    const opening = rec?.opening ? {
+        cashier: rec.opening.cashier || '',
+        ts: rec.opening.ts || '',
+        counts: rec.opening.counts || {},
+        total: Number(rec.opening.total || 0),
+        submitted: !!rec.opening.submitted,
+        note: String(rec.opening.note || '')
+    } : null;
+    const closing = rec?.closing ? {
+        cashier: rec.closing.cashier || '',
+        ts: rec.closing.ts || '',
+        counts: rec.closing.counts || {},
+        total: Number(rec.closing.total || 0),
+        submitted: !!rec.closing.submitted,
+        note: String(rec.closing.note || ''),
+        floatAmount: Number(rec.closing.floatAmount || 0),
+        deposit: rec.closing.deposit ? {
+            amount: Number(rec.closing.deposit.amount || 0),
+            counts: normalizeCounts(rec.closing.deposit.counts || {}),
+            number: String(rec.closing.deposit.number || '')
+        } : null,
+        needChange: !!rec.closing.needChange
+    } : null;
+    const variance = Number(rec?.variance || 0);
+    return {
+        date: rec?.date || todayYmd(),
+        denominations: rec?.denominations || DRAWER_DENOMS,
+        opening,
+        closing,
+        approved: rec?.approved || null,
+        status: computeDrawerStatus({ ...rec, opening, closing }),
+        variance
+    };
+}
+function upsertDrawer(date, patch) {
+    const ymd = String(date || todayYmd()).trim() || todayYmd();
+    const list = readDrawerList();
+    let rec = list.find(r => String(r.date || '').trim() === ymd);
+    if (!rec) {
+        rec = { date: ymd, denominations: DRAWER_DENOMS, opening: null, closing: null, approved: null, status: 'none', variance: 0 };
+        list.push(rec);
+    }
+    const next = { ...rec, ...(patch || {}) };
+    next.status = computeDrawerStatus(next);
+    next.variance = Number(next?.closing?.total || 0) - Number(next?.opening?.total || 0);
+    const idx = list.findIndex(r => String(r.date || '').trim() === ymd);
+    list[idx] = next;
+    writeDrawerList(list);
+    return sanitizeDrawer(next);
 }
 
 // ---------- Vendors ----------
@@ -203,11 +446,61 @@ ipcMain.handle('state:bootstrap', () => {
 });
 
 // ---------- Cashiers ----------
-ipcMain.handle('cashiers:load', () => readJson(CASHIER_FILE, []));
+ipcMain.handle('cashiers:load', () => {
+    const raw = readJson(CASHIER_FILE, []);
+    const norm = (Array.isArray(raw) ? raw : []).map(normalizeCashierRecord).filter(c => c.name);
+    return norm.map(sanitizeCashierForClient);
+});
 ipcMain.handle('cashiers:save', (_evt, cashiers) => {
-    const norm = (cashiers || []).map(c => ({ name: String(c?.name || '').trim() })).filter(c => c.name);
-    writeJson(CASHIER_FILE, norm);
-    return norm;
+    const incoming = (cashiers || [])
+        .map(c => ({ name: String(c?.name || '').trim(), active: c?.active !== false }))
+        .filter(c => c.name);
+    const existing = (readJson(CASHIER_FILE, []) || []).map(normalizeCashierRecord);
+    const merged = [];
+    const seen = new Set();
+    incoming.forEach(c => {
+        const key = c.name.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        const match = findCashierByName(existing, c.name);
+        if (match) {
+            merged.push({ ...match, name: c.name, active: c.active });
+        } else {
+            merged.push({ name: c.name, active: c.active, pinHash: '', pinSalt: '' });
+        }
+    });
+    writeJson(CASHIER_FILE, merged);
+    return merged.map(sanitizeCashierForClient);
+});
+ipcMain.handle('cashiers:setPin', (_evt, { name, pin, currentPin }) => {
+    const cashierName = String(name || '').trim();
+    const newPin = String(pin || '').trim();
+    const curPin = String(currentPin || '').trim();
+    if (!cashierName || !newPin) {
+        const err = new Error('Cashier name and new PIN are required.');
+        err.code = 'INVALID_PIN';
+        throw err;
+    }
+    const list = (readJson(CASHIER_FILE, []) || []).map(normalizeCashierRecord);
+    const match = findCashierByName(list, cashierName);
+    if (!match) {
+        const err = new Error('Cashier not found.');
+        err.code = 'CASHIER_NOT_FOUND';
+        throw err;
+    }
+    if (match.pinHash) {
+        const ok = verifyCashierPin(cashierName, curPin, list);
+        if (!ok) {
+            const err = new Error('Current PIN is incorrect.');
+            err.code = 'INVALID_CURRENT_PIN';
+            throw err;
+        }
+    }
+    const salt = generateSalt();
+    const pinHash = hashPin(newPin, salt);
+    const updated = list.map(c => c.name.toLowerCase() === cashierName.toLowerCase() ? { ...c, pinSalt: salt, pinHash } : c);
+    writeJson(CASHIER_FILE, updated);
+    return { ok: true, pinSet: true };
 });
 
 // ---------- Receipts (robust, stores void userObj) ----------
@@ -313,6 +606,119 @@ ipcMain.handle('receipts:reindex', () => {
     return { changed, count: out.length };
 });
 
+// ---------- Cash Drawer ----------
+ipcMain.handle('drawer:get', (_evt, date) => {
+    const ymd = String(date || todayYmd()).trim() || todayYmd();
+    const list = readDrawerList();
+    const rec = list.find(r => String(r.date || '').trim() === ymd);
+    if (rec) return sanitizeDrawer(rec);
+    const created = upsertDrawer(ymd, {});
+    return sanitizeDrawer(created);
+});
+
+ipcMain.handle('drawer:saveOpening', (_evt, payload) => {
+    const ymd = String(payload?.date || todayYmd()).trim() || todayYmd();
+    const cashier = String(payload?.cashier || '').trim();
+    const pin = String(payload?.pin || '').trim();
+    const counts = normalizeCounts(payload?.counts || {});
+    const note = String(payload?.note || '').trim();
+    if (!cashier) { const err = new Error('Cashier is required.'); err.code = 'NO_CASHIER'; throw err; }
+    if (!pin) { const err = new Error('PIN is required.'); err.code = 'NO_PIN'; throw err; }
+    const list = (readJson(CASHIER_FILE, []) || []).map(normalizeCashierRecord);
+    if (!findCashierByName(list, cashier)) { const err = new Error('Cashier not found.'); err.code = 'CASHIER_NOT_FOUND'; throw err; }
+    if (!verifyCashierPin(cashier, pin, list)) { const err = new Error('Invalid PIN.'); err.code = 'INVALID_PIN'; throw err; }
+    const currentList = readDrawerList();
+    const current = currentList.find(r => String(r.date || '').trim() === ymd) || null;
+    if (current && current.approved) { const err = new Error('Drawer already approved for this day.'); err.code = 'APPROVED'; throw err; }
+    const total = drawerTotal(counts);
+    return upsertDrawer(ymd, {
+        opening: {
+            cashier,
+            ts: new Date().toISOString(),
+            counts,
+            total,
+            submitted: true,
+            note
+        }
+    });
+});
+
+ipcMain.handle('drawer:saveClosing', (_evt, payload) => {
+    const ymd = String(payload?.date || todayYmd()).trim() || todayYmd();
+    const cashier = String(payload?.cashier || '').trim();
+    const pin = String(payload?.pin || '').trim();
+    const counts = normalizeCounts(payload?.counts || {});
+    const note = String(payload?.note || '').trim();
+    const floatAmount = Math.round(Math.max(0, Number(payload?.floatAmount || 0)) * 100) / 100;
+    const depositAmount = Math.round(Math.max(0, Number(payload?.depositAmount || 0)) * 100) / 100;
+    const depositCounts = normalizeCounts(payload?.depositCounts || {});
+    const depositNumber = String(payload?.depositNumber || '').trim();
+    const needChange = !!payload?.needChange;
+    if (!cashier) { const err = new Error('Cashier is required.'); err.code = 'NO_CASHIER'; throw err; }
+    if (!pin) { const err = new Error('PIN is required.'); err.code = 'NO_PIN'; throw err; }
+    const list = (readJson(CASHIER_FILE, []) || []).map(normalizeCashierRecord);
+    if (!findCashierByName(list, cashier)) { const err = new Error('Cashier not found.'); err.code = 'CASHIER_NOT_FOUND'; throw err; }
+    if (!verifyCashierPin(cashier, pin, list)) { const err = new Error('Invalid PIN.'); err.code = 'INVALID_PIN'; throw err; }
+    const currentList = readDrawerList();
+    const current = currentList.find(r => String(r.date || '').trim() === ymd) || null;
+    if (current && current.approved) { const err = new Error('Drawer already approved for this day.'); err.code = 'APPROVED'; throw err; }
+    if (!current || !current.opening) { const err = new Error('Opening must be completed before closing.'); err.code = 'NO_OPENING'; throw err; }
+    const total = drawerTotal(counts);
+    return upsertDrawer(ymd, {
+        closing: {
+            cashier,
+            ts: new Date().toISOString(),
+            counts,
+            total,
+            submitted: true,
+            note,
+            floatAmount,
+            deposit: {
+                amount: depositAmount,
+                counts: depositCounts,
+                number: depositNumber
+            },
+            needChange
+        }
+    });
+});
+
+ipcMain.handle('drawer:approve', (_evt, payload) => {
+    const ymd = String(payload?.date || todayYmd()).trim() || todayYmd();
+    const list = readDrawerList();
+    const current = list.find(r => String(r.date || '').trim() === ymd);
+    if (!current || !current.closing) {
+        const err = new Error('Closing counts must be submitted before approval.');
+        err.code = 'NO_CLOSING';
+        throw err;
+    }
+    if (current.approved) {
+        const err = new Error('Daily totals already submitted for this day.');
+        err.code = 'APPROVED';
+        throw err;
+    }
+    const approvedBy = String(payload?.by || current.closing.cashier || 'Cashier');
+    return upsertDrawer(ymd, {
+        approved: {
+            by: approvedBy,
+            ts: new Date().toISOString()
+        }
+    });
+});
+
+ipcMain.handle('drawer:list', (_evt, payload) => {
+    const start = String(payload?.startDate || '').trim();
+    const end = String(payload?.endDate || '').trim();
+    const list = readDrawerList().map(sanitizeDrawer);
+    const filtered = list.filter(rec => {
+        const d = String(rec?.date || '');
+        const afterStart = start ? d >= start : true;
+        const beforeEnd = end ? d <= end : true;
+        return afterStart && beforeEnd;
+    }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    return filtered;
+});
+
 // Optional debug
 ipcMain.handle('debug:info', () => {
     const all = readJson(RECEIPTS_FILE, []);
@@ -331,6 +737,32 @@ ipcMain.handle('settings:save', (_evt, incoming) => {
         developerMode: !!incoming?.developerMode
     };
     const saved = saveSettings(safe);
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
+ipcMain.handle('settings:saveDrawerTotal', (_evt, incoming) => {
+    const current = readSettings();
+    const target = Math.max(0, Number(incoming?.dailyDrawerTotal ?? current.dailyDrawerTotal ?? 0));
+    const saved = saveSettings({ dailyDrawerTotal: target });
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
+ipcMain.handle('settings:saveDenominationTargets', (_evt, incoming) => {
+    const targets = normalizeCounts(incoming?.denominationTargets || incoming?.drawerDenominationTargets || {});
+    const drawerTargetTotal = drawerTotal(targets);
+    const saved = saveSettings({ drawerDenominationTargets: targets, dailyDrawerTotal: drawerTargetTotal });
     try {
         const { BrowserWindow } = require('electron');
         BrowserWindow.getAllWindows().forEach(w => {
@@ -441,13 +873,32 @@ ipcMain.handle('settings:saveDev', (_evt, incoming) => {
           }
       }
       const current = readSettings();
+      const modeTimeout = desired ? Math.max(Number(incoming?.expiresAt || 0), Date.now() + MODE_TIMEOUT_MS) : 0;
       const safe = {
           taxRate: Math.max(0, Math.min(1, Number(current?.taxRate ?? 0.0725))),
-          developerMode: desired
+          developerMode: desired,
+          developerModeExpiresAt: modeTimeout
       };
       const saved = saveSettings(safe);
       try {
           const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
+ipcMain.handle('settings:disableDev', () => {
+    const current = readSettings();
+    const safe = {
+        taxRate: Math.max(0, Math.min(1, Number(current?.taxRate ?? 0.0725))),
+        developerMode: false,
+        developerModeExpiresAt: 0
+    };
+    const saved = saveSettings(safe);
+    try {
+        const { BrowserWindow } = require('electron');
         BrowserWindow.getAllWindows().forEach(w => {
             try { w.webContents.send('settings:changed', saved); } catch (_) { }
         });
@@ -467,6 +918,53 @@ ipcMain.handle('settings:enableManagerMode', (_evt, incoming) => {
     }
     return { ok: true };
 });
+
+// Change developer/manager passwords + surface encryption status
+ipcMain.handle('appConfig:status', () => getAppConfigStatus());
+ipcMain.handle('appConfig:changePasswords', (_evt, incoming) => {
+    const current = readAppConfig();
+    const desired = incoming || {};
+    const patch = {};
+    const updated = [];
+
+    const newDev = String(desired.newDeveloper || '').trim();
+    const newMgr = String(desired.newManager || '').trim();
+    const curDev = String(desired.currentDeveloper || '').trim();
+    const curMgr = String(desired.currentManager || '').trim();
+
+    if (newDev) {
+        const expected = String(current.developerPassword || '');
+        if (!curDev || curDev !== expected) {
+            const err = new Error('Current developer password is incorrect.');
+            err.code = 'INVALID_CURRENT_DEV_PASSWORD';
+            throw err;
+        }
+        patch.developerPassword = newDev;
+        // Keep manager in sync if it previously matched dev and manager wasn't explicitly provided
+        if (!current.managerPassword || current.managerPassword === expected) {
+            patch.managerPassword = current.managerPassword === expected ? newDev : current.managerPassword;
+        }
+        updated.push('developer');
+    }
+    if (newMgr) {
+        const expectedMgr = String(current.managerPassword || current.developerPassword || '');
+        if (!curMgr || curMgr !== expectedMgr) {
+            const err = new Error('Current manager password is incorrect.');
+            err.code = 'INVALID_CURRENT_MANAGER_PASSWORD';
+            throw err;
+        }
+        patch.managerPassword = newMgr;
+        updated.push('manager');
+    }
+    if (!updated.length) {
+        return { ok: false, updated: [], message: 'No password changes provided.' };
+    }
+    const saved = saveAppConfig(patch);
+    return { ok: true, updated, encryption: getAppConfigStatus(), config: { hasManagerPassword: !!saved.managerPassword } };
+});
+
+// Apply optional startup reset (flag/env/token)
+try { performStartupPasswordReset(); } catch (_) { }
 
 // (auth handlers removed - rollback per request)
 
@@ -769,6 +1267,11 @@ try {
   if (typeof module !== 'undefined' && module && module.exports) {
     module.exports = {
       migrateReceipts,
+      // drawer helpers
+      normalizeCounts,
+      drawerTotal,
+      computeDrawerStatus,
+      sanitizeDrawer,
       // expose small helpers used in tests if needed later
       // formatLocalDate, nextAvailablePath
     };

@@ -27,6 +27,7 @@
           <ul class="dropdown-menu dropdown-menu-end">
             <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
             <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
+            <li><a class="dropdown-item" href="opening.html" data-allow-nav="true">Opening / Closing</a></li>
             <li><a class="dropdown-item" href="settings.html">Settings</a></li>
           </ul>
         </div>
@@ -35,7 +36,7 @@
   </nav>
 
   <main class="container py-4">
-    <div class="row g-3">
+    <div class="row g-1 mb-2">
       <div class="col-12">
         <div class="card shadow-sm border-warning">
           <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between">
@@ -50,7 +51,10 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-6">
+    </div>
+
+    <div class="row row-cols-1 g-1 gy-1">
+      <div class="col" data-requires-manager style="display:none;">
         <div class="card shadow-sm">
           <div class="card-body">
             <h5 class="card-title mb-3">Sales Tax</h5>
@@ -68,7 +72,29 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-6">
+
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h5 class="card-title mb-1">Denomination Targets</h5>
+                <div class="text-muted small">Specify the counts you plan to keep in the drawer for each denomination. Deposit counts auto-fill in Closing if you exceed these values.</div>
+              </div>
+              <div class="fw-semibold fs-6 text-end">
+                Cash Drawer Target<br>
+                <span class="fs-4" id="denomTargetTotal">$0.00</span>
+              </div>
+            </div>
+            <div id="denomTargetInputs" class="denom-target-inputs mt-3"></div>
+            <div class="d-grid d-md-flex justify-content-md-end mt-3">
+              <button id="saveDenomTargetsBtn" class="btn btn-primary">Save Denomination Targets</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
         <div class="card shadow-sm">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-start">
@@ -82,7 +108,64 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-6">
+
+      <div class="col">
+        <div class="card shadow-sm">
+          <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-start">
+            <div>
+              <h5 class="card-title mb-1">Passwords</h5>
+              <div class="text-muted small">Change developer or manager passwords.</div>
+            </div>
+            <div class="d-grid d-md-block mt-3 mt-md-0">
+              <button class="btn btn-primary" id="changePasswordsBtn">Change Passwords</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h5 class="card-title mb-1">Vendor Promotions</h5>
+                <div class="text-muted small">Auto-applied vendor discounts on POS for current-date sales.</div>
+              </div>
+              <button id="openVendorPromosBtn" class="btn btn-primary btn-sm">Manage</button>
+            </div>
+            <div class="small text-muted mt-3" id="vendorPromoSummary">No promotions configured.</div>
+            <div class="table-responsive mt-3">
+              <table class="table table-sm align-middle mb-1" id="vendorPromoInline">
+                <thead class="table-light">
+                  <tr>
+                    <th>Vendor</th>
+                    <th>Discount</th>
+                    <th>Dates</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div class="text-muted small" id="vendorPromoInlineEmpty">No promotions configured.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Discount Reasons</h5>
+            <label for="discountReasonsInput" class="form-label">Reasons (one per line)</label>
+            <textarea id="discountReasonsInput" class="form-control" rows="5" placeholder="Store Promo&#10;Vendor Promo&#10;Dolly Purrton Promo&#10;Vendor Approved&#10;Store Approved"></textarea>
+            <div class="form-text">These reasons appear as a dropdown on the POS screen whenever a discount is applied.</div>
+            <div class="d-grid d-md-flex justify-content-md-end mt-3">
+              <button id="saveDiscountReasonsBtn" class="btn btn-primary">Save Reasons</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" data-requires-developer style="display:none;">
         <div class="card shadow-sm">
           <div class="card-body">
             <h5 class="card-title mb-3">Printing</h5>
@@ -104,7 +187,8 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-6" id="brandingCard" style="display:none;">
+
+      <div class="col" id="brandingCard" style="display:none;">
         <div class="card shadow-sm">
           <div class="card-body">
             <h5 class="card-title mb-3">Branding</h5>
@@ -135,51 +219,62 @@
           </div>
         </div>
       </div>
-      <div class="col-12 col-lg-6" data-requires-manager style="display:none;">
-        <div class="card shadow-sm">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start">
-              <div>
-                <h5 class="card-title mb-1">Vendor Promotions</h5>
-                <div class="text-muted small">Auto-applied vendor discounts on POS for current-date sales.</div>
-              </div>
-              <button id="openVendorPromosBtn" class="btn btn-primary btn-sm">Manage</button>
-            </div>
-            <div class="small text-muted mt-3" id="vendorPromoSummary">No promotions configured.</div>
-            <div class="table-responsive mt-3">
-              <table class="table table-sm align-middle mb-1" id="vendorPromoInline">
-                <thead class="table-light">
-                  <tr>
-                    <th>Vendor</th>
-                    <th>Discount</th>
-                    <th>Dates</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-              <div class="text-muted small" id="vendorPromoInlineEmpty">No promotions configured.</div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col-12 col-lg-6" data-requires-manager style="display:none;">
-        <div class="card shadow-sm">
-          <div class="card-body">
-            <h5 class="card-title mb-3">Discount Reasons</h5>
-            <label for="discountReasonsInput" class="form-label">Reasons (one per line)</label>
-            <textarea id="discountReasonsInput" class="form-control" rows="5" placeholder="Store Promo&#10;Vendor Promo&#10;Dolly Purrton Promo&#10;Vendor Approved&#10;Store Approved"></textarea>
-            <div class="form-text">These reasons appear as a dropdown on the POS screen whenever a discount is applied.</div>
-            <div class="d-grid d-md-flex justify-content-md-end mt-3">
-              <button id="saveDiscountReasonsBtn" class="btn btn-primary">Save Reasons</button>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
+
     <div class="text-muted small mt-4 text-center">
       App Version: <span id="appVersion">v</span>
     </div>
   </main>
+
+  <!-- Passwords Modal -->
+  <div class="modal fade" id="passwordsModal" tabindex="-1" aria-labelledby="passwordsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="passwordsModalLabel">Change Passwords</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="text-muted small mb-3" id="appConfigEncryptionStatus">Checking encryption...</div>
+          <div class="fw-semibold mb-1">Developer Password</div>
+          <div class="row g-2 mb-3">
+            <div class="col-12 col-md-4">
+              <label class="form-label" for="currentDevPwd">Current</label>
+              <input type="password" class="form-control" id="currentDevPwd" autocomplete="off" />
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label" for="newDevPwd">New</label>
+              <input type="password" class="form-control" id="newDevPwd" autocomplete="off" />
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label" for="confirmDevPwd">Confirm</label>
+              <input type="password" class="form-control" id="confirmDevPwd" autocomplete="off" />
+            </div>
+          </div>
+          <div class="fw-semibold mb-1">Manager Password</div>
+          <div class="row g-2">
+            <div class="col-12 col-md-4">
+              <label class="form-label" for="currentMgrPwd">Current</label>
+              <input type="password" class="form-control" id="currentMgrPwd" autocomplete="off" />
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label" for="newMgrPwd">New</label>
+              <input type="password" class="form-control" id="newMgrPwd" autocomplete="off" />
+            </div>
+            <div class="col-12 col-md-4">
+              <label class="form-label" for="confirmMgrPwd">Confirm</label>
+              <input type="password" class="form-control" id="confirmMgrPwd" autocomplete="off" />
+            </div>
+          </div>
+          <div class="text-muted small mt-2">Leave fields blank to keep the current passwords.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="passwordsSaveBtn">Save Passwords</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Vendor Promotions Modal -->
   <div class="modal fade" id="vendorPromoModal" tabindex="-1" aria-hidden="true">

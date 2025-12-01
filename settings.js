@@ -1,8 +1,45 @@
 // settings.js
 const { ipcRenderer } = require('electron');
 
+const DRAWER_DENOMS = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
+const MODE_TIMEOUT_MS = 20 * 60 * 1000;
+
+function denomLabel(value) {
+  const denom = Number(value || 0);
+  if (!Number.isFinite(denom)) return '$0';
+  if (denom >= 1) return `$${denom.toFixed(0)}`;
+  return `${Math.round(denom * 100)}¢`;
+}
+function normalizeDenominationTargets(targets = {}) {
+  const safe = {};
+  DRAWER_DENOMS.forEach(d => {
+    const key = String(d);
+    const raw = targets?.[key] ?? targets?.[d];
+    const num = Math.max(0, Math.floor(Number(raw || 0)));
+    safe[key] = Number.isFinite(num) ? num : 0;
+  });
+  return safe;
+}
+
+function formatMoneyDisplay(value) {
+  const num = Number.isFinite(Number(value)) ? Number(value) : 0;
+  return num.toFixed(2);
+}
+
+function computeDenominationTargetTotal(counts = {}) {
+  const normalized = normalizeDenominationTargets(counts);
+  return DRAWER_DENOMS.reduce((sum, denom) => sum + denom * (Number(normalized[String(denom)] || 0)), 0);
+}
+
+function updateDenominationTargetTotalDisplay(total = 0) {
+  const el = document.getElementById('denomTargetTotal');
+  if (!el) return;
+  el.textContent = `$${formatMoneyDisplay(total)}`;
+}
+
 let __managerMode = false;
 let __developerMode = false;
+let __passwordsModal = null;
 
 function toPct(val) { return (Number(val || 0) * 100).toFixed(2); }
 function fromPct(pct) { return Number(pct || 0) / 100; }
@@ -14,6 +51,194 @@ function toBool(val) {
     return v === 'true' || v === '1' || v === 'yes' || v === 'on' || v === 'enabled';
   }
   return Boolean(val);
+}
+function setAppConfigEncryptionStatusLabel(state) {
+  try {
+    const el = document.getElementById('appConfigEncryptionStatus');
+    if (!el) return;
+    if (!state) {
+      el.textContent = 'Encryption status unavailable.';
+      return;
+    }
+    const encrypted = !!state.encrypted;
+    const available = !!state.encryptionAvailable;
+    const exists = !!state.exists;
+    if (available) {
+      if (encrypted) {
+        el.textContent = 'Encrypted with OS keychain (safeStorage).';
+      } else if (exists) {
+        el.textContent = 'Encryption available; config will encrypt on next update.';
+      } else {
+        el.textContent = 'Encryption available. Config will be encrypted when saved.';
+      }
+    } else {
+      el.textContent = 'OS keychain unavailable; config stored as plain JSON.';
+    }
+  } catch (_) { }
+}
+async function refreshAppConfigStatus() {
+  try {
+    const status = await ipcRenderer.invoke('appConfig:status');
+    setAppConfigEncryptionStatusLabel(status);
+  } catch (_) {
+    setAppConfigEncryptionStatusLabel(null);
+  }
+}
+let __managerModeTimer = null;
+let __managerModeExpiresAt = 0;
+let __developerModeTimer = null;
+let __developerModeExpiresAt = 0;
+
+function persistManagerMode(enabled, expiresAt = 0) {
+  try { localStorage.setItem('managerModeEnabled', enabled ? '1' : '0'); } catch (_) {}
+  try {
+    if (enabled && expiresAt > 0) {
+      localStorage.setItem('managerModeExpiresAt', String(expiresAt));
+    } else {
+      localStorage.removeItem('managerModeExpiresAt');
+    }
+  } catch (_) {}
+  __managerModeExpiresAt = enabled ? expiresAt : 0;
+}
+
+function readManagerModeState() {
+  try {
+    const enabled = localStorage.getItem('managerModeEnabled') === '1';
+    const expires = Math.max(0, Number(localStorage.getItem('managerModeExpiresAt') || '0'));
+    if (enabled && expires && Date.now() > expires) {
+      localStorage.removeItem('managerModeEnabled');
+      localStorage.removeItem('managerModeExpiresAt');
+      return { enabled: false, expiresAt: 0 };
+    }
+    return { enabled, expiresAt: expires };
+  } catch (_) {
+    return { enabled: false, expiresAt: 0 };
+  }
+}
+
+function scheduleManagerModeTimer() {
+  if (__managerModeTimer) {
+    clearTimeout(__managerModeTimer);
+    __managerModeTimer = null;
+  }
+  if (!__managerMode || !__managerModeExpiresAt) return;
+  const delay = Math.max(0, __managerModeExpiresAt - Date.now());
+  if (delay <= 0) {
+    disableManagerModeDueToTimeout();
+    return;
+  }
+  __managerModeTimer = setTimeout(() => {
+    disableManagerModeDueToTimeout();
+  }, delay);
+}
+
+function disableManagerModeDueToTimeout() {
+  if (!__managerMode) return;
+  setManagerMode(false);
+  showToast('Manager Mode timed out.', { type: 'info' });
+}
+
+function scheduleDeveloperModeTimeout() {
+  if (__developerModeTimer) {
+    clearTimeout(__developerModeTimer);
+    __developerModeTimer = null;
+  }
+  if (!__developerMode || !__developerModeExpiresAt) return;
+  const delay = Math.max(0, __developerModeExpiresAt - Date.now());
+  if (delay <= 0) {
+    disableDeveloperModeDueToTimeout();
+    return;
+  }
+  __developerModeTimer = setTimeout(() => disableDeveloperModeDueToTimeout(), delay);
+}
+
+function disableDeveloperModeDueToTimeout() {
+  if (!__developerMode) return;
+  setDeveloperMode(false);
+  showToast('Developer Mode timed out.', { type: 'info' });
+  try {
+    ipcRenderer.invoke('settings:disableDev').catch(() => {});
+  } catch (_) {}
+}
+function readField(id) {
+  const el = document.getElementById(id);
+  return String(el?.value || '').trim();
+}
+function clearPasswordInputs() {
+  ['currentDevPwd', 'newDevPwd', 'confirmDevPwd', 'currentMgrPwd', 'newMgrPwd', 'confirmMgrPwd'].forEach(id => {
+    try {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    } catch (_) { }
+  });
+}
+function ensurePasswordsModal() {
+  if (__passwordsModal) return __passwordsModal;
+  try {
+    const el = document.getElementById('passwordsModal');
+    if (el && window.bootstrap) {
+      __passwordsModal = bootstrap.Modal.getOrCreateInstance(el, { backdrop: 'static', keyboard: false });
+    }
+  } catch (_) { }
+  return __passwordsModal;
+}
+function openPasswordsModal() {
+  try {
+    clearPasswordInputs();
+    refreshAppConfigStatus();
+    const modal = ensurePasswordsModal();
+    if (modal) {
+      modal.show();
+      setTimeout(() => { try { document.getElementById('currentDevPwd')?.focus(); } catch (_) { } }, 90);
+    }
+  } catch (_) { }
+}
+async function changePasswords() {
+  const devCur = readField('currentDevPwd');
+  const devNew = readField('newDevPwd');
+  const devConfirm = readField('confirmDevPwd');
+  const mgrCur = readField('currentMgrPwd');
+  const mgrNew = readField('newMgrPwd');
+  const mgrConfirm = readField('confirmMgrPwd');
+
+  const payload = {};
+  if (devNew || devConfirm || devCur) {
+    if (!devCur) { showToast('Enter the current developer password.', { type: 'error' }); return; }
+    if (!devNew || !devConfirm) { showToast('Enter and confirm the new developer password.', { type: 'error' }); return; }
+    if (devNew !== devConfirm) { showToast('Developer passwords do not match.', { type: 'error' }); return; }
+    payload.currentDeveloper = devCur;
+    payload.newDeveloper = devNew;
+  }
+  if (mgrNew || mgrConfirm || mgrCur) {
+    if (!mgrCur) { showToast('Enter the current manager password.', { type: 'error' }); return; }
+    if (!mgrNew || !mgrConfirm) { showToast('Enter and confirm the new manager password.', { type: 'error' }); return; }
+    if (mgrNew !== mgrConfirm) { showToast('Manager passwords do not match.', { type: 'error' }); return; }
+    payload.currentManager = mgrCur;
+    payload.newManager = mgrNew;
+  }
+  if (!payload.newDeveloper && !payload.newManager) {
+    showToast('Enter a new password to change.', { type: 'error' });
+    return;
+  }
+  try {
+    const resp = await ipcRenderer.invoke('appConfig:changePasswords', payload);
+    if (resp?.ok) {
+      showToast('Password(s) updated.', { type: 'success' });
+      clearPasswordInputs();
+      refreshAppConfigStatus();
+      try { ensurePasswordsModal()?.hide(); } catch (_) { }
+    } else {
+      showToast(resp?.message || 'No password changes applied.', { type: 'error' });
+    }
+  } catch (e) {
+    const code = e?.code;
+    const msg = (code === 'INVALID_CURRENT_DEV_PASSWORD')
+      ? 'Current developer password is incorrect.'
+      : (code === 'INVALID_CURRENT_MANAGER_PASSWORD')
+        ? 'Current manager password is incorrect.'
+        : 'Failed to update passwords: ' + (e?.message || e);
+    showToast(msg, { type: 'error' });
+  }
 }
 
 function setBrandingVisibility(isDev) {
@@ -67,10 +292,17 @@ async function requestDevPassword() {
   return attempt || '';
 }
 
-function setDeveloperMode(enabled) {
+function setDeveloperMode(enabled, opts = {}) {
   __developerMode = !!enabled;
+  const expiresAt = __developerMode ? (Number(opts.expiresAt || 0) || Date.now() + MODE_TIMEOUT_MS) : 0;
+  __developerModeExpiresAt = __developerMode ? expiresAt : 0;
   syncDevModeControl(__developerMode);
   setBrandingVisibility(__developerMode);
+  try {
+    document.querySelectorAll('[data-requires-developer]').forEach(el => {
+      el.style.display = __developerMode ? '' : 'none';
+    });
+  } catch (_) { }
   try {
     const btn = document.getElementById('devModeBtn');
     if (btn) {
@@ -86,6 +318,8 @@ function setDeveloperMode(enabled) {
       badge.className = __developerMode ? 'badge bg-success' : 'badge bg-secondary';
     }
   } catch (_) { }
+
+  scheduleDeveloperModeTimeout();
 }
 
 async function enableDeveloperMode() {
@@ -96,9 +330,11 @@ async function enableDeveloperMode() {
     return;
   }
   try {
-    const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode: true, password });
+    const desiredExpires = Date.now() + MODE_TIMEOUT_MS;
+    const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode: true, password, expiresAt: desiredExpires });
     const devSaved = toBool(saved?.developerMode);
-    setDeveloperMode(devSaved);
+    const expiresAt = Number(saved?.developerModeExpiresAt || desiredExpires);
+    setDeveloperMode(devSaved, { expiresAt });
     showToast(`Developer Mode: ${devSaved ? 'On' : 'Off'}`, { type: devSaved ? 'success' : 'error' });
   } catch (e) {
     setDeveloperMode(false);
@@ -113,7 +349,7 @@ async function disableDeveloperMode() {
   try {
     const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode: false });
     const devSaved = toBool(saved?.developerMode);
-    setDeveloperMode(devSaved);
+    setDeveloperMode(devSaved, { expiresAt: Number(saved?.developerModeExpiresAt || 0) });
     showToast('Developer Mode: Off', { type: 'success' });
   } catch (e) {
     const msg = 'Failed to disable Developer Mode: ' + (e?.message || e);
@@ -129,12 +365,21 @@ async function toggleDeveloperMode() {
   }
 }
 
-function setManagerMode(enabled) {
+function setManagerMode(enabled, opts = {}) {
   __managerMode = !!enabled;
+  const expiresAt = __managerMode ? (Number(opts.expiresAt || 0) || Date.now() + MODE_TIMEOUT_MS) : 0;
+  persistManagerMode(__managerMode, expiresAt);
   try {
     document.querySelectorAll('[data-requires-manager]').forEach(el => {
       el.style.display = __managerMode ? '' : 'none';
     });
+  } catch (_) { }
+  try {
+    const manageBtn = document.getElementById('openVendorPromosBtn');
+    if (manageBtn) {
+      manageBtn.style.display = __managerMode ? '' : 'none';
+      manageBtn.disabled = !__managerMode;
+    }
   } catch (_) { }
   try {
     const btn = document.getElementById('managerModeBtn');
@@ -156,6 +401,11 @@ function setManagerMode(enabled) {
     try { __promoEditModal?.hide(); } catch (_) { }
     try { __promoDeleteModal?.hide(); } catch (_) { }
   }
+  scheduleManagerModeTimer();
+}
+
+function getPersistedManagerMode() {
+  return readManagerModeState().enabled;
 }
 
 async function requestManagerPassword() {
@@ -250,6 +500,61 @@ function showToast(message, opts = {}) {
     const ms = Math.max(1000, Number(opts.duration || 2500));
     setTimeout(() => { try { el.remove(); } catch (_) {} }, ms);
   } catch (_) {}
+}
+
+function renderDenominationTargetInputs(targets = {}) {
+  const container = document.getElementById('denomTargetInputs');
+  if (!container) return;
+  container.innerHTML = '';
+  const normalized = normalizeDenominationTargets(targets);
+  DRAWER_DENOMS.forEach(denom => {
+    const row = document.createElement('div');
+    row.className = 'row g-2 align-items-center mb-2';
+    row.innerHTML = `
+      <div class="col-5 col-md-4 fw-semibold">${denomLabel(denom)}</div>
+      <div class="col-7 col-md-4">
+        <input type="number" min="0" step="1" class="form-control form-control-sm" data-denom-target="${denom}" value="${normalized[String(denom)]}">
+      </div>
+      <div class="col-12 col-md-4 small text-muted">Bills to keep in drawer</div>
+    `;
+    container.appendChild(row);
+  });
+  const total = computeDenominationTargetTotal(normalized);
+  updateDenominationTargetTotalDisplay(total);
+  if (!container.dataset.denomsWired) {
+    container.addEventListener('input', () => {
+      const counts = readDenominationTargetInputs();
+      updateDenominationTargetTotalDisplay(computeDenominationTargetTotal(counts));
+    });
+    container.dataset.denomsWired = '1';
+  }
+}
+
+function readDenominationTargetInputs() {
+  const container = document.getElementById('denomTargetInputs');
+  const counts = {};
+  if (!container) return counts;
+  DRAWER_DENOMS.forEach(denom => {
+    const input = container.querySelector(`[data-denom-target="${denom}"]`);
+    const val = Math.max(0, Math.floor(Number(input?.value || 0)));
+    counts[String(denom)] = Number.isFinite(val) ? val : 0;
+  });
+  return counts;
+}
+
+async function saveDenominationTargets() {
+  if (!__managerMode) {
+    showToast('Enable Manager Mode to change denomination targets.', { type: 'error' });
+    return;
+  }
+  const targets = normalizeDenominationTargets(readDenominationTargetInputs());
+  try {
+    const saved = await ipcRenderer.invoke('settings:saveDenominationTargets', { denominationTargets: targets });
+    renderDenominationTargetInputs(saved?.drawerDenominationTargets || saved?.denominationTargets || targets);
+    showToast('Denomination targets saved.', { type: 'success' });
+  } catch (e) {
+    showToast('Failed to save denomination targets: ' + (e?.message || e), { type: 'error' });
+  }
 }
 
 function readDiscountReasonsFromTextarea() {
@@ -697,7 +1002,12 @@ async function loadSettings() {
     const rate = Number(s?.taxRate ?? 0.0725);
     document.getElementById('taxRatePct').value = toPct(rate);
     const dev = toBool(s?.developerMode);
-    setDeveloperMode(dev);
+    const devExpires = Math.max(0, Number(s?.developerModeExpiresAt || 0));
+    const devActive = dev && devExpires && devExpires > Date.now();
+    setDeveloperMode(devActive, { expiresAt: devActive ? devExpires : 0 });
+    if (!devActive && dev) {
+      try { ipcRenderer.invoke('settings:disableDev'); } catch (_) {}
+    }
     const sp = Boolean(s?.silentPrint);
     const spEl = document.getElementById('silentPrint');
     if (spEl) spEl.checked = sp;
@@ -763,6 +1073,9 @@ async function loadSettings() {
     renderVendorPromoSummary();
     renderVendorPromoInlineTable();
     renderVendorPromoTable();
+    try {
+      renderDenominationTargetInputs(s?.drawerDenominationTargets || s?.denominationTargets || {});
+    } catch (_) { }
   } catch (e) { showToast('Failed to load settings: ' + (e?.message || e), { type: 'error' }); }
 }
 
@@ -843,7 +1156,8 @@ async function saveDiscountReasons() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-  setManagerMode(false);
+  const managerState = readManagerModeState();
+  setManagerMode(managerState.enabled, { expiresAt: managerState.expiresAt });
   setDeveloperMode(false);
   document.getElementById('saveBtn')?.addEventListener('click', saveTaxSettings);
   document.getElementById('devModeBtn')?.addEventListener('click', toggleDeveloperMode);
@@ -853,6 +1167,9 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('openVendorPromosBtn')?.addEventListener('click', openVendorPromoModal);
   document.getElementById('saveVendorPromoBtn')?.addEventListener('click', addOrUpdateVendorPromo);
   document.getElementById('managerModeBtn')?.addEventListener('click', toggleManagerMode);
+  document.getElementById('changePasswordsBtn')?.addEventListener('click', openPasswordsModal);
+  document.getElementById('passwordsSaveBtn')?.addEventListener('click', changePasswords);
+  document.getElementById('saveDenomTargetsBtn')?.addEventListener('click', saveDenominationTargets);
   try {
     ipcRenderer.invoke('app:getVersion').then(v => {
       const el = document.getElementById('appVersion');
@@ -861,8 +1178,32 @@ window.addEventListener('DOMContentLoaded', () => {
   } catch (_) {}
   loadVendorsForPromos();
   try { ensurePromoEditModal(); } catch (_) { }
+    try {
+      ipcRenderer.on('settings:changed', (_evt, payload) => {
+        if (payload?.drawerDenominationTargets || payload?.denominationTargets) {
+          renderDenominationTargetInputs(payload.drawerDenominationTargets || payload.denominationTargets || {});
+        }
+      });
+    } catch (_) {}
 });
-window.addEventListener('load', loadSettings);
+window.addEventListener('load', () => { loadSettings(); refreshAppConfigStatus(); });
+
+window.addEventListener('storage', (event) => {
+  if (event.key === 'managerModeEnabled' || event.key === 'managerModeExpiresAt') {
+    const state = readManagerModeState();
+    setManagerMode(state.enabled, { expiresAt: state.expiresAt });
+  }
+});
+
+window.addEventListener('beforeunload', () => {
+  try { setManagerMode(false); } catch (_) {}
+  try {
+    if (__developerMode) {
+      ipcRenderer.invoke('settings:disableDev').catch(() => {});
+      setDeveloperMode(false, { expiresAt: 0 });
+    }
+  } catch (_) {}
+});
 
 // Test-friendly exports (no impact in Electron runtime)
 try {
