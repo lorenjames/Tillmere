@@ -633,6 +633,11 @@ ipcMain.handle('receipts:add', (_evt, receipt) => {
     all.push(toSave);
     const { out } = migrateReceipts(all);
     writeJson(RECEIPTS_FILE, out);
+    logActivity('sale', {
+        cashier: String(toSave?.cashier || receipt?.cashier || 'unknown'),
+        receiptId: baseId,
+        timestamp: String(toSave?.datetime || new Date().toISOString())
+    });
     return toSave;
 });
 
@@ -663,6 +668,12 @@ ipcMain.handle('receipts:void', (_evt, { id: idIn, reason, user, userObj }) => {
     };
 
     writeJson(RECEIPTS_FILE, arr);
+    logActivity('sale:void', {
+        cashier: String(arr[idx]?.voidInfo?.user || 'system'),
+        receiptId: arr[idx]?.id,
+        timestamp: now,
+        reason: String(reason || '')
+    });
     return arr[idx];
 });
 
@@ -695,6 +706,12 @@ ipcMain.handle('receipts:return', (_evt, { id: idIn, reason, user, userObj, item
     };
 
     writeJson(RECEIPTS_FILE, arr);
+    logActivity('sale:return', {
+        cashier: String(arr[idx]?.returnInfo?.user || 'system'),
+        receiptId: arr[idx]?.id,
+        timestamp: now,
+        reason: String(reason || '')
+    });
     return arr[idx];
 });
 
@@ -709,6 +726,12 @@ ipcMain.handle('receipts:update', (_evt, updated) => {
 
     arr[idx] = { ...arr[idx], ...updated };
     writeJson(RECEIPTS_FILE, arr);
+    logActivity('sale:update', {
+        cashier: String(arr[idx]?.cashier || updated?.cashier || 'unknown'),
+        receiptId: arr[idx]?.id,
+        timestamp: new Date().toISOString(),
+        changes: updated ? Object.keys(updated).join(',') : ''
+    });
     return arr[idx];
 });
 
