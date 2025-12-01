@@ -23,7 +23,13 @@ Planned tidy-up (optional):
 
 ## Data Locations
 
-- User data (JSON): `%APPDATA%/middletons-pos/` (vendors.json, cashiers.json, receipts.json, settings.json)
+- Primary user data directory: `%APPDATA%/middletons-pos/`
+  - `vendors.json`
+  - `cashiers.json`
+  - `settings.json`
+  - `receipts.sqlite3` (embedded SQLite store for receipts; `receipts.json` is retained only for legacy fallbacks)
+
+The receipts database uses `better-sqlite3`, so install it locally with `npm install better-sqlite3` before running the app.
 
 ## Pushing to GitHub
 

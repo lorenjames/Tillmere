@@ -29,6 +29,13 @@ const DEFAULT_DISCOUNT_REASONS = [
 ];
 const DRAWER_DENOMS = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
 const MODE_TIMEOUT_MS = 20 * 60 * 1000;
+const RECEIPTS_DB_FILE = path.join(userDir, 'receipts.sqlite3');
+let BetterSqlite3 = null;
+try {
+    BetterSqlite3 = require('better-sqlite3');
+} catch (err) {
+    console.warn('[storage] better-sqlite3 not available; receipts will use JSON storage fallback.', err?.message || err);
+}
 
 function defaultDenominationTargets() {
     const safe = {};
@@ -95,12 +102,12 @@ function logActivity(type, meta = {}) {
 
 const _originalIpcHandle = ipcMain.handle.bind(ipcMain);
 ipcMain.handle = (channel, listener) => {
-        return _originalIpcHandle(channel, async (event, ...args) => {
-            logActivity('ipc:request', {
-                channel,
-                argsCount: args.length,
-                payload: args.length ? args[0] : null
-            });
+    const wrapped = async (event, ...args) => {
+        logActivity('ipc:request', {
+            channel,
+            argsCount: args.length,
+            payload: args.length ? args[0] : null
+        });
         try {
             const result = await listener(event, ...args);
             logActivity('ipc:response', { channel, success: true });
@@ -113,7 +120,14 @@ ipcMain.handle = (channel, listener) => {
             });
             throw error;
         }
-    });
+    };
+    const registered = _originalIpcHandle(channel, wrapped);
+    if (ipcMain.__handlers && typeof ipcMain.__handlers.set === 'function') {
+        try {
+            ipcMain.__handlers.set(channel, listener);
+        } catch (_) { }
+    }
+    return registered;
 };
 
 function ensureNonOverlappingPromos(promos) {
@@ -410,6 +424,356 @@ function migrateReceipts(list) {
     return { out, changed };
 }
 
+function safeJsonString(value, fallback = 'null') {
+    if (value === undefined) return fallback;
+    try {
+        return JSON.stringify(value);
+    } catch (_) {
+        return fallback;
+    }
+}
+function safeParseJson(value, fallback = null) {
+    if (value === undefined || value === null) return fallback;
+    if (typeof value === 'object') return value;
+    try {
+        return JSON.parse(value);
+    } catch (_) {
+        return fallback;
+    }
+}
+function normalizeNumber(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+}
+function sanitizeReturnItems(items) {
+    if (!Array.isArray(items)) return null;
+    return items.map(it => ({
+        name: String(it?.name || '').trim(),
+        quantity: Math.max(1, parseInt(it?.quantity ?? it?.qty ?? 1, 10)),
+        price: Number(it?.price || 0),
+        vendor: String(it?.vendor || '').trim(),
+        comment: String(it?.comment || '').trim()
+    }));
+}
+function buildDbRecord(receipt, opts = {}) {
+    const now = opts.now || new Date().toISOString();
+    const createdAt = opts.createdAt || receipt.createdAt || now;
+    const updatedAt = opts.updatedAt || now;
+    return {
+        id: String(receipt.id || '').trim(),
+        number: String(receipt.number || '').trim(),
+        datetime: receipt.datetime || '',
+        displayDate: String(receipt.displayDate || '').trim(),
+        cashier: String(receipt.cashier || '').trim(),
+        payment: String(receipt.payment || '').trim(),
+        subtotal: normalizeNumber(receipt.subtotal),
+        tax: normalizeNumber(receipt.tax),
+        total: normalizeNumber(receipt.total),
+        taxRate: normalizeNumber(receipt.taxRate),
+        taxExempt: receipt.taxExempt ? 1 : 0,
+        taxExemptId: String(receipt.taxExemptId || '').trim(),
+        taxExemptName: String(receipt.taxExemptName || '').trim(),
+        items: safeJsonString(Array.isArray(receipt.items) ? receipt.items : [], '[]'),
+        voided: receipt.voided ? 1 : 0,
+        voidInfo: safeJsonString(receipt.voidInfo, 'null'),
+        returned: receipt.returned ? 1 : 0,
+        returnInfo: safeJsonString(receipt.returnInfo, 'null'),
+        backdated: receipt.backdated ? 1 : 0,
+        createdAt,
+        updatedAt
+    };
+}
+function mapDbRow(row) {
+    if (!row) return null;
+    const items = safeParseJson(row.items, []);
+    return {
+        id: row.id || '',
+        number: row.number || '',
+        datetime: row.datetime || '',
+        displayDate: row.displayDate || '',
+        cashier: row.cashier || '',
+        payment: row.payment || '',
+        subtotal: normalizeNumber(row.subtotal),
+        tax: normalizeNumber(row.tax),
+        total: normalizeNumber(row.total),
+        taxRate: normalizeNumber(row.taxRate),
+        taxExempt: !!row.taxExempt,
+        taxExemptId: row.taxExemptId || '',
+        taxExemptName: row.taxExemptName || '',
+        items: Array.isArray(items) ? items : [],
+        voided: !!row.voided,
+        voidInfo: safeParseJson(row.voidInfo),
+        returned: !!row.returned,
+        returnInfo: safeParseJson(row.returnInfo),
+        backdated: !!row.backdated,
+        createdAt: row.createdAt || '',
+        updatedAt: row.updatedAt || ''
+    };
+}
+function createSqliteReceiptsStore() {
+    if (!BetterSqlite3) throw new Error('SQLite storage unavailable');
+    fs.mkdirSync(path.dirname(RECEIPTS_DB_FILE), { recursive: true });
+    const db = new BetterSqlite3(RECEIPTS_DB_FILE);
+    db.pragma('journal_mode = WAL');
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS receipts (
+            id TEXT PRIMARY KEY,
+            number TEXT NOT NULL,
+            datetime TEXT,
+            displayDate TEXT,
+            cashier TEXT,
+            payment TEXT,
+            subtotal REAL DEFAULT 0,
+            tax REAL DEFAULT 0,
+            total REAL DEFAULT 0,
+            taxRate REAL DEFAULT 0,
+            taxExempt INTEGER DEFAULT 0,
+            taxExemptId TEXT,
+            taxExemptName TEXT,
+            items TEXT,
+            voided INTEGER DEFAULT 0,
+            voidInfo TEXT,
+            returned INTEGER DEFAULT 0,
+            returnInfo TEXT,
+            backdated INTEGER DEFAULT 0,
+            createdAt TEXT,
+            updatedAt TEXT
+        );
+    `);
+    db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_datetime ON receipts(datetime);');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_cashier ON receipts(cashier);');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_payment ON receipts(payment);');
+    const columns = [
+        'id', 'number', 'datetime', 'displayDate', 'cashier', 'payment',
+        'subtotal', 'tax', 'total', 'taxRate', 'taxExempt',
+        'taxExemptId', 'taxExemptName', 'items', 'voided',
+        'voidInfo', 'returned', 'returnInfo', 'backdated', 'createdAt', 'updatedAt'
+    ];
+    const insertSql = `INSERT OR REPLACE INTO receipts (${columns.join(',')}) VALUES (${columns.map(c => '@' + c).join(',')});`;
+    const updateSql = `UPDATE receipts SET ${columns.map(c => `${c} = @${c}`).join(',')} WHERE id = @oldId;`;
+    const insertStmt = db.prepare(insertSql);
+    const updateStmt = db.prepare(updateSql);
+    const selectAllStmt = db.prepare('SELECT * FROM receipts ORDER BY COALESCE(datetime, \'\') DESC, COALESCE(createdAt, \'\') DESC, id DESC;');
+    const selectOneStmt = db.prepare('SELECT * FROM receipts WHERE id = @needle OR number = @needle LIMIT 1;');
+    const countStmt = db.prepare('SELECT COUNT(1) as count FROM receipts;');
+    const deleteAllStmt = db.prepare('DELETE FROM receipts;');
+    const voidStmt = db.prepare('UPDATE receipts SET voided = @voided, voidInfo = @voidInfo, updatedAt = @updatedAt WHERE id = @id;');
+    const returnStmt = db.prepare('UPDATE receipts SET returned = @returned, returnInfo = @returnInfo, updatedAt = @updatedAt WHERE id = @id;');
+    function importLegacyReceipts() {
+        if (!fs.existsSync(RECEIPTS_FILE)) return;
+        const raw = readJson(RECEIPTS_FILE, []);
+        if (!Array.isArray(raw) || !raw.length) return;
+        const { count } = countStmt.get();
+        if (count > 0) return;
+        const { out } = migrateReceipts(raw);
+        if (!out.length) return;
+        const now = new Date().toISOString();
+        const rows = out.map(r => buildDbRecord(r, { now, createdAt: r.createdAt || now }));
+        const importer = db.transaction(batch => {
+            batch.forEach(row => insertStmt.run(row));
+        });
+        importer(rows);
+    }
+    importLegacyReceipts();
+    return {
+        type: 'sqlite',
+        path: RECEIPTS_DB_FILE,
+        list() {
+            return selectAllStmt.all().map(mapDbRow);
+        },
+        get(id) {
+            const needle = normId(id);
+            if (!needle) return null;
+            return mapDbRow(selectOneStmt.get({ needle }));
+        },
+        add(payload) {
+            const { out } = migrateReceipts([payload]);
+            const receipt = out[0];
+            if (!receipt) return null;
+            const now = new Date().toISOString();
+            const record = buildDbRecord(receipt, { now, createdAt: now, updatedAt: now });
+            insertStmt.run(record);
+            return mapDbRow(selectOneStmt.get({ needle: receipt.id }));
+        },
+        update(payload) {
+            const key = normId(payload?.id || payload?.number);
+            if (!key) return null;
+            const existing = this.get(key);
+            if (!existing) return null;
+            const newId = normId(payload?.id) || existing.id;
+            const newNumber = normId(payload?.number) || existing.number;
+            const merged = { ...existing, ...payload, id: newId, number: newNumber };
+            const now = new Date().toISOString();
+            const record = buildDbRecord(merged, { now, createdAt: existing.createdAt || now });
+            updateStmt.run({ ...record, oldId: existing.id });
+            return mapDbRow(selectOneStmt.get({ needle: record.id }));
+        },
+        markVoid(payload) {
+            const key = normId(payload?.id);
+            if (!key) return null;
+            const existing = this.get(key);
+            if (!existing) return null;
+            const voidInfo = {
+                reason: String(payload?.reason || '').trim(),
+                user: String(payload?.user || 'system'),
+                userObj: payload?.userObj || null,
+                when: new Date().toISOString()
+            };
+            const now = new Date().toISOString();
+            voidStmt.run({ id: existing.id, voided: 1, voidInfo: safeJsonString(voidInfo, 'null'), updatedAt: now });
+            return this.get(existing.id);
+        },
+        markReturn(payload) {
+            const key = normId(payload?.id);
+            if (!key) return null;
+            const existing = this.get(key);
+            if (!existing || existing.voided) return null;
+            const info = {
+                reason: String(payload?.reason || '').trim(),
+                user: String(payload?.user || 'system'),
+                userObj: payload?.userObj || null,
+                when: new Date().toISOString(),
+                items: sanitizeReturnItems(payload?.items)
+            };
+            const now = new Date().toISOString();
+            returnStmt.run({ id: existing.id, returned: 1, returnInfo: safeJsonString(info, 'null'), updatedAt: now });
+            return this.get(existing.id);
+        },
+        reindex() {
+            const rawRows = db.prepare('SELECT * FROM receipts ORDER BY COALESCE(createdAt, \'\') ASC, id ASC;').all();
+            const receipts = rawRows.map(mapDbRow);
+            const { out, changed } = migrateReceipts(receipts);
+            if (!changed) return { changed: false, count: receipts.length };
+            const now = new Date().toISOString();
+            const payloads = out.map((r, idx) => ({
+                record: buildDbRecord(r, { now, createdAt: receipts[idx]?.createdAt || now }),
+                oldId: rawRows[idx]?.id
+            }));
+            const updater = db.transaction(rows => {
+                rows.forEach(r => updateStmt.run({ ...r.record, oldId: r.oldId }));
+            });
+            updater(payloads);
+            return { changed: true, count: out.length };
+        },
+        replaceAll(receipts) {
+            const { out } = migrateReceipts(receipts);
+            const now = new Date().toISOString();
+            const rows = out.map(r => buildDbRecord(r, { now, createdAt: r.createdAt || now }));
+            const worker = db.transaction(batch => {
+                deleteAllStmt.run();
+                batch.forEach(row => insertStmt.run(row));
+            });
+            worker(rows);
+            return out;
+        }
+    };
+}
+function createJsonReceiptsStore() {
+    function readAll() {
+        const raw = readJson(RECEIPTS_FILE, []);
+        const { out, changed } = migrateReceipts(raw);
+        if (changed) writeJson(RECEIPTS_FILE, out);
+        return out;
+    }
+    function writeAll(list) {
+        writeJson(RECEIPTS_FILE, list);
+    }
+    return {
+        type: 'json',
+        path: RECEIPTS_FILE,
+        list() {
+            const all = readAll();
+            return all.slice().sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
+        },
+        get(id) {
+            const needle = normId(id);
+            if (!needle) return null;
+            return readAll().find(r => normId(r.id) === needle || normId(r.number) === needle) || null;
+        },
+        add(payload) {
+            const { out } = migrateReceipts([payload]);
+            const receipt = out[0];
+            if (!receipt) return null;
+            const all = readAll();
+            all.push(receipt);
+            const { out: refreshed } = migrateReceipts(all);
+            writeAll(refreshed);
+            return receipt;
+        },
+        update(payload) {
+            const needle = normId(payload?.id || payload?.number);
+            if (!needle) return null;
+            const all = readAll();
+            const idx = all.findIndex(r => normId(r.id) === needle || normId(r.number) === needle);
+            if (idx === -1) return null;
+            const existing = all[idx];
+            const newId = normId(payload?.id) || existing.id;
+            const newNumber = normId(payload?.number) || existing.number;
+            const merged = { ...existing, ...payload, id: newId, number: newNumber };
+            all[idx] = merged;
+            const { out } = migrateReceipts(all);
+            writeAll(out);
+            return merged;
+        },
+        markVoid(payload) {
+            const needle = normId(payload?.id);
+            if (!needle) return null;
+            const all = readAll();
+            const idx = all.findIndex(r => normId(r.id) === needle || normId(r.number) === needle);
+            if (idx === -1) return null;
+            const now = new Date().toISOString();
+            all[idx].voided = true;
+            all[idx].voidInfo = {
+                reason: String(payload?.reason || '').trim(),
+                user: String(payload?.user || 'system'),
+                userObj: payload?.userObj || null,
+                when: now
+            };
+            writeAll(all);
+            return all[idx];
+        },
+        markReturn(payload) {
+            const needle = normId(payload?.id);
+            if (!needle) return null;
+            const all = readAll();
+            const idx = all.findIndex(r => normId(r.id) === needle || normId(r.number) === needle);
+            if (idx === -1 || all[idx].voided) return null;
+            const now = new Date().toISOString();
+            all[idx].returned = true;
+            all[idx].returnInfo = {
+                reason: String(payload?.reason || '').trim(),
+                user: String(payload?.user || 'system'),
+                userObj: payload?.userObj || null,
+                when: now,
+                items: sanitizeReturnItems(payload?.items)
+            };
+            writeAll(all);
+            return all[idx];
+        },
+        reindex() {
+            const all = readAll();
+            const { out, changed } = migrateReceipts(all);
+            if (changed) writeAll(out);
+            return { changed, count: out.length };
+        },
+        replaceAll(list) {
+            const { out } = migrateReceipts(list);
+            writeAll(out);
+            return out;
+        }
+    };
+}
+function buildReceiptsStore() {
+    if (BetterSqlite3) {
+        try {
+            return createSqliteReceiptsStore();
+        } catch (error) {
+            console.error('[storage] Failed to initialize SQLite receipts store, falling back to JSON.', error?.message || error);
+        }
+    }
+    return createJsonReceiptsStore();
+}
+const receiptsStore = buildReceiptsStore();
 // ---------- Drawer helpers ----------
 function todayYmd() { return formatLocalDate(new Date()); }
 function normalizeCounts(counts) {
@@ -521,10 +885,7 @@ ipcMain.handle('vendors:save', (_evt, vendors) => {
 ipcMain.handle('state:bootstrap', () => {
     const vendors = readJson(VENDOR_FILE, []);
     const cashiers = readJson(CASHIER_FILE, []);
-    const rawReceipts = readJson(RECEIPTS_FILE, []);
-    const { out, changed } = migrateReceipts(rawReceipts);
-    const receipts = out.slice().sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
-    if (changed) writeJson(RECEIPTS_FILE, receipts);
+    const receipts = receiptsStore.list();
     return { vendors, cashiers, receipts };
 });
 
@@ -617,130 +978,68 @@ ipcMain.handle('cashiers:resetPin', (_evt, { name }) => {
 });
 
 // ---------- Receipts (robust, stores void userObj) ----------
-ipcMain.handle('receipts:load', () => {
-    const raw = readJson(RECEIPTS_FILE, []);
-    const { out, changed } = migrateReceipts(raw);
-    if (changed) writeJson(RECEIPTS_FILE, out);
-    out.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
-    return out;
-});
+ipcMain.handle('receipts:load', () => receiptsStore.list());
 
 ipcMain.handle('receipts:add', (_evt, receipt) => {
-    const all = readJson(RECEIPTS_FILE, []);
-    const baseNumber = normId(receipt?.number) || `MID-${Date.now()}`;
-    const baseId = normId(receipt?.id) || baseNumber;
-    const toSave = { ...receipt, id: baseId, number: baseNumber };
-    all.push(toSave);
-    const { out } = migrateReceipts(all);
-    writeJson(RECEIPTS_FILE, out);
+    const saved = receiptsStore.add(receipt || {});
+    if (!saved) {
+        const err = new Error('Invalid receipt payload.');
+        err.code = 'INVALID_RECEIPT';
+        throw err;
+    }
     logActivity('sale', {
-        cashier: String(toSave?.cashier || receipt?.cashier || 'unknown'),
-        receiptId: baseId,
-        timestamp: String(toSave?.datetime || new Date().toISOString())
+        cashier: String(saved?.cashier || receipt?.cashier || 'unknown'),
+        receiptId: saved?.id,
+        timestamp: String(saved?.datetime || new Date().toISOString())
     });
-    return toSave;
+    return saved;
 });
 
 ipcMain.handle('receipts:get', (_evt, idIn) => {
     const id = normId(idIn);
-    const all = readJson(RECEIPTS_FILE, []);
-    const { out, changed } = migrateReceipts(all);
-    if (changed) writeJson(RECEIPTS_FILE, out);
-    return out.find(r => normId(r.id) === id || normId(r.number) === id) || null;
+    if (!id) return null;
+    return receiptsStore.get(id);
 });
 
 ipcMain.handle('receipts:void', (_evt, { id: idIn, reason, user, userObj }) => {
-    const id = normId(idIn);
-    const all = readJson(RECEIPTS_FILE, []);
-    const { out, changed } = migrateReceipts(all);
-    const arr = changed ? out : all;
-
-    const idx = arr.findIndex(r => normId(r.id) === id || normId(r.number) === id);
-    if (idx === -1) return null;
-
-    const now = new Date().toISOString();
-    arr[idx].voided = true;
-    arr[idx].voidInfo = {
-        reason: String(reason || ''),
-        user: String(user || 'system'),
-        userObj: userObj || null,   // <-- full cashier object saved
-        when: now
-    };
-
-    writeJson(RECEIPTS_FILE, arr);
+    const response = receiptsStore.markVoid({ id: idIn, reason, user, userObj });
+    if (!response) return null;
+    const now = response.voidInfo?.when || new Date().toISOString();
     logActivity('sale:void', {
-        cashier: String(arr[idx]?.voidInfo?.user || 'system'),
-        receiptId: arr[idx]?.id,
+        cashier: String(response?.voidInfo?.user || user || 'system'),
+        receiptId: response?.id,
         timestamp: now,
         reason: String(reason || '')
     });
-    return arr[idx];
+    return response;
 });
 
 ipcMain.handle('receipts:return', (_evt, { id: idIn, reason, user, userObj, items }) => {
-    const id = normId(idIn);
-    const all = readJson(RECEIPTS_FILE, []);
-    const { out, changed } = migrateReceipts(all);
-    const arr = changed ? out : all;
-
-    const idx = arr.findIndex(r => normId(r.id) === id || normId(r.number) === id);
-    if (idx === -1) return null;
-    if (arr[idx].voided) return null;
-
-    const now = new Date().toISOString();
-    arr[idx].returned = true;
-    const safeItems = Array.isArray(items) ? items.map(it => ({
-        name: String(it?.name || '').trim(),
-        quantity: Math.max(1, parseInt(it?.quantity || 1, 10)),
-        price: Number(it?.price || 0),
-        vendor: String(it?.vendor || '').trim(),
-        comment: String(it?.comment || '').trim()
-    })) : null;
-
-    arr[idx].returnInfo = {
-        reason: String(reason || ''),
-        user: String(user || 'system'),
-        userObj: userObj || null,
-        when: now,
-        items: safeItems
-    };
-
-    writeJson(RECEIPTS_FILE, arr);
+    const response = receiptsStore.markReturn({ id: idIn, reason, user, userObj, items });
+    if (!response) return null;
+    const now = response.returnInfo?.when || new Date().toISOString();
     logActivity('sale:return', {
-        cashier: String(arr[idx]?.returnInfo?.user || 'system'),
-        receiptId: arr[idx]?.id,
+        cashier: String(response?.returnInfo?.user || user || 'system'),
+        receiptId: response?.id,
         timestamp: now,
         reason: String(reason || '')
     });
-    return arr[idx];
+    return response;
 });
 
 ipcMain.handle('receipts:update', (_evt, updated) => {
-    const all = readJson(RECEIPTS_FILE, []);
-    const { out, changed } = migrateReceipts(all);
-    const arr = changed ? out : all;
-
-    const id = normId(updated?.id) || normId(updated?.number);
-    const idx = arr.findIndex(r => normId(r.id) === id || normId(r.number) === id);
-    if (idx === -1) return null;
-
-    arr[idx] = { ...arr[idx], ...updated };
-    writeJson(RECEIPTS_FILE, arr);
+    const response = receiptsStore.update(updated || {});
+    if (!response) return null;
     logActivity('sale:update', {
-        cashier: String(arr[idx]?.cashier || updated?.cashier || 'unknown'),
-        receiptId: arr[idx]?.id,
+        cashier: String(response?.cashier || updated?.cashier || 'unknown'),
+        receiptId: response?.id,
         timestamp: new Date().toISOString(),
         changes: updated ? Object.keys(updated).join(',') : ''
     });
-    return arr[idx];
+    return response;
 });
 
-ipcMain.handle('receipts:reindex', () => {
-    const all = readJson(RECEIPTS_FILE, []);
-    const { out, changed } = migrateReceipts(all);
-    if (changed) writeJson(RECEIPTS_FILE, out);
-    return { changed, count: out.length };
-});
+ipcMain.handle('receipts:reindex', () => receiptsStore.reindex());
 
 // ---------- Cash Drawer ----------
 ipcMain.handle('drawer:get', (_evt, date) => {
@@ -857,11 +1156,12 @@ ipcMain.handle('drawer:list', (_evt, payload) => {
 
 // Optional debug
 ipcMain.handle('debug:info', () => {
-    const all = readJson(RECEIPTS_FILE, []);
+    const list = receiptsStore.list();
     return {
-        receiptsPath: RECEIPTS_FILE,
-        count: Array.isArray(all) ? all.length : 0,
-        sampleIds: (all || []).slice(0, 5).map(r => ({ id: r.id, number: r.number }))
+        storageType: receiptsStore.type,
+        storagePath: receiptsStore.path,
+        count: list.length,
+        sampleIds: list.slice(0, 5).map(r => ({ id: r.id, number: r.number }))
     };
 });
 
@@ -1218,14 +1518,23 @@ ipcMain.handle('data:export', async () => {
         });
         if (canceled || !filePath) return { ok: false, canceled: true };
 
+        const receipts = receiptsStore.list();
         const data = {
             vendors: readJson(VENDOR_FILE, []),
             cashiers: readJson(CASHIER_FILE, []),
-            receipts: readJson(RECEIPTS_FILE, [])
+            receipts
         };
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
         try { saveSettings({ backupDir: path.dirname(filePath) }); } catch (_) { }
-        return { ok: true, path: filePath, counts: { vendors: data.vendors.length || 0, cashiers: data.cashiers.length || 0, receipts: data.receipts.length || 0 } };
+        return {
+            ok: true,
+            path: filePath,
+            counts: {
+                vendors: data.vendors.length || 0,
+                cashiers: data.cashiers.length || 0,
+                receipts: receipts.length
+            }
+        };
     } catch (e) {
         console.error('Export failed', e);
         return { ok: false, error: e?.message || String(e) };
@@ -1246,12 +1555,10 @@ ipcMain.handle('data:import', async () => {
         const vendors = Array.isArray(parsed?.vendors) ? parsed.vendors : [];
         const cashiers = Array.isArray(parsed?.cashiers) ? parsed.cashiers : [];
         const receiptsIn = Array.isArray(parsed?.receipts) ? parsed.receipts : [];
-        // normalize receipts and write
-        const { out } = migrateReceipts(receiptsIn);
+        const imported = receiptsStore.replaceAll(receiptsIn);
         writeJson(VENDOR_FILE, vendors);
         writeJson(CASHIER_FILE, cashiers);
-        writeJson(RECEIPTS_FILE, out);
-        return { ok: true, counts: { vendors: vendors.length, cashiers: cashiers.length, receipts: out.length } };
+        return { ok: true, counts: { vendors: vendors.length, cashiers: cashiers.length, receipts: imported.length } };
     } catch (e) {
         console.error('Import failed', e);
         return { ok: false, error: e?.message || String(e) };
@@ -1264,7 +1571,7 @@ function performAutoBackup() {
         const data = {
             vendors: readJson(VENDOR_FILE, []),
             cashiers: readJson(CASHIER_FILE, []),
-            receipts: readJson(RECEIPTS_FILE, [])
+            receipts: receiptsStore.list()
         };
         const s = readSettings();
         let backupDir = String(s?.backupDir || '').trim();
