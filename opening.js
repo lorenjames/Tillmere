@@ -782,13 +782,30 @@ function todayYmd() {
   const d = String(now.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
+
+function deriveFloatCountsFromClosing(closingCounts = {}, depositCounts = {}) {
+  const closingSource = closingCounts && typeof closingCounts === 'object' ? closingCounts : {};
+  const depositSource = depositCounts && typeof depositCounts === 'object' ? depositCounts : {};
+  const floatCounts = {};
+  DRAWER_DENOMS.forEach(denom => {
+    const key = String(denom);
+    const closingQty = Math.max(0, Math.floor(Number(closingSource[key] ?? closingSource[denom] ?? 0)));
+    const depositQty = Math.max(0, Math.floor(Number(depositSource[key] ?? depositSource[denom] ?? 0)));
+    floatCounts[key] = Math.max(0, closingQty - depositQty);
+  });
+  return floatCounts;
+}
 async function prefillOpeningFromLastClosing() {
   try {
     const today = todayYmd();
     const rows = await ipcRenderer.invoke('drawer:list', { startDate: '', endDate: today });
     if (!Array.isArray(rows)) { __openingPrefillCounts = null; return; }
     const prev = rows.find(r => r.date < today && r.closing && r.closing.counts);
-    __openingPrefillCounts = prev?.closing?.counts || null;
+    if (prev?.closing?.counts) {
+      __openingPrefillCounts = deriveFloatCountsFromClosing(prev.closing.counts, prev.closing.deposit?.counts);
+    } else {
+      __openingPrefillCounts = null;
+    }
   } catch (e) {
     __openingPrefillCounts = null;
   }

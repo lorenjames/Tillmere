@@ -1195,10 +1195,6 @@ window.addEventListener('storage', (event) => {
   }
 });
 
-window.addEventListener('beforeunload', () => {
-  try { setManagerMode(false); } catch (_) {}
-});
-
 // Test-friendly exports (no impact in Electron runtime)
 try {
   if (typeof module !== 'undefined' && module && module.exports) {
