@@ -1,6 +1,7 @@
 // main.js
 const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 
@@ -16,6 +17,8 @@ const DRAWER_FILE = path.join(userDir, 'drawer-sessions.json');
 const APP_CONFIG_FILE = path.join(__dirname, 'config', 'app-config.json');
 const APP_RESET_TOKEN = path.join(__dirname, 'config', 'reset-token.txt');
 const BRANDING_DIR = path.join(userDir, 'branding');
+const ACTIVITY_LOG_DIR = path.join(userDir, 'logs');
+const ACTIVITY_LOG_FILE = path.join(ACTIVITY_LOG_DIR, 'activity.log');
 const DEFAULT_VENDOR_PROMOTIONS = [];
 const DEFAULT_DISCOUNT_REASONS = [
     'Store Promo',
@@ -32,6 +35,86 @@ function defaultDenominationTargets() {
     DRAWER_DENOMS.forEach(denom => { safe[String(denom)] = 0; });
     return safe;
 }
+
+function ensureActivityLogDir() {
+    try {
+        fs.mkdirSync(ACTIVITY_LOG_DIR, { recursive: true });
+    } catch (_) { }
+}
+
+function truncateString(str, maxLen = 120) {
+    const clean = String(str || '').replace(/\s+/g, ' ').trim();
+    if (clean.length <= maxLen) return clean;
+    return `${clean.slice(0, maxLen)}…`;
+}
+
+function formatLogValue(value, depth = 0, seen = new Set()) {
+    if (value === undefined) return 'undefined';
+    if (value === null) return 'null';
+    if (typeof value === 'string') return `"${truncateString(value)}"`;
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') return String(value);
+    if (value instanceof Error) return `"${truncateString(value.message)}"`;
+    if (value instanceof Date) return value.toISOString();
+    if (Array.isArray(value)) {
+        if (depth >= 2) return '[Array]';
+        const items = value.slice(0, 5).map(v => formatLogValue(v, depth + 1, seen));
+        return `[${items.join(',')}${value.length > 5 ? ',…' : ''}]`;
+    }
+    if (typeof value === 'object') {
+        if (seen.has(value)) return '[Circular]';
+        if (depth >= 2) return '[Object]';
+        seen.add(value);
+        const keys = Object.keys(value).filter(k => typeof value[k] !== 'function');
+        const entries = keys.slice(0, 4).map(k => `${k}:${formatLogValue(value[k], depth + 1, seen)}`);
+        if (keys.length > 4) entries.push('…');
+        seen.delete(value);
+        return `{${entries.join(',')}}`;
+    }
+    return `[${typeof value}]`;
+}
+
+function logActivity(type, meta = {}) {
+    try {
+        ensureActivityLogDir();
+        const timestamp = new Date().toISOString();
+        const entries = [];
+        const payload = meta?.payload;
+        Object.entries(meta || {}).forEach(([key, value]) => {
+            if (key === 'payload' || value === undefined || value === null) return;
+            entries.push(`${key}=${formatLogValue(value)}`);
+        });
+        if (payload !== undefined && payload !== null) {
+            entries.push(`payload=${formatLogValue(payload)}`);
+        }
+        const entry = `${timestamp} [${type}] ${entries.join(' ')}${os.EOL}`;
+        fs.appendFileSync(ACTIVITY_LOG_FILE, entry, 'utf-8');
+    } catch (error) {
+        console.error('[activity-log] failed to write log', error);
+    }
+}
+
+const _originalIpcHandle = ipcMain.handle.bind(ipcMain);
+ipcMain.handle = (channel, listener) => {
+        return _originalIpcHandle(channel, async (event, ...args) => {
+            logActivity('ipc:request', {
+                channel,
+                argsCount: args.length,
+                payload: args.length ? args[0] : null
+            });
+        try {
+            const result = await listener(event, ...args);
+            logActivity('ipc:response', { channel, success: true });
+            return result;
+        } catch (error) {
+            logActivity('ipc:response', {
+                channel,
+                success: false,
+                error: String(error?.message || error)
+            });
+            throw error;
+        }
+    });
+};
 
 function ensureNonOverlappingPromos(promos) {
     const byVendor = new Map();
@@ -513,6 +596,7 @@ ipcMain.handle('cashiers:resetPin', (_evt, { name }) => {
     if (!currentSettings.developerMode) {
         const err = new Error('Developer Mode must be enabled to reset PINs.');
         err.code = 'DEV_MODE_REQUIRED';
+        logActivity('developer:cashier-reset', { name: cashierName, success: false, reason: 'developer-mode-required' });
         throw err;
     }
     const list = (readJson(CASHIER_FILE, []) || []).map(normalizeCashierRecord);
@@ -523,10 +607,12 @@ ipcMain.handle('cashiers:resetPin', (_evt, { name }) => {
         throw err;
     }
     if (!match.pinHash) {
+        logActivity('developer:cashier-reset', { name: cashierName, success: true, reason: 'no-pin' });
         return { ok: true, pinSet: false };
     }
     const updated = list.map(c => c.name.toLowerCase() === cashierName.toLowerCase() ? { ...c, pinSalt: '', pinHash: '' } : c);
     writeJson(CASHIER_FILE, updated);
+    logActivity('developer:cashier-reset', { name: cashierName, success: true, reason: 'cleared' });
     return { ok: true, pinSet: false };
 });
 
@@ -888,32 +974,39 @@ ipcMain.handle('settings:saveTax', (_evt, incoming) => {
 
 // Save only developer mode
 ipcMain.handle('settings:saveDev', (_evt, incoming) => {
-      const config = readAppConfig();
-      const desired = !!incoming?.developerMode;
-      if (desired) {
-          const attempt = String(incoming?.password || '');
-          const expected = String(config?.developerPassword || '');
-          if (!attempt || attempt !== expected) {
-              const err = new Error('Invalid developer password');
-              err.code = 'INVALID_DEV_PASSWORD';
-              throw err;
-          }
-      }
-      const current = readSettings();
-      const modeTimeout = desired ? Math.max(Number(incoming?.expiresAt || 0), Date.now() + MODE_TIMEOUT_MS) : 0;
-      const safe = {
-          taxRate: Math.max(0, Math.min(1, Number(current?.taxRate ?? 0.0725))),
-          developerMode: desired,
-          developerModeExpiresAt: modeTimeout
-      };
-      const saved = saveSettings(safe);
-      try {
-          const { BrowserWindow } = require('electron');
-        BrowserWindow.getAllWindows().forEach(w => {
-            try { w.webContents.send('settings:changed', saved); } catch (_) { }
-        });
-    } catch (_) { }
-    return saved;
+    const config = readAppConfig();
+    const desired = !!incoming?.developerMode;
+    let modeTimeout = 0;
+    try {
+        if (desired) {
+            const attempt = String(incoming?.password || '');
+            const expected = String(config?.developerPassword || '');
+            if (!attempt || attempt !== expected) {
+                const err = new Error('Invalid developer password');
+                err.code = 'INVALID_DEV_PASSWORD';
+                throw err;
+            }
+        }
+        const current = readSettings();
+        modeTimeout = desired ? Math.max(Number(incoming?.expiresAt || 0), Date.now() + MODE_TIMEOUT_MS) : 0;
+        const safe = {
+            taxRate: Math.max(0, Math.min(1, Number(current?.taxRate ?? 0.0725))),
+            developerMode: desired,
+            developerModeExpiresAt: modeTimeout
+        };
+        const saved = saveSettings(safe);
+        try {
+            const { BrowserWindow } = require('electron');
+            BrowserWindow.getAllWindows().forEach(w => {
+                try { w.webContents.send('settings:changed', saved); } catch (_) { }
+            });
+        } catch (_) { }
+        logActivity('developer:mode', { action: desired ? 'enable' : 'disable', success: true, expiresAt: modeTimeout });
+        return saved;
+    } catch (error) {
+        logActivity('developer:mode', { action: desired ? 'enable' : 'disable', success: false, error: String(error?.message || error) });
+        throw error;
+    }
 });
 
 ipcMain.handle('settings:disableDev', () => {
@@ -930,6 +1023,7 @@ ipcMain.handle('settings:disableDev', () => {
             try { w.webContents.send('settings:changed', saved); } catch (_) { }
         });
     } catch (_) { }
+    logActivity('developer:mode', { action: 'disable', success: true });
     return saved;
 });
 
@@ -941,8 +1035,10 @@ ipcMain.handle('settings:enableManagerMode', (_evt, incoming) => {
     if (!attempt || !expected || attempt !== expected) {
         const err = new Error('Invalid manager password');
         err.code = 'INVALID_MANAGER_PASSWORD';
+        logActivity('manager:mode', { action: 'enable', success: false, error: String(err.message) });
         throw err;
     }
+    logActivity('manager:mode', { action: 'enable', success: true });
     return { ok: true };
 });
 
@@ -953,41 +1049,46 @@ ipcMain.handle('appConfig:changePasswords', (_evt, incoming) => {
     const desired = incoming || {};
     const patch = {};
     const updated = [];
+    try {
+        const newDev = String(desired.newDeveloper || '').trim();
+        const newMgr = String(desired.newManager || '').trim();
+        const curDev = String(desired.currentDeveloper || '').trim();
+        const curMgr = String(desired.currentManager || '').trim();
 
-    const newDev = String(desired.newDeveloper || '').trim();
-    const newMgr = String(desired.newManager || '').trim();
-    const curDev = String(desired.currentDeveloper || '').trim();
-    const curMgr = String(desired.currentManager || '').trim();
-
-    if (newDev) {
-        const expected = String(current.developerPassword || '');
-        if (!curDev || curDev !== expected) {
-            const err = new Error('Current developer password is incorrect.');
-            err.code = 'INVALID_CURRENT_DEV_PASSWORD';
-            throw err;
+        if (newDev) {
+            const expected = String(current.developerPassword || '');
+            if (!curDev || curDev !== expected) {
+                const err = new Error('Current developer password is incorrect.');
+                err.code = 'INVALID_CURRENT_DEV_PASSWORD';
+                throw err;
+            }
+            patch.developerPassword = newDev;
+            if (!current.managerPassword || current.managerPassword === expected) {
+                patch.managerPassword = current.managerPassword === expected ? newDev : current.managerPassword;
+            }
+            updated.push('developer');
         }
-        patch.developerPassword = newDev;
-        // Keep manager in sync if it previously matched dev and manager wasn't explicitly provided
-        if (!current.managerPassword || current.managerPassword === expected) {
-            patch.managerPassword = current.managerPassword === expected ? newDev : current.managerPassword;
+        if (newMgr) {
+            const expectedMgr = String(current.managerPassword || current.developerPassword || '');
+            if (!curMgr || curMgr !== expectedMgr) {
+                const err = new Error('Current manager password is incorrect.');
+                err.code = 'INVALID_CURRENT_MANAGER_PASSWORD';
+                throw err;
+            }
+            patch.managerPassword = newMgr;
+            updated.push('manager');
         }
-        updated.push('developer');
-    }
-    if (newMgr) {
-        const expectedMgr = String(current.managerPassword || current.developerPassword || '');
-        if (!curMgr || curMgr !== expectedMgr) {
-            const err = new Error('Current manager password is incorrect.');
-            err.code = 'INVALID_CURRENT_MANAGER_PASSWORD';
-            throw err;
+        if (!updated.length) {
+            logActivity('security:password-change', { success: false, message: 'No password changes provided.' });
+            return { ok: false, updated: [], message: 'No password changes provided.' };
         }
-        patch.managerPassword = newMgr;
-        updated.push('manager');
+        const saved = saveAppConfig(patch);
+        logActivity('security:password-change', { success: true, updated });
+        return { ok: true, updated, encryption: getAppConfigStatus(), config: { hasManagerPassword: !!saved.managerPassword } };
+    } catch (error) {
+        logActivity('security:password-change', { success: false, error: String(error?.message || error) });
+        throw error;
     }
-    if (!updated.length) {
-        return { ok: false, updated: [], message: 'No password changes provided.' };
-    }
-    const saved = saveAppConfig(patch);
-    return { ok: true, updated, encryption: getAppConfigStatus(), config: { hasManagerPassword: !!saved.managerPassword } };
 });
 
 // Apply optional startup reset (flag/env/token)
@@ -1202,6 +1303,7 @@ function createWindow() {
         }, MIN_SPLASH_MS);
     });
     mainWindow.on('closed', () => (mainWindow = null));
+    logActivity('app:event', { event: 'window:main-created' });
 }
 
 // Create an additional sale window (no splash)
@@ -1227,6 +1329,7 @@ function createSaleWindow(cartId) {
         try { w.loadFile('index.html'); } catch (_) { }
     }
     try { w.maximize(); } catch (_) { }
+    logActivity('app:event', { event: 'window:sale-created', cartId: cartId || null });
     return w;
 }
 // Avoid side effects during tests where Electron may be mocked
