@@ -1197,12 +1197,6 @@ window.addEventListener('storage', (event) => {
 
 window.addEventListener('beforeunload', () => {
   try { setManagerMode(false); } catch (_) {}
-  try {
-    if (__developerMode) {
-      ipcRenderer.invoke('settings:disableDev').catch(() => {});
-      setDeveloperMode(false, { expiresAt: 0 });
-    }
-  } catch (_) {}
 });
 
 // Test-friendly exports (no impact in Electron runtime)

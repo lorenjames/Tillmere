@@ -502,6 +502,33 @@ ipcMain.handle('cashiers:setPin', (_evt, { name, pin, currentPin }) => {
     writeJson(CASHIER_FILE, updated);
     return { ok: true, pinSet: true };
 });
+ipcMain.handle('cashiers:resetPin', (_evt, { name }) => {
+    const cashierName = String(name || '').trim();
+    if (!cashierName) {
+        const err = new Error('Cashier name is required.');
+        err.code = 'INVALID_INPUT';
+        throw err;
+    }
+    const currentSettings = readSettings();
+    if (!currentSettings.developerMode) {
+        const err = new Error('Developer Mode must be enabled to reset PINs.');
+        err.code = 'DEV_MODE_REQUIRED';
+        throw err;
+    }
+    const list = (readJson(CASHIER_FILE, []) || []).map(normalizeCashierRecord);
+    const match = findCashierByName(list, cashierName);
+    if (!match) {
+        const err = new Error('Cashier not found.');
+        err.code = 'CASHIER_NOT_FOUND';
+        throw err;
+    }
+    if (!match.pinHash) {
+        return { ok: true, pinSet: false };
+    }
+    const updated = list.map(c => c.name.toLowerCase() === cashierName.toLowerCase() ? { ...c, pinSalt: '', pinHash: '' } : c);
+    writeJson(CASHIER_FILE, updated);
+    return { ok: true, pinSet: false };
+});
 
 // ---------- Receipts (robust, stores void userObj) ----------
 ipcMain.handle('receipts:load', () => {

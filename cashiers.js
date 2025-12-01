@@ -4,6 +4,7 @@ const { ipcRenderer } = require('electron');
 let cache = [];
 let __cashierEditIndex = -1;
 let __pinModalIndex = -1;
+let __developerMode = false;
 function escapeHtml(s) { return String(s).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;'); }
 
 function showToast(message, opts = {}) {
@@ -48,6 +49,13 @@ function focusElement(selectorOrElement) {
     } catch (_) { }
 }
 
+async function refreshDeveloperModeState() {
+    try {
+        const settings = await ipcRenderer.invoke('settings:load');
+        __developerMode = !!settings?.developerMode;
+    } catch (_) { }
+}
+
 async function load() { const list = await ipcRenderer.invoke('cashiers:load'); cache = Array.isArray(list) ? list : []; cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
 async function save() { cache = await ipcRenderer.invoke('cashiers:save', cache); cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
 
@@ -57,19 +65,23 @@ async function render() {
     tbody.innerHTML = '';
     cache.forEach((c, i) => {
         const tr = document.createElement('tr');
+        const resetButton = (__developerMode && c.pinSet)
+            ? `<button class="btn btn-outline-warning" onclick="resetCashierPin(${i})">Reset PIN</button>`
+            : '';
         tr.innerHTML = `
-      <td>
-        <div>${escapeHtml(c.name || '')}</div>
-        <div class="small text-muted">${c.pinSet ? 'PIN set' : 'PIN not set'}</div>
-      </td>
-      <td>
-        <div class="btn-group btn-group-sm">
-          <button class="btn btn-outline-primary" onclick="openCashierEdit(${i})">Edit</button>
-          <button class="btn btn-outline-success" onclick="openSetPinModal(${i})">Set PIN</button>
-          <button class="btn btn-outline-danger" onclick="deleteCashier(${i})">Delete</button>
-        </div>
-      </td>
-    `;
+          <td>
+            <div>${escapeHtml(c.name || '')}</div>
+            <div class="small text-muted">${c.pinSet ? 'PIN set' : 'PIN not set'}</div>
+          </td>
+          <td>
+            <div class="btn-group btn-group-sm">
+              <button class="btn btn-outline-primary" onclick="openCashierEdit(${i})">Edit</button>
+              <button class="btn btn-outline-success" onclick="openSetPinModal(${i})">Set PIN</button>
+              <button class="btn btn-outline-danger" onclick="deleteCashier(${i})">Delete</button>
+              ${resetButton}
+            </div>
+          </td>
+        `;
         tbody.appendChild(tr);
     });
 }
@@ -176,6 +188,28 @@ window.applyPinModal = async function () {
         showToast('Failed to set PIN: ' + (e?.message || ''), { type: 'error' });
     }
 };
+window.resetCashierPin = async function (i) {
+    if (!__developerMode) {
+        showToast('Developer Mode is required to reset PINs.', { type: 'error' });
+        return;
+    }
+    await load();
+    const row = cache[i];
+    if (!row) return;
+    if (!row.pinSet) {
+        showToast('Cashier has no PIN to reset.', { type: 'info' });
+        return;
+    }
+    if (!confirm(`Reset PIN for "${row.name}"? This will require them to set a new PIN.`)) return;
+    try {
+        await ipcRenderer.invoke('cashiers:resetPin', { name: row.name });
+        showToast('PIN cleared; cashier must set a new one.', { type: 'success' });
+        await render();
+    } catch (e) {
+        console.error(e);
+        showToast('Failed to reset PIN: ' + (e?.message || ''), { type: 'error' });
+    }
+};
 window.deleteCashier = async function (i) {
     await load();
     if (!cache[i]) return;
@@ -186,8 +220,21 @@ window.deleteCashier = async function (i) {
 };
 // (admin auth removed - rollback)
 
-window.onload = function(){
+try {
+    ipcRenderer.on('settings:changed', (_evt, payload) => {
+        if (typeof payload?.developerMode === 'boolean') {
+            const next = !!payload.developerMode;
+            if (next !== __developerMode) {
+                __developerMode = next;
+                render().catch(() => { });
+            }
+        }
+    });
+} catch (_) { }
+
+window.onload = async function(){
   try { document.getElementById('cashier_edit_save_btn')?.addEventListener('click', () => { try { saveCashierEdit(); } catch(_){} }); } catch(_){}
   try { document.getElementById('cashier_pin_save_btn')?.addEventListener('click', () => { try { applyPinModal(); } catch(_){} }); } catch(_){}
-  render();
+  await refreshDeveloperModeState();
+  await render();
 };
