@@ -10,6 +10,7 @@ let __closingDenominationTargets = {};
 let __openingPrefillCounts = null;
 let __pendingOpeningSubmission = null;
 let __depositModalInstance = null;
+let __drawerHistoryRows = [];
 
 // ---- UI helpers ----
 function showToast(message, opts = {}) {
@@ -1054,13 +1055,15 @@ function renderHistoryTable(rows) {
   const empty = document.getElementById('drawerHistoryEmpty');
   const tbody = document.getElementById('drawerHistoryTableBody');
   if (!wrap || !empty || !tbody) return;
+  const safeRows = Array.isArray(rows) ? rows : [];
+  __drawerHistoryRows = safeRows;
   if (!__managerMode) {
     wrap.style.display = 'none';
     empty.textContent = 'Enable Manager Mode to view drawer history.';
     empty.style.display = '';
     return;
   }
-  if (!rows || !rows.length) {
+  if (!safeRows.length) {
     wrap.style.display = 'none';
     empty.textContent = 'No drawer records found for the selected dates.';
     empty.style.display = '';
@@ -1068,11 +1071,21 @@ function renderHistoryTable(rows) {
   }
   empty.style.display = 'none';
   wrap.style.display = '';
-  tbody.innerHTML = rows.map(r => {
-    const opening = r.opening ? `${r.opening.cashier || ''} ($${money(r.opening.total || 0)})` : '—';
-    const closing = r.closing ? `${r.closing.cashier || ''} ($${money(r.closing.total || 0)})` : '—';
+  tbody.innerHTML = safeRows.map(r => {
+    const opening = r.opening ? `${r.opening.cashier || ''} ($${money(r.opening.total || 0)})` : '-';
+    const closing = r.closing ? `${r.closing.cashier || ''} ($${money(r.closing.total || 0)})` : '-';
     const variance = Number(r.variance || 0);
     const varianceLabel = `${variance >= 0 ? '+' : '-'}$${money(Math.abs(variance))}`;
+    const actionHasClosing = r.closing && Object.keys(r.closing.counts || {}).length > 0;
+    const actionButton = `
+      <button type="button"
+        class="btn btn-sm btn-outline-secondary"
+        data-history-date="${esc(r.date || '')}"
+        ${actionHasClosing ? '' : 'disabled'}
+        title="${actionHasClosing ? 'View deposit report' : 'No closing recorded'}">
+        ${actionHasClosing ? 'View Report' : 'No Report'}
+      </button>
+    `;
     return `
       <tr>
         <td>${r.date || ''}</td>
@@ -1080,9 +1093,65 @@ function renderHistoryTable(rows) {
         <td>${closing}</td>
         <td class="${variance === 0 ? 'text-muted' : (variance > 0 ? 'text-success' : 'text-danger')}">${varianceLabel}</td>
         <td>${r.status || ''}</td>
+        <td class="text-end">${actionButton}</td>
       </tr>
     `;
   }).join('');
+  tbody.querySelectorAll('[data-history-date]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const date = btn.getAttribute('data-history-date');
+      void openHistoryDepositReport(date);
+    });
+  });
+}
+
+async function openHistoryDepositReport(date) {
+  if (!ipcRenderer) return;
+  if (!__managerMode) {
+    showToast('Enable Manager Mode to view drawer reports.', { type: 'error' });
+    return;
+  }
+  const targetDate = String(date || '').trim();
+  if (!targetDate) {
+    showToast('Select a history record to view its deposit report.', { type: 'error' });
+    return;
+  }
+  const record = __drawerHistoryRows.find(r => String(r?.date || '') === targetDate);
+  if (!record || !record.closing) {
+    showToast('Unable to locate closing details for that date.', { type: 'error' });
+    return;
+  }
+  const closing = record.closing;
+  const closingCounts = closing.counts || {};
+  if (!Object.keys(closingCounts).length) {
+    showToast('Closing counts are missing for that record.', { type: 'error' });
+    return;
+  }
+  let receipts = [];
+  try {
+    receipts = await ipcRenderer.invoke('receipts:load');
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to load receipts for the deposit report.', { type: 'error' });
+    return;
+  }
+  const reportDate = targetDate || todayYmd();
+  const tenderTotals = buildTenderTotals(receipts, reportDate);
+  openDepositReportWindow({
+    date: reportDate,
+    target: Number(__dailyDrawerTotal || 0),
+    closingTotal: Number(closing.total || 0),
+    counts: closingCounts,
+    depositAmount: Number(closing.deposit?.amount || 0),
+    depositCounts: closing.deposit?.counts || {},
+    openingCounts: record.opening?.counts || {},
+    openingCashier: record.opening?.cashier || '',
+    openingTs: record.opening?.ts || '',
+    tenderTotals,
+    closingBy: closing.cashier,
+    closingTs: closing.ts,
+    closingNote: closing.note
+  });
 }
 async function loadDrawerHistory() {
   if (!__managerMode) {
@@ -1181,3 +1250,4 @@ window.openDrawerClosingModal = openDrawerClosingModal;
 window.submitOpeningWithNote = submitOpeningWithNote;
 window.refreshDrawerState = refreshDrawerState;
 window.printDepositReport = printDepositReport;
+window.openHistoryDepositReport = openHistoryDepositReport;
