@@ -1222,12 +1222,16 @@ window.addEventListener('storage', (event) => {
   }
 });
 
-window.addEventListener('beforeunload', () => {
-  try {
-    localStorage.removeItem('managerModeEnabled');
-    localStorage.removeItem('managerModeExpiresAt');
-  } catch (_) {}
-});
+try {
+  if (ipcRenderer && ipcRenderer.on) {
+    ipcRenderer.on('app:prepareQuit', () => {
+      try {
+        localStorage.removeItem('managerModeEnabled');
+        localStorage.removeItem('managerModeExpiresAt');
+      } catch (_) {}
+    });
+  }
+} catch (_) {}
 
 // Surface script errors in UI
 window.addEventListener('error', (e) => {

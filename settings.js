@@ -37,9 +37,12 @@ function updateDenominationTargetTotalDisplay(total = 0) {
   el.textContent = `$${formatMoneyDisplay(total)}`;
 }
 
+const ACTIVITY_EVENTS = ['click', 'keydown', 'mousemove', 'touchstart'];
+
 let __managerMode = false;
 let __developerMode = false;
 let __passwordsModal = null;
+let __activityListenerAttached = false;
 
 function toPct(val) { return (Number(val || 0) * 100).toFixed(2); }
 function fromPct(pct) { return Number(pct || 0) / 100; }
@@ -150,6 +153,37 @@ function scheduleDeveloperModeTimeout() {
     return;
   }
   __developerModeTimer = setTimeout(() => disableDeveloperModeDueToTimeout(), delay);
+}
+
+function refreshManagerActivity() {
+  if (!__managerMode) return;
+  const now = Date.now();
+  const expiresAt = now + MODE_TIMEOUT_MS;
+  __managerModeExpiresAt = expiresAt;
+  persistManagerMode(true, expiresAt);
+  scheduleManagerModeTimer();
+}
+
+function refreshDeveloperActivity() {
+  if (!__developerMode) return;
+  const now = Date.now();
+  __developerModeExpiresAt = now + MODE_TIMEOUT_MS;
+  scheduleDeveloperModeTimeout();
+}
+
+function handleActivityEvent() {
+  refreshManagerActivity();
+  refreshDeveloperActivity();
+}
+
+function ensureActivityListeners() {
+  if (__activityListenerAttached) return;
+  try {
+    ACTIVITY_EVENTS.forEach(evt => {
+      document.addEventListener(evt, handleActivityEvent, { passive: true });
+    });
+    __activityListenerAttached = true;
+  } catch (_) { }
 }
 
 function disableDeveloperModeDueToTimeout() {
@@ -294,8 +328,7 @@ async function requestDevPassword() {
 
 function setDeveloperMode(enabled, opts = {}) {
   __developerMode = !!enabled;
-  const expiresAt = __developerMode ? (Number(opts.expiresAt || 0) || Date.now() + MODE_TIMEOUT_MS) : 0;
-  __developerModeExpiresAt = __developerMode ? expiresAt : 0;
+  __developerModeExpiresAt = __developerMode ? (Number(opts.expiresAt || 0) || Date.now() + MODE_TIMEOUT_MS) : 0;
   syncDevModeControl(__developerMode);
   setBrandingVisibility(__developerMode);
   try {
@@ -319,7 +352,13 @@ function setDeveloperMode(enabled, opts = {}) {
     }
   } catch (_) { }
 
-  scheduleDeveloperModeTimeout();
+  if (__developerMode) {
+    ensureActivityListeners();
+    refreshDeveloperActivity();
+  } else {
+    __developerModeExpiresAt = 0;
+    scheduleDeveloperModeTimeout();
+  }
 }
 
 async function enableDeveloperMode() {
@@ -367,8 +406,6 @@ async function toggleDeveloperMode() {
 
 function setManagerMode(enabled, opts = {}) {
   __managerMode = !!enabled;
-  const expiresAt = __managerMode ? (Number(opts.expiresAt || 0) || Date.now() + MODE_TIMEOUT_MS) : 0;
-  persistManagerMode(__managerMode, expiresAt);
   try {
     document.querySelectorAll('[data-requires-manager]').forEach(el => {
       el.style.display = __managerMode ? '' : 'none';
@@ -396,12 +433,17 @@ function setManagerMode(enabled, opts = {}) {
       badge.className = __managerMode ? 'badge bg-success' : 'badge bg-secondary';
     }
   } catch (_) { }
-  if (!__managerMode) {
+  if (__managerMode) {
+    ensureActivityListeners();
+    refreshManagerActivity();
+  } else {
+    __managerModeExpiresAt = 0;
+    persistManagerMode(false);
+    scheduleManagerModeTimer();
     try { __promoModal?.hide(); } catch (_) { }
     try { __promoEditModal?.hide(); } catch (_) { }
     try { __promoDeleteModal?.hide(); } catch (_) { }
   }
-  scheduleManagerModeTimer();
 }
 
 function getPersistedManagerMode() {
@@ -1156,6 +1198,7 @@ async function saveDiscountReasons() {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  ensureActivityListeners();
   const managerState = readManagerModeState();
   setManagerMode(managerState.enabled, { expiresAt: managerState.expiresAt });
   setDeveloperMode(false);
@@ -1194,6 +1237,21 @@ window.addEventListener('storage', (event) => {
     setManagerMode(state.enabled, { expiresAt: state.expiresAt });
   }
 });
+
+try {
+  ipcRenderer.on('app:prepareQuit', () => {
+    if (__managerMode) {
+      persistManagerMode(false);
+      __managerMode = false;
+      __managerModeExpiresAt = 0;
+    }
+    if (__developerMode) {
+      __developerMode = false;
+      __developerModeExpiresAt = 0;
+      try { ipcRenderer.invoke('settings:disableDev').catch(() => {}); } catch (_) {}
+    }
+  });
+} catch (_) {}
 
 // Test-friendly exports (no impact in Electron runtime)
 try {
