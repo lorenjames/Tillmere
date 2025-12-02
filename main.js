@@ -875,7 +875,8 @@ ipcMain.handle('vendors:save', (_evt, vendors) => {
     const norm = (vendors || []).map(v => ({
         name: String(v?.name || '').trim(),
         phone: String(v?.phone || '').trim(),
-        code: String(v?.code || '').trim()
+        code: String(v?.code || '').trim(),
+        email: String(v?.email || '').trim()
     }));
     writeJson(VENDOR_FILE, norm);
     return norm;

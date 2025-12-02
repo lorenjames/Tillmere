@@ -11,11 +11,13 @@ function setupVendorsDom() {
     <input id="newVendorCode" />
     <input id="newVendorName" />
     <input id="newVendorPhone" />
+    <input id="newVendorEmail" />
 
     <div id="vendorEditModal">
       <input id="edit_vendor_code" />
       <input id="edit_vendor_name" />
       <input id="edit_vendor_phone" />
+      <input id="edit_vendor_email" />
       <button id="vendor_edit_save_btn">Save</button>
     </div>
   `;

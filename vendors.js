@@ -105,6 +105,7 @@ async function renderTable(options = {}) {
         <td>${escapeHtml(v.code || '')}</td>
         <td>${escapeHtml(v.name || '')}</td>
         <td>${escapeHtml(v.phone || '')}</td>
+        <td>${escapeHtml(v.email || '')}</td>
         <td>
           <div class="btn-group btn-group-sm">
             <button class="btn btn-outline-primary" onclick="openVendorEdit(${idx})">Edit</button>
@@ -119,16 +120,21 @@ window.addVendor = async function () {
     const nameEl = document.getElementById('newVendorName');
     const phoneEl = document.getElementById('newVendorPhone');
     const codeEl = document.getElementById('newVendorCode');
+    const emailEl = document.getElementById('newVendorEmail');
     const name = (nameEl.value || '').trim();
     const phone = (phoneEl.value || '').trim();
     const code = (codeEl.value || '').trim();
+    const email = (emailEl.value || '').trim();
     if (!name) { showToast('Vendor name is required.', { type: 'error' }); focusElement('#newVendorName'); return; }
     if (!code) { showToast('Vendor code is required.', { type: 'error' }); focusElement('#newVendorCode'); return; }
     await loadFromDisk();
     if (cache.some(v => (v.code || '').toLowerCase() === code.toLowerCase())) { showToast('Vendor code must be unique.', { type: 'error' }); focusElement('#newVendorCode'); return; }
-    cache.push({ name, phone, code });
+    cache.push({ name, phone, code, email });
     await saveToDisk();
-    nameEl.value = ''; phoneEl.value = ''; codeEl.value = '';
+    nameEl.value = '';
+    phoneEl.value = '';
+    codeEl.value = '';
+    emailEl.value = '';
     renderTable();
 };
 window.openVendorEdit = async function (i) {
@@ -139,6 +145,7 @@ window.openVendorEdit = async function (i) {
         document.getElementById('edit_vendor_code').value = cache[i].code || '';
         document.getElementById('edit_vendor_name').value = cache[i].name || '';
         document.getElementById('edit_vendor_phone').value = cache[i].phone || '';
+        document.getElementById('edit_vendor_email').value = cache[i].email || '';
     } catch (_) { }
     try {
         const el = document.getElementById('vendorEditModal');
@@ -159,11 +166,12 @@ window.saveVendorEdit = async function () {
     const code = String(document.getElementById('edit_vendor_code')?.value || '').trim();
     const name = String(document.getElementById('edit_vendor_name')?.value || '').trim();
     const phone = String(document.getElementById('edit_vendor_phone')?.value || '').trim();
+    const email = String(document.getElementById('edit_vendor_email')?.value || '').trim();
     if (!name) { showToast('Vendor name cannot be empty.', { type: 'error' }); focusElement('#edit_vendor_name'); return; }
     if (!code) { showToast('Vendor code is required.', { type: 'error' }); focusElement('#edit_vendor_code'); return; }
     const lower = code.toLowerCase();
     if (cache.some((v, idx) => idx !== i && (v.code || '').toLowerCase() === lower)) { showToast('Vendor code must be unique.', { type: 'error' }); focusElement('#edit_vendor_code'); return; }
-    cache[i] = { name, phone, code };
+    cache[i] = { name, phone, code, email };
     await saveToDisk();
     try {
         const el = document.getElementById('vendorEditModal');

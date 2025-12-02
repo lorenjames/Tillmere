@@ -16,8 +16,9 @@
 
         .form-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr auto;
+            grid-template-columns: 1fr 1fr 1fr 1fr auto;
             gap: 12px;
+            align-items: end;
         }
 
         @media (max-width: 992px) {
@@ -82,6 +83,10 @@
                         <label for="newVendorPhone" class="form-label">Phone</label>
                         <input type="text" id="newVendorPhone" class="form-control" placeholder="e.g., 402-555-1212">
                     </div>
+                    <div>
+                        <label for="newVendorEmail" class="form-label">Email</label>
+                        <input type="email" id="newVendorEmail" class="form-control" placeholder="e.g., jane@example.com">
+                    </div>
 
                     <div class="d-grid">
                         <label class="form-label invisible">Add</label>
@@ -95,10 +100,11 @@
                     <table id="vendorTable" class="table table-striped align-middle mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th style="width:20%">Code</th>
-                                <th style="width:40%">Name</th>
-                                <th style="width:25%">Phone</th>
-                                <th style="width:15%">Actions</th>
+                                <th style="width:15%">Code</th>
+                                <th style="width:35%">Name</th>
+                                <th style="width:20%">Phone</th>
+                                <th style="width:20%">Email</th>
+                                <th style="width:10%">Actions</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -118,14 +124,18 @@
                                     <label class="form-label" for="edit_vendor_code">Vendor Code (unique)</label>
                                     <input id="edit_vendor_code" class="form-control" placeholder="e.g., JDE">
                                 </div>
-                                <div class="mb-3">
-                                    <label class="form-label" for="edit_vendor_name">Vendor Name</label>
-                                    <input id="edit_vendor_name" class="form-control" placeholder="e.g., Jane Doe">
-                                </div>
-                                <div class="mb-0">
-                                    <label class="form-label" for="edit_vendor_phone">Phone</label>
-                                    <input id="edit_vendor_phone" class="form-control" placeholder="e.g., 402-555-1212">
-                                </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="edit_vendor_name">Vendor Name</label>
+                                <input id="edit_vendor_name" class="form-control" placeholder="e.g., Jane Doe">
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label" for="edit_vendor_phone">Phone</label>
+                                <input id="edit_vendor_phone" class="form-control" placeholder="e.g., 402-555-1212">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="edit_vendor_email">Email</label>
+                                <input id="edit_vendor_email" type="email" class="form-control" placeholder="e.g., jane@example.com">
+                            </div>
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
