@@ -66,15 +66,18 @@ function renderCalendar(month, year) {
       const classes = ['calendar-day'];
       if (!isCurrentMonth) classes.push('outside');
       const assignment = assignments[dateKey] || {};
+      const dayInfo = isCurrentMonth ? resolveDayInfo(schedulePayload, cellDate) : null;
       const workerNames = shifts.map(shift => assignment[shift.name]).filter(Boolean);
-      const shiftLines = workerNames.length
-        ? workerNames.map(name => `<div class="shift-line">${name}</div>`).join('')
-        : '<div class="shift-line text-muted">Unassigned</div>';
-      const dayInfo = resolveDayInfo(schedulePayload, cellDate);
+      const shiftLines =
+        dayInfo?.type === 'closed'
+          ? ''
+          : workerNames.length
+            ? workerNames.map(name => `<div class="shift-line">${name}</div>`).join('')
+            : (isCurrentMonth ? '<div class="shift-line text-muted">Unassigned</div>' : '');
       html += `<td class="${classes.join(' ')}">
-        <span class="day-number">${cellDate.getDate()}</span>
-        <div class="shift-note">${dayInfo.start && dayInfo.end ? `${formatTime12(dayInfo.start)} – ${formatTime12(dayInfo.end)}` : dayInfo.label}</div>
-        ${shiftLines}
+        ${isCurrentMonth ? `<span class="day-number">${cellDate.getDate()}</span>
+        <div class="shift-note">${dayInfo?.start && dayInfo?.end ? `${formatTime12(dayInfo.start)} – ${formatTime12(dayInfo.end)}` : dayInfo?.label || ''}</div>
+        ${shiftLines}` : ''}
       </td>`;
     });
     if (rowIndex === 0) {
