@@ -7,6 +7,7 @@ const crypto = require('crypto');
 
 let mainWindow;
 let splashWindow;
+let calendarWindow;
 
 const userDir = app.getPath('userData');
 const VENDOR_FILE = path.join(userDir, 'vendors.json');
@@ -30,6 +31,19 @@ const DEFAULT_DISCOUNT_REASONS = [
 const DRAWER_DENOMS = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
 const MODE_TIMEOUT_MS = 20 * 60 * 1000;
 const RECEIPTS_DB_FILE = path.join(userDir, 'receipts.sqlite3');
+const SCHEDULE_FILE = path.join(userDir, 'schedule.json');
+const DEFAULT_STORE_HOURS = { start: '10:00', end: '18:00' };
+const DEFAULT_BASE_SHIFTS = [
+    { name: 'Morning Shift', start: '10:00', end: '14:00' },
+    { name: 'Afternoon Shift', start: '14:00', end: '18:00' }
+];
+const DEFAULT_BASE_HOURS = {
+    '0': { start: '13:00', end: '16:00' }, // Sunday
+    '3': { start: '11:00', end: '17:30' }, // Wednesday
+    '4': { start: '11:00', end: '17:30' }, // Thursday
+    '5': { start: '11:00', end: '17:30' }, // Friday
+    '6': { start: '10:00', end: '16:00' }  // Saturday
+};
 let BetterSqlite3 = null;
 try {
     BetterSqlite3 = require('better-sqlite3');
@@ -256,6 +270,130 @@ function writeJson(file, data) {
     }
 }
 
+function sanitizeTimeString(value, fallback = '') {
+    const candidate = String(value || '').trim();
+    const match = /^(\d{2}):(\d{2})$/.exec(candidate);
+    if (!match) return fallback;
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return fallback;
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallback;
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+function normalizeStoreHours(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    return {
+        start: sanitizeTimeString(source.start, DEFAULT_STORE_HOURS.start),
+        end: sanitizeTimeString(source.end, DEFAULT_STORE_HOURS.end)
+    };
+}
+function normalizeBaseShifts(raw) {
+    const arr = Array.isArray(raw) ? raw : [];
+    const normalized = arr.map((shift, index) => {
+        const source = shift && typeof shift === 'object' ? shift : {};
+        const name = String(source.name || `Shift ${index + 1}`).trim();
+        const start = sanitizeTimeString(source.start, DEFAULT_STORE_HOURS.start);
+        const end = sanitizeTimeString(source.end, DEFAULT_STORE_HOURS.end);
+        if (!name || !start || !end) return null;
+        return { name, start, end };
+    }).filter(Boolean);
+    if (normalized.length) return normalized;
+    return DEFAULT_BASE_SHIFTS.map(shift => ({ ...shift }));
+}
+function normalizeSpecialHours(raw) {
+    const arr = Array.isArray(raw) ? raw : [];
+    const cleaned = arr.map(entry => {
+        const source = entry && typeof entry === 'object' ? entry : {};
+        const date = String(source.date || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+        const start = sanitizeTimeString(source.start, '');
+        const end = sanitizeTimeString(source.end, '');
+        if (!start || !end) return null;
+        return {
+            date,
+            start,
+            end,
+            label: String(source.label || '').trim()
+        };
+    }).filter(Boolean);
+    cleaned.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    return cleaned;
+}
+function normalizeBaseHours(raw) {
+    const source = raw && typeof raw === 'object' ? raw : null;
+    const result = {};
+    if (source) {
+        Object.entries(source).forEach(([key, value]) => {
+            const day = String(key || '').trim();
+            if (!/^[0-6]$/.test(day)) return;
+            const start = sanitizeTimeString(value?.start, '');
+            const end = sanitizeTimeString(value?.end, '');
+            if (!start || !end) return;
+            result[day] = { start, end };
+        });
+    }
+    if (Object.keys(result).length) return result;
+    if (source) return {};
+    const clone = {};
+    Object.entries(DEFAULT_BASE_HOURS).forEach(([key, val]) => {
+        clone[key] = { start: val.start, end: val.end };
+    });
+    return clone;
+}
+function normalizeAssignments(raw) {
+    if (!raw || typeof raw !== 'object') return {};
+    const result = {};
+    Object.entries(raw).forEach(([date, shifts]) => {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || '').trim())) return;
+        if (!shifts || typeof shifts !== 'object') return;
+        const day = {};
+        Object.entries(shifts).forEach(([shiftName, cashier]) => {
+            const cleanShift = String(shiftName || '').trim();
+            const cleanCashier = String(cashier || '').trim();
+            if (!cleanShift || !cleanCashier) return;
+            day[cleanShift] = cleanCashier;
+        });
+        if (Object.keys(day).length) result[date] = day;
+    });
+    return result;
+}
+function normalizeSchedule(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    return {
+        storeHours: normalizeStoreHours(source.storeHours),
+        baseShifts: normalizeBaseShifts(source.baseShifts),
+        specialHours: normalizeSpecialHours(source.specialHours),
+        baseHours: normalizeBaseHours(source.baseHours),
+        assignments: normalizeAssignments(source.assignments)
+    };
+}
+function readScheduleData() {
+    const raw = readJson(SCHEDULE_FILE, null);
+    return normalizeSchedule(raw);
+}
+function saveScheduleData(patch) {
+    const current = readScheduleData();
+    const source = patch && typeof patch === 'object' ? patch : {};
+    const next = {
+        storeHours: Object.prototype.hasOwnProperty.call(source, 'storeHours')
+            ? normalizeStoreHours(source.storeHours)
+            : current.storeHours,
+        baseShifts: Object.prototype.hasOwnProperty.call(source, 'baseShifts')
+            ? normalizeBaseShifts(source.baseShifts)
+            : current.baseShifts,
+        specialHours: Object.prototype.hasOwnProperty.call(source, 'specialHours')
+            ? normalizeSpecialHours(source.specialHours)
+            : current.specialHours,
+        baseHours: Object.prototype.hasOwnProperty.call(source, 'baseHours')
+            ? normalizeBaseHours(source.baseHours)
+            : current.baseHours,
+        assignments: Object.prototype.hasOwnProperty.call(source, 'assignments')
+            ? normalizeAssignments(source.assignments)
+            : current.assignments
+    };
+    writeJson(SCHEDULE_FILE, next);
+    return next;
+}
 function readSettings() {
     const def = {
         taxRate: 0.0725,
@@ -881,6 +1019,9 @@ ipcMain.handle('vendors:save', (_evt, vendors) => {
     writeJson(VENDOR_FILE, norm);
     return norm;
 });
+
+ipcMain.handle('schedule:load', () => readScheduleData());
+ipcMain.handle('schedule:save', (_evt, patch) => saveScheduleData(patch));
 
 // ---------- Bootstrap state (vendors, cashiers, receipts) ----------
 ipcMain.handle('state:bootstrap', () => {
@@ -1663,6 +1804,59 @@ function createSaleWindow(cartId) {
     logActivity('app:event', { event: 'window:sale-created', cartId: cartId || null });
     return w;
 }
+
+function createCalendarWindow(payload = {}) {
+    if (calendarWindow && !calendarWindow.isDestroyed()) {
+        calendarWindow.close();
+        calendarWindow = null;
+    }
+    const query = {};
+    if (Number.isFinite(payload.month)) {
+        query.month = String(Math.max(0, Math.min(11, payload.month)));
+    }
+    if (Number.isFinite(payload.year)) {
+        query.year = String(payload.year);
+    }
+    calendarWindow = new BrowserWindow({
+        width: 940,
+        height: 1200,
+        show: false,
+        backgroundColor: '#ffffff',
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+            backgroundThrottling: false
+        }
+    });
+    calendarWindow.removeMenu();
+    calendarWindow.once('ready-to-show', () => { try { calendarWindow?.show(); } catch (_) { } });
+    calendarWindow.on('closed', () => { calendarWindow = null; });
+    calendarWindow.loadFile('calendar.html', { query: query });
+    calendarWindow.webContents.once('did-finish-load', () => {
+        try {
+            calendarWindow?.webContents.send('calendar:data', payload);
+        } catch (_) { }
+    });
+    return calendarWindow;
+}
+
+ipcMain.handle('calendar:open', (_evt, payload = {}) => {
+    try {
+        createCalendarWindow(payload);
+        return { ok: true };
+    } catch (error) {
+        console.error('Failed to open calendar window', error);
+        return { ok: false, error: String(error) };
+    }
+});
+
+ipcMain.handle('calendar:print', () => {
+    if (!calendarWindow || calendarWindow.isDestroyed()) {
+        return { ok: false, error: 'Calendar window is not open.' };
+    }
+    calendarWindow.webContents.print({ silent: false, printBackground: true });
+    return { ok: true };
+});
 // Avoid side effects during tests where Electron may be mocked
 try {
   const isTest = !!process.env.JEST_WORKER_ID;
