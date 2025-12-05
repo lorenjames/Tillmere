@@ -20,6 +20,7 @@ const APP_RESET_TOKEN = path.join(__dirname, 'config', 'reset-token.txt');
 const BRANDING_DIR = path.join(userDir, 'branding');
 const ACTIVITY_LOG_DIR = path.join(userDir, 'logs');
 const ACTIVITY_LOG_FILE = path.join(ACTIVITY_LOG_DIR, 'activity.log');
+const AUTO_BACKUP_DIR = path.join(userDir, 'backups');
 const DEFAULT_VENDOR_PROMOTIONS = [];
 const DEFAULT_DISCOUNT_REASONS = [
     'Store Promo',
@@ -61,6 +62,14 @@ function ensureActivityLogDir() {
     try {
         fs.mkdirSync(ACTIVITY_LOG_DIR, { recursive: true });
     } catch (_) { }
+}
+
+function ensureDirectory(dir) {
+    if (!dir) return '';
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+    } catch (_) { }
+    return dir;
 }
 
 function truncateString(str, maxLen = 120) {
@@ -1635,18 +1644,10 @@ ipcMain.handle('print:listPrinters', async () => {
 function resolveBackupDir(requested) {
     const candidate = String(requested || '').trim();
     if (candidate) {
-        try {
-            fs.mkdirSync(candidate, { recursive: true });
-            return candidate;
-        } catch (_) {
-        }
+        ensureDirectory(candidate);
+        return candidate;
     }
-    const fallback = path.join(userDir, 'backups');
-    try {
-        fs.mkdirSync(fallback, { recursive: true });
-    } catch (_) {
-    }
-    return fallback;
+    return ensureDirectory(AUTO_BACKUP_DIR);
 }
 function formatLocalDate(date = new Date()) {
     const y = date.getFullYear();
@@ -1721,9 +1722,7 @@ function performAutoBackup() {
             cashiers: readJson(CASHIER_FILE, []),
             receipts: receiptsStore.list()
         };
-        const s = readSettings();
-        const backupDir = resolveBackupDir(s?.backupDir);
-        try { fs.mkdirSync(backupDir, { recursive: true }); } catch (_) { }
+        const backupDir = ensureDirectory(AUTO_BACKUP_DIR);
         // Overwrite same filename each time
         const latestPath = path.join(backupDir, 'middletons-backup-latest.json');
         fs.writeFileSync(latestPath, JSON.stringify(data, null, 2), 'utf-8');
