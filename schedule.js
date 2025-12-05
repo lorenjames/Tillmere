@@ -167,7 +167,7 @@ function createDayColumn(date) {
   hoursDetail.className = 'text-muted small';
   const hasRange = hoursInfo.start && hoursInfo.end;
   if (hasRange) {
-    hoursDetail.textContent = `${hoursInfo.label}: ${hoursInfo.start} - ${hoursInfo.end}`;
+    hoursDetail.textContent = `${hoursInfo.label}: ${formatTime12(hoursInfo.start)} - ${formatTime12(hoursInfo.end)}`;
   } else if (hoursInfo.label === 'Closed') {
     hoursDetail.textContent = 'Closed';
   } else {

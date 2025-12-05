@@ -19,3 +19,17 @@
 2025-12-04T20:20:33.019Z [sale:update] cashier="unknown" receiptId="MID-1764879633016-602" timestamp="2025-12-04T20:20:33.019Z" changes="id,total"
 2025-12-04T20:20:33.029Z [sale] cashier="unknown" receiptId="R-1" timestamp="2025-01-02T00:00:00Z"
 2025-12-04T20:20:33.030Z [sale:return] cashier="system" receiptId="R-1" timestamp="2025-12-04T20:20:33.030Z" reason="Broken"
+2025-12-05T01:15:41.001Z [developer:mode] action="enable" success=false error="Invalid developer password"
+2025-12-05T01:15:41.030Z [developer:mode] action="enable" success=true expiresAt=1764898541029
+2025-12-05T01:15:41.295Z [sale] cashier="unknown" receiptId="MID-1764897341293-671" timestamp="2025-01-01T00:00:00Z"
+2025-12-05T01:15:41.296Z [sale:void] cashier="me" receiptId="MID-1764897341293-671" timestamp="2025-12-05T01:15:41.295Z" reason="Test"
+2025-12-05T01:15:41.297Z [sale:update] cashier="unknown" receiptId="MID-1764897341293-671" timestamp="2025-12-05T01:15:41.297Z" changes="id,total"
+2025-12-05T01:15:41.306Z [sale] cashier="unknown" receiptId="R-1" timestamp="2025-01-02T00:00:00Z"
+2025-12-05T01:15:41.308Z [sale:return] cashier="system" receiptId="R-1" timestamp="2025-12-05T01:15:41.307Z" reason="Broken"
+2025-12-05T01:28:40.997Z [developer:mode] action="enable" success=false error="Invalid developer password"
+2025-12-05T01:28:41.038Z [developer:mode] action="enable" success=true expiresAt=1764899321037
+2025-12-05T01:28:41.331Z [sale] cashier="unknown" receiptId="MID-1764898121329-925" timestamp="2025-01-01T00:00:00Z"
+2025-12-05T01:28:41.333Z [sale:void] cashier="me" receiptId="MID-1764898121329-925" timestamp="2025-12-05T01:28:41.332Z" reason="Test"
+2025-12-05T01:28:41.335Z [sale:update] cashier="unknown" receiptId="MID-1764898121329-925" timestamp="2025-12-05T01:28:41.335Z" changes="id,total"
+2025-12-05T01:28:41.347Z [sale] cashier="unknown" receiptId="R-1" timestamp="2025-01-02T00:00:00Z"
+2025-12-05T01:28:41.349Z [sale:return] cashier="system" receiptId="R-1" timestamp="2025-12-05T01:28:41.348Z" reason="Broken"

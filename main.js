@@ -1632,30 +1632,36 @@ ipcMain.handle('print:listPrinters', async () => {
 });
 
 // ---------- Backup/Restore Data ----------
+function resolveBackupDir(requested) {
+    const candidate = String(requested || '').trim();
+    if (candidate) {
+        try {
+            fs.mkdirSync(candidate, { recursive: true });
+            return candidate;
+        } catch (_) {
+        }
+    }
+    const fallback = path.join(userDir, 'backups');
+    try {
+        fs.mkdirSync(fallback, { recursive: true });
+    } catch (_) {
+    }
+    return fallback;
+}
 function formatLocalDate(date = new Date()) {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
 }
-function nextAvailablePath(dir, baseNameNoExt) {
-    const base = path.join(dir, `${baseNameNoExt}.json`);
-    if (!fs.existsSync(base)) return base;
-    let i = 1;
-    while (true) {
-        const candidate = path.join(dir, `${baseNameNoExt}-${String(i).padStart(2, '0')}.json`);
-        if (!fs.existsSync(candidate)) return candidate;
-        i++;
-    }
-}
-
 ipcMain.handle('data:export', async () => {
     try {
-        const defaultPath = `middletons-backup-${formatLocalDate()}.json`;
+        const defaultName = `middletons-backup-${formatLocalDate()}.json`;
         const current = readSettings();
+        const backupDir = resolveBackupDir(current?.backupDir);
         const { canceled, filePath } = await dialog.showSaveDialog({
             title: 'Save Backup',
-            defaultPath: current?.backupDir ? path.join(current.backupDir, defaultPath) : defaultPath,
+            defaultPath: path.join(backupDir, defaultName),
             filters: [{ name: 'JSON', extensions: ['json'] }]
         });
         if (canceled || !filePath) return { ok: false, canceled: true };
@@ -1716,16 +1722,14 @@ function performAutoBackup() {
             receipts: receiptsStore.list()
         };
         const s = readSettings();
-        let backupDir = String(s?.backupDir || '').trim();
-        if (!backupDir) backupDir = path.join(userDir, 'backups');
-        fs.mkdirSync(backupDir, { recursive: true });
+        const backupDir = resolveBackupDir(s?.backupDir);
+        try { fs.mkdirSync(backupDir, { recursive: true }); } catch (_) { }
         // Overwrite same filename each time
         const latestPath = path.join(backupDir, 'middletons-backup-latest.json');
         fs.writeFileSync(latestPath, JSON.stringify(data, null, 2), 'utf-8');
-        // Also write a dated snapshot using local date; do not overwrite existing files
+        // Also write a dated snapshot for the current day (overwrites same-day files)
         try {
-            const baseName = `middletons-backup-${formatLocalDate()}`;
-            const datedPath = nextAvailablePath(backupDir, baseName);
+            const datedPath = path.join(backupDir, `middletons-backup-${formatLocalDate()}.json`);
             fs.writeFileSync(datedPath, JSON.stringify(data, null, 2), 'utf-8');
         } catch (_) { }
         return true;
@@ -1928,7 +1932,7 @@ try {
       computeDrawerStatus,
       sanitizeDrawer,
       // expose small helpers used in tests if needed later
-      // formatLocalDate, nextAvailablePath
+      // formatLocalDate
     };
   }
 } catch (_) { }
