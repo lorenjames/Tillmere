@@ -7,7 +7,7 @@ const {
   renderTable,
   updateTaxRateLabel,
   __test,
-} = require('../renderer.js');
+} = require('../js/renderer.js');
 
 function setupPosDom() {
   document.body.innerHTML = `
@@ -87,7 +87,7 @@ describe('POS cart and totals', () => {
   });
 
   test('clearItemEntry resets entry form fields', async () => {
-    const { clearItemEntry } = require('../renderer.js');
+    const { clearItemEntry } = require('../js/renderer.js');
     // Seed fields with values
     document.getElementById('itemName').value = 'Chair';
     document.getElementById('itemPrice').value = '80';
@@ -113,3 +113,4 @@ describe('POS cart and totals', () => {
     expect(document.getElementById('discountReason').disabled).toBe(true);
   });
 });
+

@@ -7,7 +7,7 @@ const {
   formatDiscountLabel,
   buildDiscountSuffix,
   toDateInputValue,
-} = require('../receipts.js');
+} = require('../js/receipts.js');
 
 describe('receipts helpers', () => {
   test('deriveOriginalPrice and discount summary', () => {
@@ -30,4 +30,6 @@ describe('receipts helpers', () => {
     expect(s).toBe('2024-03-05');
   });
 });
+
+
 

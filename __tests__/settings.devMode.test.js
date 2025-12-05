@@ -30,7 +30,7 @@ describe('settings renderer developer mode', () => {
       if (channel === 'settings:saveDev') return { developerMode: payload?.developerMode };
       return undefined;
     });
-    mod = require('../settings.js');
+    mod = require('../js/settings.js');
     window.dispatchEvent(new Event('DOMContentLoaded'));
     window.dispatchEvent(new Event('load'));
     return flush();
@@ -81,3 +81,4 @@ describe('settings renderer developer mode', () => {
     expect(lastToast?.textContent || '').toContain('Developer Mode: Off');
   });
 });
+

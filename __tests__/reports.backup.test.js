@@ -46,7 +46,7 @@ describe('reports backup/restore actions', () => {
       if (channel === 'data:import') return { ok: true, counts: { vendors: 0, cashiers: 0, receipts: 0 } };
       return undefined;
     });
-    require('../reports.js');
+    require('../js/reports.js');
   });
 
   afterEach(() => {
@@ -69,3 +69,4 @@ describe('reports backup/restore actions', () => {
     expect(() => document.getElementById('restoreBtn').click()).not.toThrow();
   });
 });
+

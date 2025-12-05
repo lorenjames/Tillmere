@@ -3,7 +3,7 @@ const { ipcRenderer } = require('electron');
 
 const {
   __test,
-} = require('../renderer.js');
+} = require('../js/renderer.js');
 
 function ymd(date) {
   const d = date || new Date();
@@ -175,3 +175,4 @@ describe('vendor promotions auto-apply', () => {
     expect(valueEl.value).toBe('10');
   });
 });
+

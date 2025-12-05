@@ -116,7 +116,7 @@ describe('multi-sale tabs', () => {
   });
 
   test('initializes with one Sale tab on load', async () => {
-    require('../renderer.js');
+    require('../js/renderer.js');
     dispatchLoad();
     await waitForTabsAtLeast(1);
     const tabs = Array.from(document.querySelectorAll('#saleTabs button'));
@@ -128,7 +128,7 @@ describe('multi-sale tabs', () => {
   });
 
   test('New Sale creates a tab and state is isolated per tab', async () => {
-    const { addItem } = require('../renderer.js');
+    const { addItem } = require('../js/renderer.js');
     dispatchLoad();
     await waitForTabsAtLeast(1);
 
@@ -183,7 +183,7 @@ describe('multi-sale tabs', () => {
   });
 
   test('Cancel on empty tab closes that tab and returns to previous', async () => {
-    require('../renderer.js');
+    require('../js/renderer.js');
     dispatchLoad();
     await waitForTabsAtLeast(1);
 
@@ -210,7 +210,7 @@ describe('multi-sale tabs', () => {
     global.window.bootstrap = {
       Modal: jest.fn(() => ({ show: showMock, hide: hideMock }))
     };
-    const { addItem } = require('../renderer.js');
+    const { addItem } = require('../js/renderer.js');
     dispatchLoad();
     await waitForTabsAtLeast(1);
 
@@ -240,7 +240,7 @@ describe('multi-sale tabs', () => {
   });
 
   test('Completing a sale closes its tab and switches to next with items', async () => {
-    const { addItem, printReceipt } = require('../renderer.js');
+    const { addItem, printReceipt } = require('../js/renderer.js');
     dispatchLoad();
     await waitForTabsAtLeast(1);
 
@@ -283,3 +283,4 @@ describe('multi-sale tabs', () => {
     expect(['6.43','6.44']).toContain(document.getElementById('total').textContent);
   });
 });
+

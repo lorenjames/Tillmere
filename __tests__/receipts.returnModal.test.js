@@ -70,7 +70,7 @@ describe('return modal rendering', () => {
   });
 
   test('shows existing return data when editing a return', async () => {
-    const { loadReturnReceipt } = require('../receipts.js');
+    const { loadReturnReceipt } = require('../js/receipts.js');
     await loadReturnReceipt('R-with-return');
 
     const mockIpc = require('electron').ipcRenderer;
@@ -89,7 +89,7 @@ describe('return modal rendering', () => {
   });
 
   test('fresh return loads items without preselecting them', async () => {
-    const { loadReturnReceipt } = require('../receipts.js');
+    const { loadReturnReceipt } = require('../js/receipts.js');
     await loadReturnReceipt('R-new');
 
     const mockIpc = require('electron').ipcRenderer;
@@ -102,7 +102,7 @@ describe('return modal rendering', () => {
   });
 
   test('partially returned item keeps remaining qty enabled and capped', async () => {
-    const { loadReturnReceipt } = require('../receipts.js');
+    const { loadReturnReceipt } = require('../js/receipts.js');
     await loadReturnReceipt('R-partial');
     const qtyInput = document.getElementById('returnItemQty-0');
     const chk = document.getElementById('returnItemChk-0');
@@ -116,7 +116,7 @@ describe('return modal rendering', () => {
   });
 
   test('new return shows Return Items label and stays disabled until selection', async () => {
-    const receipts = require('../receipts.js');
+    const receipts = require('../js/receipts.js');
     const { loadReturnReceipt, updateReturnButtonState } = receipts;
     const btn = document.getElementById('returnConfirmBtn');
     expect(btn.textContent).toBe('Return'); // initial
@@ -130,10 +130,12 @@ describe('return modal rendering', () => {
   });
 
   test('editing existing return shows Update Return label but disables with no selection', async () => {
-    const { loadReturnReceipt } = require('../receipts.js');
+    const { loadReturnReceipt } = require('../js/receipts.js');
     await loadReturnReceipt('R-with-return');
     const btn = document.getElementById('returnConfirmBtn');
     expect(btn.textContent).toBe('Update Return');
     expect(btn.disabled).toBe(true);
   });
 });
+
+

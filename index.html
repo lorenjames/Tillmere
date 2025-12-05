@@ -734,7 +734,7 @@
         </div>
     </div>
 
-    <script src="renderer.js"></script>
+    <script src="js/renderer.js"></script>
     <script>      (async function populateCashiersFallback() { try { const sel = document.getElementById('cashierSelect'); if (!sel) return; const { ipcRenderer } = require('electron'); let list = await ipcRenderer.invoke('cashiers:load'); if (!Array.isArray(list)) list = []; sel.innerHTML = ''; const opt = document.createElement('option'); opt.value = ''; opt.textContent = 'Select...'; opt.disabled = true; opt.selected = true; sel.appendChild(opt); list.forEach(c => { const o = document.createElement('option'); o.value = c.name; o.textContent = c.name; sel.appendChild(o); }); } catch (e) { console.error('Cashier populate fallback failed', e); } })();    </script>
 </body>
 

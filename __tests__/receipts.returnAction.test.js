@@ -16,7 +16,7 @@ describe('return action flow', () => {
   });
 
   test('editing a return triggers save and refresh', async () => {
-    const receipts = require('../receipts.js');
+    const receipts = require('../js/receipts.js');
     let hookPayload = null;
     global.window.__onReturnTestHook = (p) => { hookPayload = p; };
     // override module bindings to bypass modal and heavy logic
@@ -54,7 +54,7 @@ describe('return action flow', () => {
       if (channel === 'receipts:get') return { id: 'R2' };
       return undefined;
     });
-    const receipts = require('../receipts.js');
+    const receipts = require('../js/receipts.js');
     global.window.__onReturnTestHook = jest.fn((p) => { hookPayload = p; ipcRenderer.invoke('receipts:return', p); });
     global.window.__askReturnInfoOverride = jest.fn().mockResolvedValue({
       receiptId: 'R2',
@@ -92,7 +92,7 @@ describe('return action flow', () => {
       if (channel === 'receipts:get') return { id: 'R3' };
       return undefined;
     });
-    const receipts = require('../receipts.js');
+    const receipts = require('../js/receipts.js');
     let captured = null;
     global.window.__onReturnTestHook = (p) => { captured = p; ipcRenderer.invoke('receipts:return', p); };
     global.window.__askReturnInfoOverride = jest.fn().mockResolvedValue({
@@ -127,3 +127,5 @@ describe('return action flow', () => {
     expect(btn.textContent).toBe('Return');
   });
 });
+
+

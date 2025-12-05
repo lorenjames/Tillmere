@@ -79,12 +79,12 @@ describe('POS focus and toast validations', () => {
     });
     // Stub window.open used by print preview path
     global.window.open = jest.fn(() => ({ document: { write: jest.fn(), close: jest.fn() } }));
-    require('../renderer.js');
+    require('../js/renderer.js');
     dispatchLoad();
   });
 
   test('addItem with missing name/price shows toast and focuses name', async () => {
-    const { addItem } = require('../renderer.js');
+    const { addItem } = require('../js/renderer.js');
     const nameEl = document.getElementById('itemName');
     const priceEl = document.getElementById('itemPrice');
 
@@ -102,7 +102,7 @@ describe('POS focus and toast validations', () => {
   });
 
   test('finalizing sale without items keeps focus on itemName', async () => {
-    const { printReceipt } = require('../renderer.js');
+    const { printReceipt } = require('../js/renderer.js');
     const nameEl = document.getElementById('itemName');
 
     await printReceipt();
@@ -115,7 +115,7 @@ describe('POS focus and toast validations', () => {
   });
 
   test('finalizing sale without cashier focuses cashierSelect', async () => {
-    const { addItem, printReceipt } = require('../renderer.js');
+    const { addItem, printReceipt } = require('../js/renderer.js');
     const cashierSelect = document.getElementById('cashierSelect');
     const nameEl = document.getElementById('itemName');
     const priceEl = document.getElementById('itemPrice');
@@ -140,7 +140,7 @@ describe('POS focus and toast validations', () => {
   });
 
   test('finalizing sale without payment focuses paymentSelect', async () => {
-    const { addItem, printReceipt } = require('../renderer.js');
+    const { addItem, printReceipt } = require('../js/renderer.js');
     const cashierSelect = document.getElementById('cashierSelect');
     const paymentSelect = document.getElementById('paymentSelect');
     const nameEl = document.getElementById('itemName');
@@ -165,3 +165,4 @@ describe('POS focus and toast validations', () => {
     expect(document.activeElement).toBe(paymentSelect);
   });
 });
+

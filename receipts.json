@@ -33,7 +33,7 @@
       "reason": "Broken",
       "user": "system",
       "userObj": null,
-      "when": "2025-12-05T02:12:44.869Z",
+      "when": "2025-12-05T02:24:27.957Z",
       "items": [
         {
           "name": "Chair",
@@ -1291,6 +1291,96 @@
       "user": "me",
       "userObj": null,
       "when": "2025-12-05T02:12:44.859Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1764901286677-539",
+    "id": "MID-1764901286677-539",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-05T02:21:26.679Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1764901344823-995",
+    "id": "MID-1764901344823-995",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-05T02:22:24.826Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1764901467945-874",
+    "id": "MID-1764901467945-874",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-05T02:24:27.946Z"
     },
     "total": 20
   },

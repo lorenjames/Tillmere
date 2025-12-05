@@ -4,7 +4,7 @@ const { ipcRenderer } = require('electron');
 const {
   addItem,
   __test,
-} = require('../renderer.js');
+} = require('../js/renderer.js');
 
 function setupPrintDom() {
   document.body.innerHTML = `
@@ -60,14 +60,14 @@ describe('printReceipt validations and save', () => {
   });
 
   test('blocks when cart empty', async () => {
-    const { printReceipt } = require('../renderer.js');
+    const { printReceipt } = require('../js/renderer.js');
     await printReceipt();
     // Should not attempt to save a receipt
     expect(ipcRenderer.invoke).not.toHaveBeenCalledWith('receipts:add', expect.anything());
   });
 
   test('blocks when cash payment but no cash received', async () => {
-    const { printReceipt } = require('../renderer.js');
+    const { printReceipt } = require('../js/renderer.js');
     // add an item
     document.getElementById('itemName').value = 'Lamp';
     document.getElementById('itemPrice').value = '10';
@@ -82,7 +82,7 @@ describe('printReceipt validations and save', () => {
   });
 
   test('saves receipt in happy path', async () => {
-    const { printReceipt } = require('../renderer.js');
+    const { printReceipt } = require('../js/renderer.js');
     document.getElementById('itemName').value = 'Lamp';
     document.getElementById('itemPrice').value = '10';
     document.getElementById('itemQty').value = '1';
@@ -101,7 +101,7 @@ describe('printReceipt validations and save', () => {
   });
 
   test('falls back to preview when silent print fails', async () => {
-    const { printReceipt } = require('../renderer.js');
+    const { printReceipt } = require('../js/renderer.js');
     ipcRenderer.invoke.mockImplementation(async (channel) => {
       if (channel === 'vendors:load') return [{ name: 'Vendor A', code: 'V1' }];
       if (channel === 'cashiers:load') return [{ name: 'Cashier' }];
@@ -124,3 +124,4 @@ describe('printReceipt validations and save', () => {
     openSpy.mockRestore();
   });
 });
+

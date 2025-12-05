@@ -39,7 +39,7 @@ describe('Vendor page focus and toasts', () => {
     // Stub confirm so delete flow can run without jsdom errors
     global.confirm = jest.fn(() => true);
     // Require after DOM/mocks so onload handler binds correctly
-    require('../vendors.js');
+    require('../js/vendors.js');
     dispatchLoad();
   });
 
@@ -86,3 +86,4 @@ describe('Vendor page focus and toasts', () => {
 
   // Duplicate code behavior is covered indirectly; here we focus on required-field focus behavior
 });
+

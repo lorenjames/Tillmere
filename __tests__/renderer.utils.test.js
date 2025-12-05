@@ -11,7 +11,7 @@ const {
   finalPriceFrom,
   deriveOriginalPrice,
   itemHasDiscount,
-} = require('../renderer.js');
+} = require('../js/renderer.js');
 
 describe('renderer utils and discount math', () => {
   test('toMoneyNumber parses robustly', () => {
@@ -83,3 +83,4 @@ describe('renderer utils and discount math', () => {
     expect(itemHasDiscount({ price: 10 })).toBe(false);
   });
 });
+

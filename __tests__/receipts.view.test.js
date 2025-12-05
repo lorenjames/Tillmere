@@ -39,7 +39,7 @@ describe('receipts page view action', () => {
     global.window.open = jest.fn(() => win);
     // preload vendor cache to avoid extra fetch paths
     global.window.__vendorsCache = [{ code: 'V1', name: 'Vendor A' }];
-    require('../receipts.js'); // registers window.__onReceiptAction
+    require('../js/receipts.js'); // registers window.__onReceiptAction
   });
 
   test('view action renders return details in receipt window', async () => {
@@ -53,3 +53,5 @@ describe('receipts page view action', () => {
     expect(html).toContain('Returned 1'); // returned note shown
   });
 });
+
+

@@ -5,13 +5,12 @@ Electron-based point of sale for Middleton's Antiques & Uniques.
 ## Project Layout
 
 - HTML views at repo root: `index.html`, `vendors.html`, `cashiers.html`, `receipts.html`, `reports.html`, `settings.html`
-- Renderer scripts at repo root: `renderer.js`, `vendors.js`, `cashiers.js`, `receipts.js`, `reports.js`, `settings.js`
+- Renderer scripts under `js/`: `renderer.js`, `vendors.js`, `cashiers.js`, `receipts.js`, `reports.js`, `settings.js`
 - Main process: `main.js`
 - Static assets: `assets/` (images), `css/` (Bootstrap)
 - Build output: `dist/` (created by electron-builder)
 
 Planned tidy-up (optional):
-- Move renderer scripts into `js/` and update `<script src>` tags accordingly
 - Optionally move views into a `views/` folder and update `mainWindow.loadFile('index.html')` if paths change
 
 ## Setup
