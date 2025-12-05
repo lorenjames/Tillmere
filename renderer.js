@@ -1274,6 +1274,7 @@ async function addItem() {
   const discountValueEl = document.getElementById('discountValue');
   const discountReasonEl = document.getElementById('discountReason');
   const name = (nameEl.value || '').trim();
+  const normalizedName = normalizeItemName(name);
   const priceRaw = priceEl.value;
   const price = toMoneyNumber(priceRaw);
   let qtyRaw = (qtyEl?.value || '1').trim();
@@ -1328,7 +1329,7 @@ async function addItem() {
   const vendorFinal = v ? (v.code || v.name) : (vendorName || 'Unknown');
 
   items.push({
-    name,
+    name: normalizedName,
     price: finalPrice,
     originalPrice,
     quantity: qty,
@@ -1450,6 +1451,7 @@ async function saveEditFromModal() {
   const vendorEl = document.getElementById('edit_vendor');
   const commentEl = document.getElementById('edit_comment');
   const name = (nameEl?.value || '').trim();
+  const normalizedName = normalizeItemName(name);
   const priceRaw = priceEl?.value;
   const price = toMoneyNumber(priceRaw);
   let qty = parseInt((qtyEl?.value || '1'), 10); if (!Number.isFinite(qty) || qty < 1) qty = 1;
@@ -1501,7 +1503,7 @@ async function saveEditFromModal() {
 
   items[idx] = {
     ...items[idx],
-    name,
+    name: normalizedName,
     price: finalPrice,
     originalPrice,
     quantity: qty,
@@ -2221,6 +2223,37 @@ async function populatePosReturnCashiers() {
       sel.value = previous;
     }
   } catch (_) { }
+}
+
+const ITEM_NAME_SMALL_WORDS = new Set([
+  'a', 'an', 'and', 'as', 'at', 'but', 'by',
+  'for', 'from', 'in', 'into', 'nor', 'of', 'on',
+  'or', 'per', 'to', 'via', 'with'
+]);
+
+function normalizeItemName(value = '') {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  return trimmed
+    .split(/\s+/)
+    .map((word, index) => normalizeItemWord(word, index === 0))
+    .join(' ');
+}
+
+function normalizeItemWord(token, isFirstWord) {
+  if (!token) return token;
+  return token
+    .split(/([-\/])/)
+    .map((segment, segIndex) => {
+      if (!segment || segment === '-' || segment === '/') return segment;
+      const lower = segment.toLowerCase();
+      const isException = ITEM_NAME_SMALL_WORDS.has(lower);
+      const shouldCap = (isFirstWord && segIndex === 0) ? true : !isException;
+      return shouldCap
+        ? lower.charAt(0).toUpperCase() + lower.slice(1)
+        : lower;
+    })
+    .join('');
 }
 
 function setupPosReturnModal() {
