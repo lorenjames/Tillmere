@@ -28,3 +28,5 @@ backups/
 tmp_renderer.js
 renderer_backup.js
 receipts_tmp.txt
+
+logs/activity.log
