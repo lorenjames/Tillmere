@@ -74,6 +74,29 @@ function __todayYmd() {
   const d = String(now.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
+function __backdateMaxDate() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - 1);
+  return d;
+}
+function __backdateMaxYmd() {
+  const d = __backdateMaxDate();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function __isBackdateBeforeToday(value) {
+  const candidate = String(value || '').trim();
+  if (!candidate) return false;
+  const parsed = Date.parse(`${candidate}T00:00:00`);
+  if (!Number.isFinite(parsed)) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return parsed < today.getTime();
+}
+function __sanitizeBackdateValue(value) {
+  const candidate = String(value || '').trim();
+  return __isBackdateBeforeToday(candidate) ? candidate : __backdateMaxYmd();
+}
 function __newCartState(title = '') {
   return {
     title,
@@ -81,7 +104,7 @@ function __newCartState(title = '') {
     cashier: '',
     payment: '',
     backdateEnabled: false,
-    backdateDate: __todayYmd(),
+    backdateDate: __backdateMaxYmd(),
     taxExempt: false,
     taxExemptInfo: { id: '', name: '' },
     cashReceived: '',
@@ -102,7 +125,8 @@ function __snapshotFromUI() {
     const cashier = document.getElementById('cashierSelect')?.value || '';
     const payment = document.getElementById('paymentSelect')?.value || '';
     const backdateEnabled = !!document.getElementById('backdateToggle')?.checked;
-    const backdateDate = document.getElementById('backdateDate')?.value || __todayYmd();
+    const backdateInputValue = document.getElementById('backdateDate')?.value || '';
+    const backdateDate = __sanitizeBackdateValue(backdateInputValue);
     const cashReceived = document.getElementById('cashReceived')?.value || '';
     const receiptWanted = document.getElementById('receiptWanted')
       ? !!document.getElementById('receiptWanted')?.checked
@@ -156,7 +180,7 @@ function __applyStateToUI(state) {
     const bdDate = document.getElementById('backdateDate');
     if (bdToggle) bdToggle.checked = !!state?.backdateEnabled;
     if (bdWrap) bdWrap.classList.toggle('d-none', !state?.backdateEnabled);
-    if (bdDate) bdDate.value = state?.backdateDate || __todayYmd();
+    if (bdDate) bdDate.value = __sanitizeBackdateValue(state?.backdateDate || __backdateMaxYmd());
   } catch (_) { }
   try {
     const nt = document.getElementById('noTaxToggle');
@@ -1679,7 +1703,12 @@ async function printReceipt() {
     const useBackdate = !!document.getElementById('backdateToggle')?.checked;
     const dateInput = document.getElementById('backdateDate');
     const ymd = String(dateInput?.value || '').trim();
-    if (useBackdate && ymd) {
+    if (useBackdate) {
+      if (!__isBackdateBeforeToday(ymd)) {
+        showToast('Select a date prior to today when back-dating a sale.', { type: 'error' });
+        markFieldError(dateInput, el => __isBackdateBeforeToday(String(el?.value || '').trim()));
+        return;
+      }
       const parts = ymd.split('-').map(n => parseInt(n, 10));
       if (parts.length === 3 && parts.every(n => !isNaN(n) && n > 0)) {
         const [y, m, d] = parts;
@@ -2041,7 +2070,7 @@ function resetAfterSale() {
     if (cashEl) cashEl.value = '';
     const changeEl = document.getElementById('changeDue');
     if (changeEl) changeEl.textContent = money(0);
-    // Reset back-date controls to default (unchecked and hidden, date set to today)
+    // Reset back-date controls to default (unchecked and hidden, date set to latest allowed day)
     try {
       const bdToggle = document.getElementById('backdateToggle');
       const bdWrap = document.getElementById('backdateWrap');
@@ -2049,11 +2078,9 @@ function resetAfterSale() {
       if (bdToggle) bdToggle.checked = false;
       if (bdWrap) bdWrap.classList.add('d-none');
       if (bdDate) {
-        const now2 = new Date();
-        const y = now2.getFullYear();
-        const m = String(now2.getMonth() + 1).padStart(2, '0');
-        const d = String(now2.getDate()).padStart(2, '0');
-        bdDate.value = `${y}-${m}-${d}`;
+        const defaultBackdate = __backdateMaxYmd();
+        bdDate.value = defaultBackdate;
+        bdDate.setAttribute('max', defaultBackdate);
       }
     } catch (_) { }
     // Reset receipt preference to default (checked)
@@ -2550,8 +2577,18 @@ window.addEventListener('load', async () => {
     const bdToggle = document.getElementById('backdateToggle');
     const bdWrap = document.getElementById('backdateWrap');
     const bdDate = document.getElementById('backdateDate');
-    const fmtLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    if (bdDate) bdDate.value = fmtLocal(new Date());
+    const maxBackdate = __backdateMaxYmd();
+    if (bdDate) {
+      bdDate.setAttribute('max', maxBackdate);
+      bdDate.value = __sanitizeBackdateValue(bdDate.value || maxBackdate);
+      bdDate.addEventListener('change', () => {
+        const sanitized = __sanitizeBackdateValue(bdDate.value);
+        if (bdDate.value !== sanitized) {
+          bdDate.value = sanitized;
+          showToast('Back-dated sales must use a date before today.', { type: 'error' });
+        }
+      });
+    }
     const sync = () => {
       try { if (bdWrap) bdWrap.classList.toggle('d-none', !bdToggle.checked); } catch (_) { }
       try { applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
