@@ -5,13 +5,19 @@ Electron-based point of sale for Middleton's Antiques & Uniques.
 ## Project Layout
 
 - HTML views at repo root: `index.html`, `vendors.html`, `cashiers.html`, `receipts.html`, `reports.html`, `settings.html`
-- Renderer scripts under `js/`: `renderer.js`, `vendors.js`, `cashiers.js`, `receipts.js`, `reports.js`, `settings.js`
+- Customer-facing view: `customer-cart.html`
+- Renderer scripts under `js/`: `renderer.js`, `vendors.js`, `cashiers.js`, `receipts.js`, `reports.js`, `settings.js`, `customer-cart.js`
 - Main process: `main.js`
 - Static assets: `assets/` (images), `css/` (Bootstrap)
 - Build output: `dist/` (created by electron-builder)
 
 Planned tidy-up (optional):
 - Optionally move views into a `views/` folder and update `mainWindow.loadFile('index.html')` if paths change
+
+## Customer Display
+
+- `customer-cart.html` automatically launches on startup alongside the main window so you can dedicate a secondary monitor to customer-facing totals.
+- `js/customer-cart.js` listens to `cart:state` IPC updates and mirrors (items, cashier/payment metadata, discounts, subtotal/tax/total) in a cerulean-themed layout that hides vendor codes and follows whatever sale tab the cashier has selected.
 
 ## Setup
 

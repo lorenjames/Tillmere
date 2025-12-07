@@ -33,7 +33,7 @@
       "reason": "Broken",
       "user": "system",
       "userObj": null,
-      "when": "2025-12-05T02:24:27.957Z",
+      "when": "2025-12-07T00:16:49.811Z",
       "items": [
         {
           "name": "Chair",
@@ -1381,6 +1381,216 @@
       "user": "me",
       "userObj": null,
       "when": "2025-12-05T02:24:27.946Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765048415094-803",
+    "id": "MID-1765048415094-803",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-06T19:13:35.098Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765064677551-855",
+    "id": "MID-1765064677551-855",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-06T23:44:37.557Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765065802684-13",
+    "id": "MID-1765065802684-13",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-07T00:03:22.689Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765066354871-835",
+    "id": "MID-1765066354871-835",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-07T00:12:34.876Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765066467203-236",
+    "id": "MID-1765066467203-236",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-07T00:14:27.208Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765066542578-645",
+    "id": "MID-1765066542578-645",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-07T00:15:42.582Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765066609785-814",
+    "id": "MID-1765066609785-814",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-07T00:16:49.789Z"
     },
     "total": 20
   },

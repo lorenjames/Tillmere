@@ -15,6 +15,7 @@ let __returnModal = null;
 let __cashAudio = null;
 let __allowNavigation = false;
 let __lastTotal = 0;
+let __lastCustomerCartState = null;
 let __suppressRefocusUntil = 0;
 let __qtyPickerOpen = false;
 let __discountReasons = [
@@ -1550,6 +1551,7 @@ function renderTable() {
   const tbody = document.querySelector('#itemTable tbody');
   tbody.innerHTML = '';
   let subtotal = 0;
+  const customerItems = [];
   items.forEach((it, i) => {
     const qty = Math.max(1, parseInt(it.quantity || 1, 10));
     const finalPrice = toMoneyNumber(it.price || 0); // unit final
@@ -1578,15 +1580,81 @@ function renderTable() {
         </div>
       </td>`;
     tbody.appendChild(tr);
+    customerItems.push({
+      name: String(it.name || ''),
+      quantity: qty,
+      unitPrice: finalPrice,
+      total: lineTotal,
+      discountAmount,
+      originalPrice,
+      discountSuffix,
+      discountType: String(it.discountType || ''),
+      discountValue: String(it.discountValue || ''),
+      discountReason: reason,
+      hasDiscount,
+      vendorName: String(it.vendorName || ''),
+      comment: String(it.comment || '')
+    });
   });
   const tax = __taxExempt ? 0 : toMoneyNumber(subtotal * TAX_RATE);
   const total = toMoneyNumber(subtotal + tax);
+  const cashReceivedRaw = document.getElementById('cashReceived')?.value || '';
+  const cashReceivedAmount = toMoneyNumber(cashReceivedRaw);
+  const changeDue = Math.max(0, cashReceivedAmount - total);
+  const cartMeta = __carts.get(__activeCartId) || {};
+  const cashierSelect = document.getElementById('cashierSelect');
+  const paymentSelect = document.getElementById('paymentSelect');
+  const cashierValue = String(cashierSelect?.value || cartMeta.cashier || '');
+  const paymentValue = String(paymentSelect?.value || cartMeta.payment || '');
+  const payload = {
+    cartId: String(__activeCartId || ''),
+    cartTitle: String(cartMeta.title || ''),
+    cashier: cashierValue,
+    payment: paymentValue,
+    items: customerItems,
+    subtotal,
+    tax,
+    total,
+    cashReceived: cashReceivedRaw,
+    changeDue
+  };
+  sendCustomerCartState(payload);
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('subtotal', money(subtotal));
   set('tax', money(tax));
   set('total', money(total));
   __lastTotal = toMoneyNumber(total);
   try { updateCashChange(); } catch (_) { }
+}
+
+function dispatchCustomerCartState(payload) {
+  if (!payload) return;
+  try {
+    if (ipcRenderer && typeof ipcRenderer.send === 'function') {
+      ipcRenderer.send('cart:state', payload);
+    }
+  } catch (_) {
+    // Silence failures when IPC is unavailable (tests, background tasks)
+  }
+}
+
+function sendCustomerCartState(payload) {
+  if (!payload) return;
+  __lastCustomerCartState = payload;
+  dispatchCustomerCartState(payload);
+}
+
+function refreshCustomerCartStateFromCashFields() {
+  if (!__lastCustomerCartState) return;
+  const cashReceivedRaw = document.getElementById('cashReceived')?.value || '';
+  const cashReceivedAmount = toMoneyNumber(cashReceivedRaw);
+  const changeDue = Math.max(0, cashReceivedAmount - toMoneyNumber(__lastCustomerCartState.total || 0));
+  const nextPayload = {
+    ...__lastCustomerCartState,
+    cashReceived: cashReceivedRaw,
+    changeDue
+  };
+  sendCustomerCartState(nextPayload);
 }
 
 // ---------- Sound ----------
@@ -2005,6 +2073,7 @@ async function printReceipt() {
       const cash = toMoneyNumber(cashEl?.value || 0);
       const totalRounded = toMoneyNumber(total);
       const change = Math.max(0, toMoneyNumber(cash - totalRounded));
+      try { refreshCustomerCartStateFromCashFields(); } catch (_) { }
 
       const alertEl = document.createElement('div');
       alertEl.className = 'alert alert-dismissible alert-warning shadow-lg';
@@ -2149,6 +2218,7 @@ function updateCashChange() {
   const total = toMoneyNumber(__lastTotal || 0);
   const change = Math.max(0, toMoneyNumber(cash - total));
   changeEl.textContent = money(change);
+  try { refreshCustomerCartStateFromCashFields(); } catch (_) { }
 }
 
 function updatePrintButtonLabel() {
@@ -2556,7 +2626,11 @@ window.addEventListener('load', async () => {
   // Cash helpers
   try {
     const paySel = document.getElementById('paymentSelect');
-    if (paySel) paySel.addEventListener('change', () => { toggleCashFields(); updateCashChange(); });
+    if (paySel) paySel.addEventListener('change', () => {
+      toggleCashFields();
+      updateCashChange();
+      try { renderTable(); } catch (_) { }
+    });
     const cashEl = document.getElementById('cashReceived');
     if (cashEl) cashEl.addEventListener('input', updateCashChange);
     toggleCashFields();

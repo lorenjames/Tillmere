@@ -544,6 +544,8 @@ function showToast(message, opts = {}) {
   } catch (_) {}
 }
 
+/* Customer carousel logic disabled */
+
 function renderDenominationTargetInputs(targets = {}) {
   const container = document.getElementById('denomTargetInputs');
   if (!container) return;

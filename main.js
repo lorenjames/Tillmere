@@ -1,5 +1,5 @@
 // main.js
-const { app, BrowserWindow, ipcMain, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, safeStorage, screen } = require('electron');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -8,6 +8,8 @@ const crypto = require('crypto');
 let mainWindow;
 let splashWindow;
 let calendarWindow;
+let customerWindow;
+let latestCartState = null;
 
 const userDir = app.getPath('userData');
 const VENDOR_FILE = path.join(userDir, 'vendors.json');
@@ -1623,7 +1625,6 @@ ipcMain.handle('settings:saveSilent', (_evt, incoming) => {
     } catch (_) { }
     return saved;
 });
-
 // List available printers (from any existing window)
 ipcMain.handle('print:listPrinters', async () => {
     try {
@@ -1728,13 +1729,105 @@ function performAutoBackup() {
         fs.writeFileSync(latestPath, JSON.stringify(data, null, 2), 'utf-8');
         // Also write a dated snapshot for the current day (overwrites same-day files)
         try {
-            const datedPath = path.join(backupDir, `middletons-backup-${formatLocalDate()}.json`);
-            fs.writeFileSync(datedPath, JSON.stringify(data, null, 2), 'utf-8');
-        } catch (_) { }
-        return true;
+        const datedPath = path.join(backupDir, `middletons-backup-${formatLocalDate()}.json`);
+        fs.writeFileSync(datedPath, JSON.stringify(data, null, 2), 'utf-8');
+      } catch (_) { }
+      return true;
     } catch (e) {
-        console.error('Auto-backup failed', e);
-        return false;
+      console.error('Auto-backup failed', e);
+      return false;
+    }
+}
+
+function sendCustomerCartState(state) {
+    if (!state || !customerWindow) return;
+    try {
+        if (typeof customerWindow.isDestroyed === 'function' && customerWindow.isDestroyed()) return;
+        customerWindow.webContents.send('customer-cart:update', state);
+    } catch (_) { }
+}
+function resolveCustomerDisplayBounds() {
+    const fallbackArea = { x: 0, y: 0, width: 1280, height: 720 };
+    try {
+        const hasScreen = screen && typeof screen.getAllDisplays === 'function';
+        const displays = hasScreen ? screen.getAllDisplays() : [];
+        const hasSecondary = Array.isArray(displays) && displays.length > 1;
+        const candidate = hasSecondary
+            ? displays[1]
+            : displays[0] || (screen && typeof screen.getPrimaryDisplay === 'function' ? screen.getPrimaryDisplay() : null);
+        if (!candidate) {
+            return { bounds: { ...fallbackArea }, isSecondary: false };
+        }
+        const area = candidate.workArea && typeof candidate.workArea === 'object'
+            ? candidate.workArea
+            : candidate.bounds;
+        if (!area) {
+            return { bounds: { ...fallbackArea }, isSecondary: hasSecondary };
+        }
+
+        const base = {
+            x: Number(area.x) || 0,
+            y: Number(area.y) || 0,
+            width: Math.max(800, Number(area.width) || 1280),
+            height: Math.max(600, Number(area.height) || 720)
+        };
+        if (!hasSecondary) {
+            const safeWidth = Math.min(Math.max(600, Math.floor((Number(area.width) || base.width) * 0.45)), 1024);
+            const safeHeight = Math.min(Math.max(400, Math.floor((Number(area.height) || base.height) * 0.5)), 768);
+            return {
+                bounds: {
+                    width: safeWidth,
+                    height: safeHeight,
+                    x: (Number(area.x) || 0) + Math.max(0, (Number(area.width) || safeWidth) - safeWidth - 30),
+                    y: (Number(area.y) || 0) + Math.max(0, (Number(area.height) || safeHeight) - safeHeight - 40)
+                },
+                isSecondary: false
+            };
+        }
+        return { bounds: base, isSecondary: true };
+    } catch (_) {
+        return { bounds: { ...fallbackArea }, isSecondary: false };
+    }
+}
+function createCustomerCartWindow() {
+    try {
+        if (customerWindow && typeof customerWindow.isDestroyed === 'function' && !customerWindow.isDestroyed()) {
+            try { customerWindow.show(); } catch (_) { }
+            return customerWindow;
+        }
+        const { bounds, isSecondary } = resolveCustomerDisplayBounds();
+        customerWindow = new BrowserWindow({
+            x: bounds.x,
+            y: bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+            frame: false,
+            show: false,
+            backgroundColor: '#050607',
+            alwaysOnTop: isSecondary,
+            autoHideMenuBar: true,
+            fullscreenable: false,
+            resizable: true,
+            webPreferences: {
+                nodeIntegration: true,
+                contextIsolation: false,
+                backgroundThrottling: false
+            }
+        });
+        try { customerWindow.setMenuBarVisibility(false); } catch (_) { }
+        customerWindow.loadFile('customer-cart.html');
+        customerWindow.webContents.once('did-finish-load', () => {
+            try { customerWindow?.show(); } catch (_) { }
+            if (isSecondary) {
+                try { customerWindow.maximize(); } catch (_) { }
+            }
+            if (latestCartState) sendCustomerCartState(latestCartState);
+        });
+        customerWindow.on('closed', () => { customerWindow = null; });
+        return customerWindow;
+    } catch (error) {
+        console.error('Failed to create customer cart window', error);
+        return null;
     }
 }
 
@@ -1768,6 +1861,11 @@ function createWindow() {
         }
     });
     mainWindow.loadFile('index.html');
+    mainWindow.webContents.once('dom-ready', () => {
+        try {
+            mainWindow.webContents.executeJavaScript("localStorage.removeItem('managerModeEnabled'); localStorage.removeItem('managerModeExpiresAt');", true).catch(() => {});
+        } catch (_) { }
+    });
     mainWindow.once('ready-to-show', () => {
         const MIN_SPLASH_MS = 3000; // keep splash visible for 3 seconds
         setTimeout(() => {
@@ -1777,7 +1875,14 @@ function createWindow() {
             mainWindow.show();
         }, MIN_SPLASH_MS);
     });
-    mainWindow.on('closed', () => (mainWindow = null));
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+        if (customerWindow && typeof customerWindow.isDestroyed === 'function' && !customerWindow.isDestroyed()) {
+            try { customerWindow.close(); } catch (_) { }
+            customerWindow = null;
+        }
+    });
+    createCustomerCartWindow();
     logActivity('app:event', { event: 'window:main-created' });
 }
 
@@ -1866,7 +1971,10 @@ try {
   if (!isTest && app && typeof app.whenReady === 'function') {
     const p = app.whenReady();
     if (p && typeof p.then === 'function') {
-      p.then(() => { ensureDataFiles(); createWindow(); });
+      p.then(() => {
+        ensureDataFiles();
+        createWindow();
+      });
     }
   }
 } catch (_) { }
@@ -1904,6 +2012,15 @@ ipcMain.handle('splash:resize', (_evt, size) => {
         return true;
     } catch (_) { return false; }
 });
+if (ipcMain && typeof ipcMain.on === 'function') {
+    ipcMain.on('cart:state', (_evt, payload) => {
+        latestCartState = payload || null;
+        sendCustomerCartState(payload);
+    });
+}
+if (ipcMain && typeof ipcMain.handle === 'function') {
+    ipcMain.handle('customer-cart:request', () => latestCartState || null);
+}
 try {
   if (app && typeof app.on === 'function') {
     app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
@@ -1912,6 +2029,13 @@ try {
         // Inform renderers to clear tab persistence for next session
         BrowserWindow.getAllWindows().forEach(w => {
           try { w.webContents.send('app:prepareQuit'); } catch (_) { }
+        });
+      } catch (_) { }
+      try {
+        BrowserWindow.getAllWindows().forEach(w => {
+          try {
+            w.webContents.executeJavaScript("localStorage.removeItem('managerModeEnabled'); localStorage.removeItem('managerModeExpiresAt');", true).catch(() => {});
+          } catch (_) { }
         });
       } catch (_) { }
       try { performAutoBackup(); } catch (_) { }

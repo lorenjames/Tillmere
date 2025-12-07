@@ -9,6 +9,7 @@ const ipcRenderer = {
     if (channel === 'print:silent') return true;
     return undefined;
   }),
+  send: jest.fn(),
   on: (channel, cb) => {
     const arr = listeners.get(channel) || [];
     arr.push(cb);
