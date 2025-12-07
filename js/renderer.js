@@ -2625,6 +2625,13 @@ window.addEventListener('load', async () => {
 
   // Cash helpers
   try {
+    const cashierSelect = document.getElementById('cashierSelect');
+    if (cashierSelect) {
+      cashierSelect.addEventListener('change', () => {
+        try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
+        try { renderTable(); } catch (_) { }
+      });
+    }
     const paySel = document.getElementById('paymentSelect');
     if (paySel) paySel.addEventListener('change', () => {
       toggleCashFields();

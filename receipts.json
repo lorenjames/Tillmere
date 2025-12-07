@@ -33,7 +33,7 @@
       "reason": "Broken",
       "user": "system",
       "userObj": null,
-      "when": "2025-12-07T00:16:49.811Z",
+      "when": "2025-12-07T02:33:35.608Z",
       "items": [
         {
           "name": "Chair",
@@ -1591,6 +1591,96 @@
       "user": "me",
       "userObj": null,
       "when": "2025-12-07T00:16:49.789Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765073187910-348",
+    "id": "MID-1765073187910-348",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-07T02:06:27.915Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765073814966-145",
+    "id": "MID-1765073814966-145",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-07T02:16:54.970Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1765074815568-375",
+    "id": "MID-1765074815568-375",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-07T02:33:35.572Z"
     },
     "total": 20
   },

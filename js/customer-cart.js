@@ -14,6 +14,44 @@ const state = {
   cashReceivedEl: null
 };
 
+const carouselState = {
+  slides: [],
+  currentIndex: 0,
+  timer: null,
+  intervalMs: 10000
+};
+
+const carouselElements = {
+  section: null,
+  title: null,
+  caption: null,
+  image: null,
+  indicators: null
+};
+
+const DEFAULT_CAROUSEL_SLIDES = [
+  {
+    title: 'Welcome to Middleton\'s',
+    caption: 'Thank you for shopping small & local!',
+    image: './assets/MiddletonsStoreFrontLogo.png'
+  },
+  {
+    title: 'Follow us on Facebook',
+    caption: 'Be first to know about promotions, new items and events.',
+    image: './assets/QR.png'
+  },
+  {
+    title: 'Share the love',
+    caption: 'Tag @MiddletonsAntiques on social to share your finds in their new space!',
+    image: './assets/antiqueSocial.png'
+  },
+  {
+    title: 'Where\s Dolly Purrton?',
+    caption: 'Remember to look for our store cat Dolly Purrton if she isn\'t on the front counter the next time you stop in, a sweet discount awaits you!',
+    image: './assets/Dolly Purrton.png'
+  }
+];
+
 /* Customer carousel logic disabled
 const carouselState = {
   slides: [],
@@ -53,12 +91,108 @@ function formatMoney(value) {
   return safeNumber(value).toFixed(2);
 }
 
+function cloneDefaultSlides() {
+  return DEFAULT_CAROUSEL_SLIDES.map(slide => ({ ...slide }));
+}
+
+function sanitizeSlides(source) {
+  if (!Array.isArray(source)) return cloneDefaultSlides();
+  const cleaned = source.map((slide) => {
+    if (!slide || typeof slide !== 'object') return null;
+    const title = String(slide.title || '').trim();
+    const caption = String(slide.caption || '').trim();
+    const image = String(slide.image || '').trim();
+    if (!title && !caption && !image) return null;
+    return { title, caption, image };
+  }).filter(Boolean);
+  return cleaned.length ? cleaned : cloneDefaultSlides();
+}
+
+function clearCarouselTimer() {
+  if (carouselState.timer) {
+    clearInterval(carouselState.timer);
+    carouselState.timer = null;
+  }
+}
+
+function restartCarouselTimer() {
+  clearCarouselTimer();
+  if (!carouselElements.section || !carouselState.slides.length) return;
+  carouselState.timer = setInterval(() => {
+    carouselState.currentIndex = (carouselState.currentIndex + 1) % carouselState.slides.length;
+    renderCarouselSlide();
+  }, carouselState.intervalMs);
+}
+
+function rebuildCarouselIndicators() {
+  const container = carouselElements.indicators;
+  if (!container) return;
+  container.innerHTML = '';
+  carouselState.slides.forEach((_, idx) => {
+    const indicator = document.createElement('button');
+    indicator.type = 'button';
+    indicator.setAttribute('aria-label', `Slide ${idx + 1}`);
+    indicator.className = 'customer-carousel-indicator' + (idx === carouselState.currentIndex ? ' active' : '');
+    indicator.addEventListener('click', () => {
+      carouselState.currentIndex = idx;
+      renderCarouselSlide();
+      restartCarouselTimer();
+    });
+    container.appendChild(indicator);
+  });
+}
+
+function renderCarouselSlide() {
+  if (!carouselElements.section) return;
+  const slides = carouselState.slides;
+  const hasSlides = slides.length > 0;
+  carouselElements.section.classList.toggle('d-none', !hasSlides);
+  if (!hasSlides) return;
+  const slide = slides[carouselState.currentIndex] || slides[0];
+  carouselState.currentIndex = slides.indexOf(slide) >= 0 ? slides.indexOf(slide) : 0;
+  if (carouselElements.title) carouselElements.title.textContent = slide.title || '';
+  if (carouselElements.caption) carouselElements.caption.textContent = slide.caption || '';
+  if (carouselElements.image) {
+    if (slide.image) {
+      carouselElements.image.src = slide.image;
+      carouselElements.image.style.display = '';
+    } else {
+      carouselElements.image.style.display = 'none';
+    }
+  }
+  rebuildCarouselIndicators();
+}
+
+function setCarouselSlides(slides) {
+  if (!carouselElements.section) return;
+  carouselState.slides = sanitizeSlides(slides);
+  carouselState.currentIndex = 0;
+  renderCarouselSlide();
+  restartCarouselTimer();
+}
+
+function initCarouselElements() {
+  carouselElements.section = document.getElementById('customerCarouselSection');
+  carouselElements.title = document.getElementById('customerCarouselTitle');
+  carouselElements.caption = document.getElementById('customerCarouselCaption');
+  carouselElements.image = document.getElementById('customerCarouselImage');
+  carouselElements.indicators = document.getElementById('customerCarouselIndicators');
+  if (!carouselElements.section) return;
+  setCarouselSlides(DEFAULT_CAROUSEL_SLIDES);
+  carouselElements.section.addEventListener('mouseenter', clearCarouselTimer);
+  carouselElements.section.addEventListener('mouseleave', restartCarouselTimer);
+}
+
+function handleCarouselSlidesUpdate(_evt, slides) {
+  setCarouselSlides(Array.isArray(slides) ? slides : []);
+}
+
 function renderCart(payload) {
   if (!state.bodyEl) return;
   const items = Array.isArray(payload?.items) ? payload.items : [];
   state.bodyEl.innerHTML = '';
   if (!items.length) {
-    state.bodyEl.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-5">Welcome to Middletons!</td></tr>';
+    state.bodyEl.innerHTML = '<tr><td colspan="3" class="text-center text-muted py-5">Welcome to Middletons! Thank you for shopping small!</td></tr>';
   } else {
     items.forEach((item) => {
       const tr = document.createElement('tr');
@@ -112,6 +246,12 @@ function renderCart(payload) {
     state.cashReceivedEl.textContent = cashReceivedText;
     state.cashReceivedWrapEl.classList.toggle('d-none', !isCashPayment);
   }
+  const carouselSlides = Array.isArray(payload?.customerAnnouncements)
+    ? payload.customerAnnouncements
+    : Array.isArray(payload?.carouselSlides)
+      ? payload.carouselSlides
+      : null;
+  if (carouselSlides) setCarouselSlides(carouselSlides);
 }
 function handleCartUpdate(_evt, payload) {
   renderCart(payload);
@@ -129,9 +269,11 @@ function initCustomerCartView() {
   state.changeDueEl = document.getElementById('customerChangeDue');
   state.cashReceivedWrapEl = document.getElementById('customerCashReceivedWrap');
   state.cashReceivedEl = document.getElementById('customerCashReceived');
+  initCarouselElements();
   renderCart(null);
   if (ipcRenderer && typeof ipcRenderer.on === 'function') {
     ipcRenderer.on('customer-cart:update', handleCartUpdate);
+    ipcRenderer.on('customer-carousel:update', handleCarouselSlidesUpdate);
   }
   if (ipcRenderer && typeof ipcRenderer.invoke === 'function') {
     ipcRenderer.invoke('customer-cart:request')
