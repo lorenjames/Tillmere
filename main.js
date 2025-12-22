@@ -17,6 +17,7 @@ const CASHIER_FILE = path.join(userDir, 'cashiers.json');
 const RECEIPTS_FILE = path.join(userDir, 'receipts.json');
 const SETTINGS_FILE = path.join(userDir, 'settings.json');
 const DRAWER_FILE = path.join(userDir, 'drawer-sessions.json');
+const GIFT_CARDS_FILE = path.join(userDir, 'giftcards.json');
 const APP_CONFIG_FILE = path.join(__dirname, 'config', 'app-config.json');
 const APP_RESET_TOKEN = path.join(__dirname, 'config', 'reset-token.txt');
 const BRANDING_DIR = path.join(userDir, 'branding');
@@ -279,6 +280,77 @@ function writeJson(file, data) {
         console.error('Failed writing', file, e);
         return false;
     }
+}
+
+function roundMoney(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return 0;
+    return Math.round(num * 100) / 100;
+}
+function normalizeGiftCardNumber(value) {
+    return String(value || '').replace(/\s+/g, '').trim().toUpperCase();
+}
+function normalizeGiftCardData(raw) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const books = Array.isArray(source.books) ? source.books : [];
+    const cards = Array.isArray(source.cards) ? source.cards : [];
+    const transactions = Array.isArray(source.transactions) ? source.transactions : [];
+    const cleanCards = cards
+        .map(card => {
+            const number = normalizeGiftCardNumber(card?.number);
+            if (!number) return null;
+            const status = ['available', 'active', 'redeemed', 'void'].includes(card?.status)
+                ? card.status
+                : (Number(card?.balance || 0) > 0 ? 'active' : 'available');
+            return {
+                number,
+                bookId: String(card?.bookId || '').trim(),
+                status,
+                balance: roundMoney(card?.balance || 0),
+                initialValue: roundMoney(card?.initialValue || 0),
+                soldAt: String(card?.soldAt || ''),
+                soldBy: String(card?.soldBy || ''),
+                soldReceipt: String(card?.soldReceipt || ''),
+                note: String(card?.note || '')
+            };
+        })
+        .filter(Boolean);
+    const cleanBooks = books
+        .map(book => ({
+            id: String(book?.id || '').trim(),
+            label: String(book?.label || '').trim(),
+            prefix: String(book?.prefix || '').trim(),
+            start: Number.isFinite(Number(book?.start)) ? Number(book.start) : 0,
+            end: Number.isFinite(Number(book?.end)) ? Number(book.end) : 0,
+            pad: Number.isFinite(Number(book?.pad)) ? Number(book.pad) : 0,
+            createdAt: String(book?.createdAt || ''),
+            count: Number.isFinite(Number(book?.count)) ? Number(book.count) : 0
+        }))
+        .filter(b => b.id || b.label || b.prefix);
+    const cleanTransactions = transactions
+        .map(txn => ({
+            id: String(txn?.id || '').trim(),
+            number: normalizeGiftCardNumber(txn?.number),
+            type: String(txn?.type || ''),
+            amount: roundMoney(txn?.amount || 0),
+            balanceAfter: roundMoney(txn?.balanceAfter || 0),
+            cashier: String(txn?.cashier || '').trim(),
+            receiptNumber: String(txn?.receiptNumber || '').trim(),
+            note: String(txn?.note || '').trim(),
+            createdAt: String(txn?.createdAt || '')
+        }))
+        .filter(txn => txn.id && txn.number);
+    return { books: cleanBooks, cards: cleanCards, transactions: cleanTransactions };
+}
+function readGiftCards() {
+    const fallback = { books: [], cards: [], transactions: [] };
+    const raw = readJson(GIFT_CARDS_FILE, fallback);
+    return normalizeGiftCardData(raw || fallback);
+}
+function writeGiftCards(data) {
+    const normalized = normalizeGiftCardData(data || {});
+    writeJson(GIFT_CARDS_FILE, normalized);
+    return normalized;
 }
 
 function sanitizeTimeString(value, fallback = '') {
@@ -548,6 +620,7 @@ function ensureDataFiles() {
     if (!fs.existsSync(VENDOR_FILE)) writeJson(VENDOR_FILE, []);
     if (!fs.existsSync(CASHIER_FILE)) writeJson(CASHIER_FILE, []);
     if (!fs.existsSync(RECEIPTS_FILE)) writeJson(RECEIPTS_FILE, []);
+    if (!fs.existsSync(GIFT_CARDS_FILE)) writeJson(GIFT_CARDS_FILE, { books: [], cards: [], transactions: [] });
     if (!fs.existsSync(SETTINGS_FILE)) {
         writeJson(SETTINGS_FILE, {
             taxRate: 0.0725,
@@ -622,6 +695,11 @@ function buildDbRecord(receipt, opts = {}) {
         taxExempt: receipt.taxExempt ? 1 : 0,
         taxExemptId: String(receipt.taxExemptId || '').trim(),
         taxExemptName: String(receipt.taxExemptName || '').trim(),
+        giftCardNumber: String(receipt.giftCardNumber || '').trim(),
+        giftCardAmount: normalizeNumber(receipt.giftCardAmount),
+        splitTenderEnabled: receipt.splitTenderEnabled ? 1 : 0,
+        splitTenderType: String(receipt.splitTenderType || '').trim(),
+        splitTenderAmount: normalizeNumber(receipt.splitTenderAmount),
         items: safeJsonString(Array.isArray(receipt.items) ? receipt.items : [], '[]'),
         voided: receipt.voided ? 1 : 0,
         voidInfo: safeJsonString(receipt.voidInfo, 'null'),
@@ -649,6 +727,11 @@ function mapDbRow(row) {
         taxExempt: !!row.taxExempt,
         taxExemptId: row.taxExemptId || '',
         taxExemptName: row.taxExemptName || '',
+        giftCardNumber: row.giftCardNumber || '',
+        giftCardAmount: normalizeNumber(row.giftCardAmount),
+        splitTenderEnabled: !!row.splitTenderEnabled,
+        splitTenderType: row.splitTenderType || '',
+        splitTenderAmount: normalizeNumber(row.splitTenderAmount),
         items: Array.isArray(items) ? items : [],
         voided: !!row.voided,
         voidInfo: safeParseJson(row.voidInfo),
@@ -679,6 +762,11 @@ function createSqliteReceiptsStore() {
             taxExempt INTEGER DEFAULT 0,
             taxExemptId TEXT,
             taxExemptName TEXT,
+            giftCardNumber TEXT,
+            giftCardAmount REAL DEFAULT 0,
+            splitTenderEnabled INTEGER DEFAULT 0,
+            splitTenderType TEXT,
+            splitTenderAmount REAL DEFAULT 0,
             items TEXT,
             voided INTEGER DEFAULT 0,
             voidInfo TEXT,
@@ -689,13 +777,34 @@ function createSqliteReceiptsStore() {
             updatedAt TEXT
         );
     `);
+    try {
+        const cols = db.prepare('PRAGMA table_info(receipts);').all().map(r => r.name);
+        if (!cols.includes('giftCardNumber')) {
+            db.exec('ALTER TABLE receipts ADD COLUMN giftCardNumber TEXT;');
+        }
+        if (!cols.includes('giftCardAmount')) {
+            db.exec('ALTER TABLE receipts ADD COLUMN giftCardAmount REAL DEFAULT 0;');
+        }
+        if (!cols.includes('splitTenderEnabled')) {
+            db.exec('ALTER TABLE receipts ADD COLUMN splitTenderEnabled INTEGER DEFAULT 0;');
+        }
+        if (!cols.includes('splitTenderType')) {
+            db.exec('ALTER TABLE receipts ADD COLUMN splitTenderType TEXT;');
+        }
+        if (!cols.includes('splitTenderAmount')) {
+            db.exec('ALTER TABLE receipts ADD COLUMN splitTenderAmount REAL DEFAULT 0;');
+        }
+    } catch (error) {
+        console.warn('[storage] Unable to verify gift card columns on receipts table.', error?.message || error);
+    }
     db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_datetime ON receipts(datetime);');
     db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_cashier ON receipts(cashier);');
     db.exec('CREATE INDEX IF NOT EXISTS idx_receipts_payment ON receipts(payment);');
     const columns = [
         'id', 'number', 'datetime', 'displayDate', 'cashier', 'payment',
         'subtotal', 'tax', 'total', 'taxRate', 'taxExempt',
-        'taxExemptId', 'taxExemptName', 'items', 'voided',
+        'taxExemptId', 'taxExemptName', 'giftCardNumber', 'giftCardAmount',
+        'splitTenderEnabled', 'splitTenderType', 'splitTenderAmount', 'items', 'voided',
         'voidInfo', 'returned', 'returnInfo', 'backdated', 'createdAt', 'updatedAt'
     ];
     const insertSql = `INSERT OR REPLACE INTO receipts (${columns.join(',')}) VALUES (${columns.map(c => '@' + c).join(',')});`;
@@ -1033,6 +1142,188 @@ ipcMain.handle('vendors:save', (_evt, vendors) => {
 
 ipcMain.handle('schedule:load', () => readScheduleData());
 ipcMain.handle('schedule:save', (_evt, patch) => saveScheduleData(patch));
+
+// ---------- Gift Cards ----------
+function buildGiftCardBook(payload, existingNumbers) {
+    const label = String(payload?.label || '').trim();
+    const prefix = String(payload?.prefix || '').trim();
+    const start = Number.parseInt(payload?.start, 10);
+    const end = Number.parseInt(payload?.end, 10);
+    const pad = Number.parseInt(payload?.pad, 10);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+        const err = new Error('Start and end numbers are required.');
+        err.code = 'INVALID_RANGE';
+        throw err;
+    }
+    const normalizedStart = Math.min(start, end);
+    const normalizedEnd = Math.max(start, end);
+    const padLen = Number.isFinite(pad) && pad > 0
+        ? pad
+        : Math.max(String(normalizedStart).length, String(normalizedEnd).length);
+    const numbers = [];
+    for (let i = normalizedStart; i <= normalizedEnd; i += 1) {
+        const num = `${prefix}${String(i).padStart(padLen, '0')}`;
+        numbers.push(normalizeGiftCardNumber(num));
+    }
+    const existing = new Set(existingNumbers.map(n => normalizeGiftCardNumber(n)));
+    const dupes = numbers.filter(n => existing.has(n));
+    if (dupes.length) {
+        const err = new Error(`Some gift cards already exist (${dupes.slice(0, 3).join(', ')}${dupes.length > 3 ? ', ...' : ''}).`);
+        err.code = 'DUPLICATE_CARDS';
+        err.duplicates = dupes;
+        throw err;
+    }
+    const bookId = `book-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const createdAt = new Date().toISOString();
+    return {
+        book: {
+            id: bookId,
+            label,
+            prefix,
+            start: normalizedStart,
+            end: normalizedEnd,
+            pad: padLen,
+            createdAt,
+            count: numbers.length
+        },
+        numbers
+    };
+}
+
+ipcMain.handle('giftcards:load', () => readGiftCards());
+ipcMain.handle('giftcards:addBook', (_evt, payload) => {
+    const data = readGiftCards();
+    const existingNumbers = data.cards.map(c => c.number);
+    const { book, numbers } = buildGiftCardBook(payload, existingNumbers);
+    const cards = numbers.map(number => ({
+        number,
+        bookId: book.id,
+        status: 'available',
+        balance: 0,
+        initialValue: 0,
+        soldAt: '',
+        soldBy: '',
+        soldReceipt: '',
+        note: ''
+    }));
+    data.books.push(book);
+    data.cards.push(...cards);
+    writeGiftCards(data);
+    return { ok: true, book, added: numbers.length };
+});
+ipcMain.handle('giftcards:sell', (_evt, payload) => {
+    const data = readGiftCards();
+    const number = normalizeGiftCardNumber(payload?.number);
+    const amount = roundMoney(payload?.amount);
+    const cashier = String(payload?.cashier || '').trim();
+    const receiptNumber = String(payload?.receiptNumber || '').trim();
+    const note = String(payload?.note || '').trim();
+    if (!number) {
+        const err = new Error('Gift card number is required.');
+        err.code = 'INVALID_NUMBER';
+        throw err;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+        const err = new Error('Gift card amount must be greater than 0.');
+        err.code = 'INVALID_AMOUNT';
+        throw err;
+    }
+    const card = data.cards.find(c => normalizeGiftCardNumber(c.number) === number);
+    if (!card) {
+        const err = new Error('Gift card not found.');
+        err.code = 'CARD_NOT_FOUND';
+        throw err;
+    }
+    if (card.status !== 'available' || Number(card.balance || 0) > 0) {
+        const err = new Error('Gift card is already active.');
+        err.code = 'CARD_ALREADY_ACTIVE';
+        throw err;
+    }
+    const now = new Date().toISOString();
+    card.status = 'active';
+    card.initialValue = amount;
+    card.balance = amount;
+    card.soldAt = now;
+    card.soldBy = cashier;
+    card.soldReceipt = receiptNumber;
+    card.note = note;
+    data.transactions.push({
+        id: `txn-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        number: card.number,
+        type: 'sale',
+        amount,
+        balanceAfter: card.balance,
+        cashier,
+        receiptNumber,
+        note,
+        createdAt: now
+    });
+    writeGiftCards(data);
+    return { ok: true, card };
+});
+ipcMain.handle('giftcards:redeem', (_evt, payload) => {
+    const data = readGiftCards();
+    const number = normalizeGiftCardNumber(payload?.number);
+    const amount = roundMoney(payload?.amount);
+    const cashier = String(payload?.cashier || '').trim();
+    const receiptNumber = String(payload?.receiptNumber || '').trim();
+    const note = String(payload?.note || '').trim();
+    if (!number) {
+        const err = new Error('Gift card number is required.');
+        err.code = 'INVALID_NUMBER';
+        throw err;
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+        const err = new Error('Redemption amount must be greater than 0.');
+        err.code = 'INVALID_AMOUNT';
+        throw err;
+    }
+    const card = data.cards.find(c => normalizeGiftCardNumber(c.number) === number);
+    if (!card) {
+        const err = new Error('Gift card not found.');
+        err.code = 'CARD_NOT_FOUND';
+        throw err;
+    }
+    if (card.status !== 'active' || Number(card.balance || 0) <= 0) {
+        const err = new Error('Gift card is not active.');
+        err.code = 'CARD_INACTIVE';
+        throw err;
+    }
+    if (amount > Number(card.balance || 0)) {
+        const err = new Error('Gift card balance is too low.');
+        err.code = 'INSUFFICIENT_BALANCE';
+        err.balance = Number(card.balance || 0);
+        throw err;
+    }
+    const now = new Date().toISOString();
+    card.balance = roundMoney(Number(card.balance || 0) - amount);
+    if (card.balance <= 0) {
+        card.status = 'redeemed';
+        card.balance = 0;
+    }
+    data.transactions.push({
+        id: `txn-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        number: card.number,
+        type: 'redeem',
+        amount,
+        balanceAfter: card.balance,
+        cashier,
+        receiptNumber,
+        note,
+        createdAt: now
+    });
+    writeGiftCards(data);
+    return { ok: true, card };
+});
+ipcMain.handle('giftcards:lookup', (_evt, payload) => {
+    const data = readGiftCards();
+    const number = normalizeGiftCardNumber(payload?.number);
+    if (!number) return null;
+    const card = data.cards.find(c => normalizeGiftCardNumber(c.number) === number) || null;
+    if (!card) return null;
+    const history = data.transactions.filter(t => normalizeGiftCardNumber(t.number) === number);
+    return { card, transactions: history };
+});
 
 // ---------- Bootstrap state (vendors, cashiers, receipts) ----------
 ipcMain.handle('state:bootstrap', () => {
@@ -1672,7 +1963,8 @@ ipcMain.handle('data:export', async () => {
         const data = {
             vendors: readJson(VENDOR_FILE, []),
             cashiers: readJson(CASHIER_FILE, []),
-            receipts
+            receipts,
+            giftCards: readGiftCards()
         };
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
         try { saveSettings({ backupDir: path.dirname(filePath) }); } catch (_) { }
@@ -1682,7 +1974,8 @@ ipcMain.handle('data:export', async () => {
             counts: {
                 vendors: data.vendors.length || 0,
                 cashiers: data.cashiers.length || 0,
-                receipts: receipts.length
+                receipts: receipts.length,
+                giftCards: data.giftCards.cards.length || 0
             }
         };
     } catch (e) {
@@ -1705,10 +1998,20 @@ ipcMain.handle('data:import', async () => {
         const vendors = Array.isArray(parsed?.vendors) ? parsed.vendors : [];
         const cashiers = Array.isArray(parsed?.cashiers) ? parsed.cashiers : [];
         const receiptsIn = Array.isArray(parsed?.receipts) ? parsed.receipts : [];
+        const giftCards = parsed?.giftCards && typeof parsed.giftCards === 'object' ? parsed.giftCards : null;
         const imported = receiptsStore.replaceAll(receiptsIn);
         writeJson(VENDOR_FILE, vendors);
         writeJson(CASHIER_FILE, cashiers);
-        return { ok: true, counts: { vendors: vendors.length, cashiers: cashiers.length, receipts: imported.length } };
+        if (giftCards) writeGiftCards(giftCards);
+        return {
+            ok: true,
+            counts: {
+                vendors: vendors.length,
+                cashiers: cashiers.length,
+                receipts: imported.length,
+                giftCards: giftCards ? (giftCards.cards || []).length : 0
+            }
+        };
     } catch (e) {
         console.error('Import failed', e);
         return { ok: false, error: e?.message || String(e) };
@@ -1721,7 +2024,8 @@ function performAutoBackup() {
         const data = {
             vendors: readJson(VENDOR_FILE, []),
             cashiers: readJson(CASHIER_FILE, []),
-            receipts: receiptsStore.list()
+            receipts: receiptsStore.list(),
+            giftCards: readGiftCards()
         };
         const backupDir = ensureDirectory(AUTO_BACKUP_DIR);
         // Overwrite same filename each time

@@ -27,9 +27,19 @@ function setupPrintDom() {
       <span id="taxRatePct"></span>
       <span id="taxExemptNote" class="d-none"></span>
       <select id="cashierSelect"><option value="">Select...</option><option value="Cashier">Cashier</option></select>
-      <select id="paymentSelect"><option value="">Select...</option><option value="Cash">Cash</option><option value="Card">Card</option></select>
+      <select id="paymentSelect">
+        <option value="">Select...</option>
+        <option value="Cash">Cash</option>
+        <option value="Card">Card</option>
+        <option value="Gift Card">Gift Card</option>
+      </select>
       <div id="cashFields" class="d-none"></div>
       <input id="cashReceived" />
+      <input id="giftCardNumber" />
+      <input id="giftCardAmount" />
+      <input type="checkbox" id="splitTenderToggle" />
+      <select id="splitTenderType"><option value="">Select...</option><option value="Cash">Cash</option><option value="Card">Card</option></select>
+      <input id="splitTenderAmount" />
 
       <!-- receipt elements used by printReceipt -->
       <span id="rcpt-number"></span>
@@ -48,6 +58,7 @@ describe('printReceipt validations and save', () => {
     ipcRenderer.invoke.mockImplementation(async (channel) => {
       if (channel === 'vendors:load') return [{ name: 'Vendor A', code: 'V1' }];
       if (channel === 'cashiers:load') return [{ name: 'Cashier' }];
+      if (channel === 'giftcards:redeem') return { ok: true };
       if (channel === 'print:silent') return true;
       if (channel === 'receipts:add') return true;
       if (channel === 'settings:load') return { taxRate: 0.0725, silentPrint: true };
@@ -79,6 +90,61 @@ describe('printReceipt validations and save', () => {
     document.getElementById('paymentSelect').value = 'Cash';
     await printReceipt();
     expect(ipcRenderer.invoke).not.toHaveBeenCalledWith('receipts:add', expect.anything());
+  });
+
+  test('blocks when split tender enabled but missing second tender type', async () => {
+    const { printReceipt } = require('../js/renderer.js');
+    document.getElementById('itemName').value = 'Lamp';
+    document.getElementById('itemPrice').value = '10';
+    document.getElementById('itemQty').value = '1';
+    document.getElementById('itemVendor').value = 'V1';
+    await addItem();
+    document.getElementById('cashierSelect').value = 'Cashier';
+    document.getElementById('paymentSelect').value = 'Card';
+    document.getElementById('splitTenderToggle').checked = true;
+    document.getElementById('splitTenderAmount').value = '5';
+    await printReceipt();
+    expect(ipcRenderer.invoke).not.toHaveBeenCalledWith('receipts:add', expect.anything());
+  });
+
+  test('blocks when split tender enabled but missing second amount', async () => {
+    const { printReceipt } = require('../js/renderer.js');
+    document.getElementById('itemName').value = 'Lamp';
+    document.getElementById('itemPrice').value = '10';
+    document.getElementById('itemQty').value = '1';
+    document.getElementById('itemVendor').value = 'V1';
+    await addItem();
+    document.getElementById('cashierSelect').value = 'Cashier';
+    document.getElementById('paymentSelect').value = 'Card';
+    document.getElementById('splitTenderToggle').checked = true;
+    document.getElementById('splitTenderType').value = 'Cash';
+    await printReceipt();
+    expect(ipcRenderer.invoke).not.toHaveBeenCalledWith('receipts:add', expect.anything());
+  });
+
+  test('saves receipt with gift card split tender amounts', async () => {
+    const { printReceipt } = require('../js/renderer.js');
+    __test.setTaxExempt(true);
+    document.getElementById('itemName').value = 'Lamp';
+    document.getElementById('itemPrice').value = '10';
+    document.getElementById('itemQty').value = '1';
+    document.getElementById('itemVendor').value = 'V1';
+    await addItem();
+    document.getElementById('cashierSelect').value = 'Cashier';
+    document.getElementById('paymentSelect').value = 'Gift Card';
+    document.getElementById('giftCardNumber').value = 'GC-123';
+    document.getElementById('giftCardAmount').value = '6';
+    document.getElementById('splitTenderToggle').checked = true;
+    document.getElementById('splitTenderType').value = 'Cash';
+    document.getElementById('splitTenderAmount').value = '4';
+    await printReceipt();
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('receipts:add', expect.objectContaining({
+      payment: 'Gift Card',
+      giftCardAmount: 6,
+      splitTenderEnabled: true,
+      splitTenderType: 'Cash',
+      splitTenderAmount: 4
+    }));
   });
 
   test('saves receipt in happy path', async () => {
@@ -124,4 +190,3 @@ describe('printReceipt validations and save', () => {
     openSpy.mockRestore();
   });
 });
-

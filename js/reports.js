@@ -91,6 +91,67 @@ const normalizeTender = (t) => {
     return TENDERS.includes(t) ? t : 'Other';
 };
 
+let __managerMode = false;
+let taxExemptRows = [];
+const toMoneyNumber = n => {
+    const num = Number(n);
+    return Number.isFinite(num) ? Math.round(num * 100) / 100 : 0;
+};
+
+function readManagerModeStateFromStorage() {
+    try {
+        const enabled = localStorage.getItem('managerModeEnabled') === '1';
+        const expires = Math.max(0, Number(localStorage.getItem('managerModeExpiresAt') || '0'));
+        if (enabled && expires && Date.now() > expires) {
+            localStorage.removeItem('managerModeEnabled');
+            localStorage.removeItem('managerModeExpiresAt');
+            return { enabled: false, expiresAt: 0 };
+        }
+        return { enabled, expiresAt: expires };
+    } catch (_) {
+        return { enabled: false, expiresAt: 0 };
+    }
+}
+
+function syncManagerModeUI() {
+    const state = readManagerModeStateFromStorage();
+    __managerMode = !!state.enabled;
+    const card = document.getElementById('taxExemptCard');
+    const locked = document.getElementById('taxExemptLockedCard');
+    if (card) card.style.display = __managerMode ? '' : 'none';
+    if (locked) locked.style.display = __managerMode ? 'none' : '';
+    if (!__managerMode) {
+        clearTaxExemptReport();
+    } else {
+        runTaxExemptReport();
+    }
+}
+
+function setDateRangeToCurrentMonth(fromId, toId) {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const fmtLocal = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const fromEl = document.getElementById(fromId);
+    const toEl = document.getElementById(toId);
+    if (fromEl) fromEl.value = fmtLocal(from);
+    if (toEl) toEl.value = fmtLocal(to);
+}
+
+function getReceiptEffectiveDate(r) {
+    const display = String(r?.displayDate || '').trim();
+    if (display) {
+        const base = display.split(' - ')[0].trim();
+        const parsed = new Date(base);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    if (r?.datetime) {
+        const dt = new Date(r.datetime);
+        if (!Number.isNaN(dt.getTime())) return dt;
+    }
+    return null;
+}
+
 
 /** RENAMED: avoid conflict with Bootstrap's global `window.bootstrap` */
 async function initReports() {
@@ -114,28 +175,14 @@ async function initReports() {
             .map(v => [String(v.code).trim().toLowerCase(), v])
     );
 
-    // default dates: last 30 days
     // default dates: full current calendar month
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = now.getMonth(); // 0 = Jan
-
-    // First day of current month (local)
-    const from = new Date(y, m, 1);
-
-    // Last day of current month (local)
-    const to = new Date(y, m + 1, 0);
-
-    // Format YYYY-MM-DD in local time (avoid UTC off-by-one)
-    const fmtLocal = d =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-    document.getElementById('fromDate')?.setAttribute('value', fmtLocal(from));
-    document.getElementById('toDate')?.setAttribute('value', fmtLocal(to));
+    setDateRangeToCurrentMonth('fromDate', 'toDate');
+    setDateRangeToCurrentMonth('taxExemptFromDate', 'taxExemptToDate');
 
     populateVendorFilter();
 
     runReport();
+    syncManagerModeUI();
 }
 
 function runReport() {
@@ -891,6 +938,279 @@ function exportCSV() {
     document.body.appendChild(a); a.click(); URL.revokeObjectURL(url); a.remove();
 }
 
+function clearTaxExemptReport() {
+    taxExemptRows = [];
+    const tbody = document.getElementById('taxExemptBody');
+    if (tbody) tbody.innerHTML = '';
+    const subtotalEl = document.getElementById('taxExemptSubtotalTotal');
+    const taxEl = document.getElementById('taxExemptTaxTotal');
+    const totalEl = document.getElementById('taxExemptGrandTotal');
+    if (subtotalEl) subtotalEl.textContent = '$0.00';
+    if (taxEl) taxEl.textContent = '$0.00';
+    if (totalEl) totalEl.textContent = '$0.00';
+    const countEl = document.getElementById('taxExemptCount');
+    if (countEl) countEl.textContent = 'Receipts: 0';
+}
+
+function runTaxExemptReport() {
+    if (!__managerMode) {
+        clearTaxExemptReport();
+        return;
+    }
+    const fromVal = document.getElementById('taxExemptFromDate')?.value;
+    const toVal = document.getElementById('taxExemptToDate')?.value;
+    const from = fromVal ? new Date(fromVal + 'T00:00:00') : null;
+    const to = toVal ? new Date(toVal + 'T23:59:59') : null;
+
+    const rows = [];
+
+    receipts.forEach(r => {
+        if (r.voided) return;
+        if (!r.taxExempt) return;
+        const when = getReceiptEffectiveDate(r);
+        if (from && when && when < from) return;
+        if (to && when && when > to) return;
+
+        let returnSubtotal = 0;
+        if (r.returned && r.returnInfo && Array.isArray(r.returnInfo.items)) {
+            r.returnInfo.items.forEach(it => {
+                const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+                const price = Number(it.price || 0);
+                returnSubtotal += qty * price;
+            });
+        }
+        const taxRate = Number(r.taxRate || 0);
+        const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
+        const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
+        const netSubtotal = toMoneyNumber((r.subtotal || 0) - returnSubtotal);
+        const netTax = toMoneyNumber((r.tax || 0) - returnTax);
+        const netTotal = toMoneyNumber((r.total || 0) - returnTotal);
+
+        rows.push({
+            when,
+            displayDate: r.displayDate || (r.datetime ? new Date(r.datetime).toLocaleString() : ''),
+            number: r.number || r.id || '',
+            name: r.taxExemptName || '',
+            id: r.taxExemptId || '',
+            cashier: r.cashier || '',
+            payment: r.payment || '',
+            subtotal: netSubtotal,
+            tax: netTax,
+            total: netTotal,
+            taxRate
+        });
+    });
+
+    rows.sort((a, b) => (a.when?.getTime?.() || 0) - (b.when?.getTime?.() || 0));
+    taxExemptRows = rows;
+
+    const tbody = document.getElementById('taxExemptBody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    const frag = document.createDocumentFragment();
+
+    let subtotalTotal = 0;
+    let taxTotal = 0;
+    let grandTotal = 0;
+
+    rows.forEach(r => {
+        subtotalTotal += r.subtotal;
+        taxTotal += r.tax;
+        grandTotal += r.total;
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${esc(r.displayDate || '')}</td>
+          <td>${esc(r.number || '')}</td>
+          <td>${esc(r.name || '')}</td>
+          <td>${esc(r.id || '')}</td>
+          <td>${esc(r.cashier || '')}</td>
+          <td>${esc(r.payment || '')}</td>
+          <td class="text-end">$${money(r.subtotal)}</td>
+          <td class="text-end">$${money(r.tax)}</td>
+          <td class="text-end">$${money(r.total)}</td>
+          <td class="text-end">${(r.taxRate * 100).toFixed(2)}</td>
+        `;
+        frag.appendChild(tr);
+    });
+
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="10" class="text-muted">No tax exempt sales for the selected period.</td>';
+        frag.appendChild(tr);
+    }
+
+    tbody.appendChild(frag);
+    const subtotalEl = document.getElementById('taxExemptSubtotalTotal');
+    const taxEl = document.getElementById('taxExemptTaxTotal');
+    const totalEl = document.getElementById('taxExemptGrandTotal');
+    if (subtotalEl) subtotalEl.textContent = `$${money(subtotalTotal)}`;
+    if (taxEl) taxEl.textContent = `$${money(taxTotal)}`;
+    if (totalEl) totalEl.textContent = `$${money(grandTotal)}`;
+    const countEl = document.getElementById('taxExemptCount');
+    if (countEl) countEl.textContent = `Receipts: ${rows.length}`;
+}
+
+function exportTaxExemptCSV() {
+    if (!__managerMode) return;
+    const rows = [['Date/Time', 'Receipt #', 'Purchaser/Organization', 'Tax Exempt ID', 'Cashier', 'Payment', 'Subtotal', 'Tax', 'Total', 'Tax Rate (%)']];
+    taxExemptRows.forEach(r => {
+        rows.push([
+            r.displayDate || '',
+            r.number || '',
+            r.name || '',
+            r.id || '',
+            r.cashier || '',
+            r.payment || '',
+            money(r.subtotal),
+            money(r.tax),
+            money(r.total),
+            (r.taxRate * 100).toFixed(2)
+        ]);
+    });
+    rows.push([
+        '',
+        '',
+        '',
+        '',
+        '',
+        'Totals',
+        money(taxExemptRows.reduce((sum, r) => sum + r.subtotal, 0)),
+        money(taxExemptRows.reduce((sum, r) => sum + r.tax, 0)),
+        money(taxExemptRows.reduce((sum, r) => sum + r.total, 0)),
+        ''
+    ]);
+
+    const csv = rows.map(r => r.map(v => `"${String(v).replaceAll('"', '""')}"`).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tax_exempt_sales_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    a.remove();
+}
+
+function printTaxExemptReport() {
+    if (!__managerMode) return;
+    try {
+        const fromVal = document.getElementById('taxExemptFromDate')?.value;
+        const toVal = document.getElementById('taxExemptToDate')?.value;
+        const period = (fromVal || toVal) ? `${fromVal || ''} to ${toVal || ''}` : 'All Dates';
+
+        const style = `
+      <style>
+        @page { size: Letter portrait; margin: 0.5in; }
+        :root{ --ink:#111827; --muted:#6b7280; --border:#e5e7eb; --emph:#0f172a; }
+        html,body{height:100%}
+        body{margin:0;background:#f3f4f6;color:var(--ink);font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;}
+        .doc{max-width:8.5in;margin:0 auto}
+        .sheet{background:#fff;margin:20px;box-shadow:0 2px 10px rgba(0,0,0,.08);padding:28px 34px}
+        .actions{display:flex;justify-content:flex-end;margin-bottom:8px}
+        .print-btn{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer}
+        .hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+        .brand-wrap{display:flex;gap:12px;align-items:center}
+        .logo{width:44px;height:44px;border-radius:8px;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+        .brand{font-weight:800;font-size:20px;letter-spacing:.2px}
+        .addr{color:var(--muted);font-size:12px;margin-top:2px}
+        .title{font-size:22px;font-weight:800;letter-spacing:.3px;color:var(--emph)}
+        .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px 16px;margin-top:12px}
+        .label{color:var(--muted)}
+        table{width:100%;border-collapse:collapse;margin-top:16px}
+        thead th{font-size:12px;color:var(--muted);font-weight:700;border-bottom:1px solid var(--border);padding:10px 8px;text-align:left}
+        tbody td{padding:10px 8px;border-bottom:1px solid var(--border);vertical-align:top}
+        th.num, td.num{text-align:right}
+        tfoot th, tfoot td{padding:10px 8px;border-top:2px solid var(--border)}
+        .totrow th{font-weight:800}
+        @media print{ body{background:#fff} .sheet{margin:0;box-shadow:none} .actions{display:none} }
+      </style>`;
+
+        const tableRows = taxExemptRows.length
+            ? taxExemptRows.map(r => `
+                <tr>
+                  <td>${esc(r.displayDate || '')}</td>
+                  <td>${esc(r.number || '')}</td>
+                  <td>${esc(r.name || '')}</td>
+                  <td>${esc(r.id || '')}</td>
+                  <td>${esc(r.cashier || '')}</td>
+                  <td>${esc(r.payment || '')}</td>
+                  <td class="num">$${money(r.subtotal)}</td>
+                  <td class="num">$${money(r.tax)}</td>
+                  <td class="num">$${money(r.total)}</td>
+                  <td class="num">${(r.taxRate * 100).toFixed(2)}</td>
+                </tr>`).join('')
+            : `<tr><td colspan="10" class="label">No tax exempt sales for the selected period.</td></tr>`;
+
+        const subtotalTotal = taxExemptRows.reduce((sum, r) => sum + r.subtotal, 0);
+        const taxTotal = taxExemptRows.reduce((sum, r) => sum + r.tax, 0);
+        const grandTotal = taxExemptRows.reduce((sum, r) => sum + r.total, 0);
+
+        const html = `
+        <html>
+          <head><meta charset="utf-8" /><title>Tax Exempt Sales</title>${style}</head>
+          <body>
+            <div class="doc">
+              <div class="actions"><button class="print-btn" onclick="window.print()">Print</button></div>
+              <div class="sheet">
+                <div class="hdr">
+                  <div class="brand-wrap">
+                    <img src="assets/MiddletonsStoreFrontLogoBW.png" alt="Logo" width="44" height="44" style="border-radius:8px" />
+                    <div>
+                      <div class="brand">Middleton's Antiques &amp; Uniques</div>
+                      <div class="addr">1615 S 17th St, Lincoln, NE 68502 - 531-500-0135</div>
+                    </div>
+                  </div>
+                  <div class="title">Tax Exempt Sales</div>
+                </div>
+                <div class="meta">
+                  <div><div class="label">Period</div><div><strong>${esc(period)}</strong></div></div>
+                  <div><div class="label">Generated</div><div><strong>${new Date().toLocaleString()}</strong></div></div>
+                  <div><div class="label">Receipts</div><div><strong>${taxExemptRows.length}</strong></div></div>
+                </div>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date/Time</th>
+                      <th>Receipt #</th>
+                      <th>Purchaser / Organization</th>
+                      <th>Tax Exempt ID</th>
+                      <th>Cashier</th>
+                      <th>Payment</th>
+                      <th class="num">Subtotal ($)</th>
+                      <th class="num">Tax ($)</th>
+                      <th class="num">Total ($)</th>
+                      <th class="num">Tax Rate (%)</th>
+                    </tr>
+                  </thead>
+                  <tbody>${tableRows}</tbody>
+                  <tfoot>
+                    <tr class="totrow">
+                      <th colspan="6" class="num">Totals</th>
+                      <td class="num">$${money(subtotalTotal)}</td>
+                      <td class="num">$${money(taxTotal)}</td>
+                      <td class="num">$${money(grandTotal)}</td>
+                      <td class="num">-</td>
+                    </tr>
+                  </tfoot>
+                </table>
+                <div class="label" style="margin-top:12px">Nebraska tax exempt sales report.</div>
+              </div>
+            </div>
+          </body>
+        </html>`;
+
+        const w = window.open('', '', 'width=960,height=900');
+        w.document.write(html);
+        try { applyBrandingToReportWindow(w); } catch (_) { }
+        w.document.close();
+    } catch (err) {
+        console.error('[reports] tax exempt print failed', err);
+        alert('Print failed: ' + (err?.message || err));
+    }
+}
+
 
 
 // Expose for inline use/debug
@@ -1078,6 +1398,10 @@ window.addEventListener('DOMContentLoaded', () => {
     const todayBtn = document.getElementById('todayBtn');
     const yesterdayBtn = document.getElementById('yesterdayBtn');
     const monthBtn = document.getElementById('currentMonthBtn');
+    const taxRunBtn = document.getElementById('taxExemptRunBtn');
+    const taxClearBtn = document.getElementById('taxExemptClearBtn');
+    const taxExportBtn = document.getElementById('taxExemptExportBtn');
+    const taxPrintBtn = document.getElementById('taxExemptPrintBtn');
 
     // Developer-mode visibility toggle for backup/restore buttons
     const setDevVisibility = (isDev) => {
@@ -1217,6 +1541,35 @@ window.addEventListener('DOMContentLoaded', () => {
             try { runReport(); } catch (e) { console.error(e); alert('Run failed: ' + (e?.message || e)); }
         });
     }
+
+    if (taxRunBtn) {
+        taxRunBtn.addEventListener('click', () => {
+            try { runTaxExemptReport(); } catch (e) { console.error(e); alert('Run failed: ' + (e?.message || e)); }
+        });
+    }
+    if (taxClearBtn) {
+        taxClearBtn.addEventListener('click', () => {
+            setDateRangeToCurrentMonth('taxExemptFromDate', 'taxExemptToDate');
+            try { runTaxExemptReport(); } catch (e) { console.error(e); alert('Run failed: ' + (e?.message || e)); }
+        });
+    }
+    if (taxExportBtn) {
+        taxExportBtn.addEventListener('click', () => {
+            try { exportTaxExemptCSV(); } catch (e) { console.error(e); alert('Export failed: ' + (e?.message || e)); }
+        });
+    }
+    if (taxPrintBtn) {
+        taxPrintBtn.addEventListener('click', () => {
+            try { printTaxExemptReport(); } catch (e) { console.error(e); alert('Print failed: ' + (e?.message || e)); }
+        });
+    }
+
+    syncManagerModeUI();
+    window.addEventListener('storage', (event) => {
+        if (event.key === 'managerModeEnabled' || event.key === 'managerModeExpiresAt') {
+            syncManagerModeUI();
+        }
+    });
 });
 
 // Initialize data after full load; do NOT call something named `bootstrap` here

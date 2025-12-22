@@ -40,6 +40,7 @@
                         <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
                         <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
                         <li><a class="dropdown-item" href="schedule.html">Schedule</a></li>
+                        <li><a class="dropdown-item" href="giftcards.html">Gift Cards</a></li>
                         <li><a class="dropdown-item" href="opening.html" data-allow-nav="true">Opening / Closing</a></li>
                         <li><a class="dropdown-item" href="settings.html">Settings</a></li>
                     </ul>
@@ -166,6 +167,74 @@
             <div class="card-body">
                 <h5 class="card-title mb-3">Detailed Sales by Vendor</h5>
                 <div id="detailedReport" class="vstack gap-3"></div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-3" id="taxExemptLockedCard">
+            <div class="card-body">
+                <h5 class="card-title mb-2">Tax Exempt Sales</h5>
+                <div class="text-muted">Enable Manager Mode to view tax exempt sales.</div>
+            </div>
+        </div>
+        <div class="card shadow-sm mt-3" id="taxExemptCard" data-requires-manager style="display:none;">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Tax Exempt Sales (Nebraska)</h5>
+                <div class="row g-3">
+                    <div class="col-6 col-lg-3">
+                        <label class="form-label">From (date)</label>
+                        <input id="taxExemptFromDate" type="date" class="form-control">
+                    </div>
+                    <div class="col-6 col-lg-3">
+                        <label class="form-label">To (date)</label>
+                        <input id="taxExemptToDate" type="date" class="form-control">
+                    </div>
+                    <div class="col-12 col-lg-3 d-grid">
+                        <label class="form-label invisible">Apply</label>
+                        <div class="d-flex gap-2">
+                            <button id="taxExemptRunBtn" class="btn btn-primary flex-grow-1">Run Report</button>
+                            <button id="taxExemptClearBtn" class="btn btn-outline-secondary">Clear</button>
+                        </div>
+                    </div>
+                    <div class="col-12 col-lg-3 d-grid">
+                        <label class="form-label invisible">Actions</label>
+                        <div class="d-flex gap-2">
+                            <button id="taxExemptExportBtn" class="btn btn-outline-secondary">Export CSV</button>
+                            <button id="taxExemptPrintBtn" class="btn btn-outline-primary">Print</button>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="text-muted small">Includes purchaser/organization, tax exempt ID, receipt, date/time, totals, tax rate, cashier, and payment.</div>
+                    </div>
+                </div>
+                <div class="table-responsive mt-3">
+                    <table class="table table-striped align-middle mb-0">
+                        <thead class="table-light sticky">
+                            <tr>
+                                <th>Date/Time</th>
+                                <th>Receipt #</th>
+                                <th>Purchaser / Organization</th>
+                                <th>Tax Exempt ID</th>
+                                <th>Cashier</th>
+                                <th>Payment</th>
+                                <th class="text-end">Subtotal ($)</th>
+                                <th class="text-end">Tax ($)</th>
+                                <th class="text-end">Total ($)</th>
+                                <th class="text-end">Tax Rate (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="taxExemptBody"></tbody>
+                        <tfoot class="table-light">
+                            <tr>
+                                <th colspan="6" class="text-end">Totals</th>
+                                <th class="text-end" id="taxExemptSubtotalTotal">$0.00</th>
+                                <th class="text-end" id="taxExemptTaxTotal">$0.00</th>
+                                <th class="text-end" id="taxExemptGrandTotal">$0.00</th>
+                                <th class="text-end">-</th>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                <div class="text-muted small mt-2" id="taxExemptCount">Receipts: 0</div>
             </div>
         </div>
     </main>

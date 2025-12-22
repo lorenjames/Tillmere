@@ -83,6 +83,7 @@
                         <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
                         <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
                         <li><a class="dropdown-item" href="schedule.html">Schedule</a></li>
+                        <li><a class="dropdown-item" href="giftcards.html">Gift Cards</a></li>
                         <li><a class="dropdown-item" href="opening.html" data-allow-nav="true">Opening / Closing</a></li>
                         <li><a class="dropdown-item" href="settings.html">Settings</a></li>
                     </ul>
@@ -131,6 +132,12 @@
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="noTaxToggle">
                                     <label class="form-check-label" for="noTaxToggle">No Tax (Tax Exempt)</label>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="splitTenderToggle">
+                                    <label class="form-check-label" for="splitTenderToggle">Split tender</label>
                                 </div>
                             </div>
                             <div class="col-auto d-none" id="backdateWrap">
@@ -305,6 +312,38 @@
                             <div class="d-flex justify-content-between mt-2">
                                 <div>Change Due:</div>
                                 <div class="fw-bold">$<span id="changeDue">0.00</span></div>
+                            </div>
+                        </div>
+                        <!-- Gift card helpers -->
+                        <div id="giftCardFields" class="mt-3 d-none">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label for="giftCardNumber" class="form-label mb-0">Gift Card #</label>
+                                <input type="text" id="giftCardNumber" class="form-control"
+                                    placeholder="Card number" style="max-width: 220px;">
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <label for="giftCardAmount" class="form-label mb-0">Redeem Amount ($):</label>
+                                <input type="text" id="giftCardAmount" class="form-control" inputmode="decimal"
+                                    placeholder="$0.00" style="max-width: 160px;">
+                            </div>
+                            <div class="small text-muted mt-1" id="giftCardBalanceHint"></div>
+                        </div>
+                        <div id="splitTenderAnchor">
+                            <div id="splitTenderFields" class="mt-3 d-none">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="splitTenderType" class="form-label mb-0">Second Tender</label>
+                                    <select id="splitTenderType" class="form-select" style="max-width: 220px;">
+                                        <option value="Cash">Cash</option>
+                                        <option value="Card">Card</option>
+                                        <option value="Check">Check</option>
+                                        <option value="Gift Card">Gift Card</option>
+                                    </select>
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <label for="splitTenderAmount" class="form-label mb-0">Second Amount ($):</label>
+                                    <input type="text" id="splitTenderAmount" class="form-control" inputmode="decimal"
+                                        placeholder="$0.00" style="max-width: 160px;">
+                                </div>
                             </div>
                         </div>
 

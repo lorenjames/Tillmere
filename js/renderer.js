@@ -16,6 +16,7 @@ let __cashAudio = null;
 let __allowNavigation = false;
 let __lastTotal = 0;
 let __lastCustomerCartState = null;
+let __giftCardBalance = null;
 let __suppressRefocusUntil = 0;
 let __qtyPickerOpen = false;
 let __discountReasons = [
@@ -110,6 +111,11 @@ function __newCartState(title = '') {
     taxExemptInfo: { id: '', name: '' },
     cashReceived: '',
     receiptWanted: true,
+    giftCardNumber: '',
+    giftCardAmount: '',
+    splitTenderEnabled: false,
+    splitTenderType: '',
+    splitTenderAmount: '',
     // Entry form draft (per-tab)
     entryName: '',
     entryPrice: '',
@@ -129,6 +135,11 @@ function __snapshotFromUI() {
     const backdateInputValue = document.getElementById('backdateDate')?.value || '';
     const backdateDate = __sanitizeBackdateValue(backdateInputValue);
     const cashReceived = document.getElementById('cashReceived')?.value || '';
+    const giftCardNumber = document.getElementById('giftCardNumber')?.value || '';
+    const giftCardAmount = document.getElementById('giftCardAmount')?.value || '';
+    const splitTenderEnabled = !!document.getElementById('splitTenderToggle')?.checked;
+    const splitTenderType = document.getElementById('splitTenderType')?.value || '';
+    const splitTenderAmount = document.getElementById('splitTenderAmount')?.value || '';
     const receiptWanted = document.getElementById('receiptWanted')
       ? !!document.getElementById('receiptWanted')?.checked
       : true;
@@ -152,6 +163,11 @@ function __snapshotFromUI() {
       taxExemptInfo: { id: String(__taxExemptInfo?.id || ''), name: String(__taxExemptInfo?.name || '') },
       cashReceived,
       receiptWanted,
+      giftCardNumber,
+      giftCardAmount,
+      splitTenderEnabled,
+      splitTenderType,
+      splitTenderAmount,
       entryName,
       entryPrice,
       entryQty,
@@ -173,7 +189,14 @@ function __applyStateToUI(state) {
   try { const el = document.getElementById('cashierSelect'); if (el) el.value = state?.cashier || ''; } catch (_) { }
   try { const el = document.getElementById('paymentSelect'); if (el) el.value = state?.payment || ''; } catch (_) { }
   try { toggleCashFields(); } catch (_) { }
+  try { toggleGiftCardFields(); } catch (_) { }
   try { const el = document.getElementById('cashReceived'); if (el) el.value = state?.cashReceived || ''; updateCashChange(); } catch (_) { }
+  try { const el = document.getElementById('giftCardNumber'); if (el) el.value = state?.giftCardNumber || ''; } catch (_) { }
+  try { const el = document.getElementById('giftCardAmount'); if (el) el.value = state?.giftCardAmount || ''; } catch (_) { }
+  try { const el = document.getElementById('splitTenderToggle'); if (el) el.checked = !!state?.splitTenderEnabled; } catch (_) { }
+  try { const el = document.getElementById('splitTenderType'); if (el) el.value = state?.splitTenderType || ''; } catch (_) { }
+  try { const el = document.getElementById('splitTenderAmount'); if (el) el.value = state?.splitTenderAmount || ''; } catch (_) { }
+  try { toggleSplitTenderFields(); } catch (_) { }
   try { const el = document.getElementById('receiptWanted'); if (el) el.checked = state?.receiptWanted !== false; updatePrintButtonLabel(); } catch (_) { }
   try {
     const bdToggle = document.getElementById('backdateToggle');
@@ -1600,17 +1623,26 @@ function renderTable() {
   const total = toMoneyNumber(subtotal + tax);
   const cashReceivedRaw = document.getElementById('cashReceived')?.value || '';
   const cashReceivedAmount = toMoneyNumber(cashReceivedRaw);
-  const changeDue = Math.max(0, cashReceivedAmount - total);
+  const splitAmount = isSplitTenderEnabled() && isCashPaymentSelected()
+    ? toMoneyNumber(document.getElementById('splitTenderAmount')?.value || 0)
+    : 0;
+  const cashDue = Math.max(0, total - splitAmount);
+  const changeDue = Math.max(0, cashReceivedAmount - cashDue);
   const cartMeta = __carts.get(__activeCartId) || {};
   const cashierSelect = document.getElementById('cashierSelect');
   const paymentSelect = document.getElementById('paymentSelect');
   const cashierValue = String(cashierSelect?.value || cartMeta.cashier || '');
   const paymentValue = String(paymentSelect?.value || cartMeta.payment || '');
+  const splitTenderType = document.getElementById('splitTenderType')?.value || '';
+  const splitTenderAmount = document.getElementById('splitTenderAmount')?.value || '';
   const payload = {
     cartId: String(__activeCartId || ''),
     cartTitle: String(cartMeta.title || ''),
     cashier: cashierValue,
     payment: paymentValue,
+    splitTenderEnabled: isSplitTenderEnabled(),
+    splitTenderType,
+    splitTenderAmount,
     items: customerItems,
     subtotal,
     tax,
@@ -1625,6 +1657,8 @@ function renderTable() {
   set('total', money(total));
   __lastTotal = toMoneyNumber(total);
   try { updateCashChange(); } catch (_) { }
+  try { updateGiftCardAmountDefault(); } catch (_) { }
+  try { updateSplitTenderAmountDefault(); } catch (_) { }
 }
 
 function dispatchCustomerCartState(payload) {
@@ -1648,7 +1682,12 @@ function refreshCustomerCartStateFromCashFields() {
   if (!__lastCustomerCartState) return;
   const cashReceivedRaw = document.getElementById('cashReceived')?.value || '';
   const cashReceivedAmount = toMoneyNumber(cashReceivedRaw);
-  const changeDue = Math.max(0, cashReceivedAmount - toMoneyNumber(__lastCustomerCartState.total || 0));
+  const total = toMoneyNumber(__lastCustomerCartState.total || 0);
+  const splitAmount = isSplitTenderEnabled() && isCashPaymentSelected()
+    ? toMoneyNumber(document.getElementById('splitTenderAmount')?.value || 0)
+    : 0;
+  const cashDue = Math.max(0, total - splitAmount);
+  const changeDue = Math.max(0, cashReceivedAmount - cashDue);
   const nextPayload = {
     ...__lastCustomerCartState,
     cashReceived: cashReceivedRaw,
@@ -1696,12 +1735,24 @@ async function printReceipt() {
   const cashierSelect = document.getElementById('cashierSelect');
   const paymentSelect = document.getElementById('paymentSelect');
   const cashEl = document.getElementById('cashReceived');
+  const giftNumberEl = document.getElementById('giftCardNumber');
+  const giftAmountEl = document.getElementById('giftCardAmount');
+  const splitToggle = document.getElementById('splitTenderToggle');
+  const splitTypeEl = document.getElementById('splitTenderType');
+  const splitAmountEl = document.getElementById('splitTenderAmount');
   clearFieldError(cashierSelect); clearFieldError(paymentSelect); clearFieldError(cashEl);
+  clearFieldError(giftNumberEl); clearFieldError(giftAmountEl);
+  clearFieldError(splitTypeEl); clearFieldError(splitAmountEl);
   const cashier = cashierSelect?.value || '';
   const payment = paymentSelect?.value || '';
   const isBackdated = !!document.getElementById('backdateToggle')?.checked;
   const receiptToggle = document.getElementById('receiptWanted');
   const wantsReceipt = receiptToggle ? !!receiptToggle.checked : true;
+  const totalDue = toMoneyNumber(__lastTotal || 0);
+  const splitEnabled = !!splitToggle?.checked;
+  const splitType = splitTypeEl?.value || '';
+  const splitAmountRaw = String(splitAmountEl?.value || '').trim();
+  const splitAmount = splitAmountRaw ? toMoneyNumber(splitAmountRaw) : 0;
   if (!cashier) {
     showToast('Please select a cashier.', { type: 'error' });
     try { cashierSelect?.focus(); } catch (_) { }
@@ -1713,6 +1764,28 @@ async function printReceipt() {
     try { paymentSelect?.focus(); } catch (_) { }
     markFieldError(paymentSelect);
     return;
+  }
+  if (splitEnabled) {
+    if (!splitType) {
+      showToast('Select a second tender type.', { type: 'error' });
+      try { splitTypeEl?.focus(); } catch (_) { }
+      markFieldError(splitTypeEl);
+      return;
+    }
+    if (splitAmountRaw) {
+      if (isNaN(splitAmount) || splitAmount < 0) {
+        showToast('Enter a valid non-negative split amount.', { type: 'error' });
+        try { splitAmountEl?.focus(); } catch (_) { }
+        markFieldError(splitAmountEl);
+        return;
+      }
+      if (splitAmount > totalDue + 0.009) {
+        showToast('Split amount cannot exceed the total due.', { type: 'error' });
+        try { splitAmountEl?.focus(); } catch (_) { }
+        markFieldError(splitAmountEl);
+        return;
+      }
+    }
   }
   // If Cash is selected, require a cash tendered amount
   if ((payment || '') === 'Cash' && !isBackdated) {
@@ -1732,6 +1805,59 @@ async function printReceipt() {
         const parsed = toMoneyNumber(rawVal);
         return rawVal !== '' && !isNaN(parsed) && parsed >= 0;
       });
+      return;
+    }
+  }
+  let giftCardNumber = '';
+  let giftCardAmount = 0;
+  if ((payment || '') === 'Gift Card') {
+    giftCardNumber = String(giftNumberEl?.value || '').trim();
+    const rawAmount = String(giftAmountEl?.value || '').trim();
+    giftCardAmount = rawAmount ? toMoneyNumber(rawAmount) : totalDue;
+    if (!giftCardNumber) {
+      showToast('Enter the gift card number.', { type: 'error' });
+      try { giftNumberEl?.focus(); } catch (_) { }
+      markFieldError(giftNumberEl);
+      return;
+    }
+    if (isNaN(giftCardAmount) || giftCardAmount <= 0) {
+      showToast('Enter a valid gift card amount.', { type: 'error' });
+      try { giftAmountEl?.focus(); } catch (_) { }
+      markFieldError(giftAmountEl);
+      return;
+    }
+    if (giftCardAmount > totalDue + 0.009) {
+      showToast('Gift card amount cannot exceed the total due.', { type: 'error' });
+      try { giftAmountEl?.focus(); } catch (_) { }
+      markFieldError(giftAmountEl);
+      return;
+    }
+    if (splitEnabled) {
+      const remainder = totalDue - giftCardAmount;
+      if (!splitAmountRaw && remainder > 0.009) {
+        showToast('Enter the second tender amount for the remaining balance.', { type: 'error' });
+        try { splitAmountEl?.focus(); } catch (_) { }
+        markFieldError(splitAmountEl);
+        return;
+      }
+      if (splitAmountRaw && Math.abs(giftCardAmount + splitAmount - totalDue) > 0.009) {
+        showToast('Gift card and second tender amounts must equal the total due.', { type: 'error' });
+        try { splitAmountEl?.focus(); } catch (_) { }
+        markFieldError(splitAmountEl);
+        return;
+      }
+    } else if (Math.abs(giftCardAmount - totalDue) > 0.009) {
+      showToast('Gift card amount must match the total due.', { type: 'error' });
+      try { giftAmountEl?.focus(); } catch (_) { }
+      markFieldError(giftAmountEl);
+      return;
+    }
+  }
+  if (splitEnabled && (payment || '') !== 'Gift Card') {
+    if (!splitAmountRaw) {
+      showToast('Enter the second tender amount.', { type: 'error' });
+      try { splitAmountEl?.focus(); } catch (_) { }
+      markFieldError(splitAmountEl);
       return;
     }
   }
@@ -1837,6 +1963,24 @@ async function printReceipt() {
   document.getElementById('receiptTax').textContent = money(tax);
   document.getElementById('receiptTotal').textContent = money(total);
 
+  if ((payment || '') === 'Gift Card') {
+    try {
+      const resp = await ipcRenderer.invoke('giftcards:redeem', {
+        number: giftCardNumber,
+        amount: giftCardAmount,
+        cashier,
+        receiptNumber: number
+      });
+      if (!resp || !resp.ok) {
+        showToast('Gift card redemption failed. Please verify the card balance.', { type: 'error' });
+        return;
+      }
+    } catch (err) {
+      showToast('Gift card redemption failed: ' + (err?.message || err), { type: 'error' });
+      return;
+    }
+  }
+
   // Persist receipt so it appears on the Receipts page
   try {
     const savedItems = items.map(it => {
@@ -1878,6 +2022,11 @@ async function printReceipt() {
       subtotal: Number(subtotal),
       tax: Number(tax),
       total: Number(total),
+      giftCardNumber: giftCardNumber || '',
+      giftCardAmount: giftCardAmount || 0,
+      splitTenderEnabled: !!splitEnabled,
+      splitTenderType: splitEnabled ? splitType : '',
+      splitTenderAmount: splitEnabled ? splitAmount : 0,
       taxExempt: !!__taxExempt,
       taxExemptId: String(__taxExemptInfo?.id || ''),
       taxExemptName: String(__taxExemptInfo?.name || '')
@@ -2139,6 +2288,16 @@ function resetAfterSale() {
     if (cashEl) cashEl.value = '';
     const changeEl = document.getElementById('changeDue');
     if (changeEl) changeEl.textContent = money(0);
+    const splitToggle = document.getElementById('splitTenderToggle');
+    if (splitToggle) splitToggle.checked = false;
+    const splitType = document.getElementById('splitTenderType');
+    if (splitType) resetSelectToPlaceholder(splitType);
+    const splitAmountEl = document.getElementById('splitTenderAmount');
+    if (splitAmountEl) {
+      splitAmountEl.value = '';
+      splitAmountEl.dataset.autoValue = '';
+    }
+    try { toggleSplitTenderFields(); } catch (_) { }
     // Reset back-date controls to default (unchecked and hidden, date set to latest allowed day)
     try {
       const bdToggle = document.getElementById('backdateToggle');
@@ -2199,10 +2358,17 @@ async function completePrintWithHtml(html, opts = {}) {
 }
 
 function preparePaymentSelect() { const sel = document.getElementById('paymentSelect'); if (!sel) return; ensurePlaceholder(sel); sel.value = ''; }
+function prepareSplitTenderSelect() { const sel = document.getElementById('splitTenderType'); if (!sel) return; ensurePlaceholder(sel); sel.value = ''; }
 
 // ---------- Cash change helpers ----------
 function isCashPaymentSelected() {
   try { const sel = document.getElementById('paymentSelect'); return (sel?.value || '') === 'Cash'; } catch (_) { return false; }
+}
+function isGiftCardPaymentSelected() {
+  try { const sel = document.getElementById('paymentSelect'); return (sel?.value || '') === 'Gift Card'; } catch (_) { return false; }
+}
+function isSplitTenderEnabled() {
+  try { const toggle = document.getElementById('splitTenderToggle'); return !!toggle?.checked; } catch (_) { return false; }
 }
 function toggleCashFields() {
   const wrap = document.getElementById('cashFields');
@@ -2210,15 +2376,108 @@ function toggleCashFields() {
   const show = isCashPaymentSelected();
   wrap.classList.toggle('d-none', !show);
 }
+function toggleGiftCardFields() {
+  const wrap = document.getElementById('giftCardFields');
+  if (!wrap) return;
+  const show = isGiftCardPaymentSelected();
+  wrap.classList.toggle('d-none', !show);
+  if (show) {
+    try { updateGiftCardAmountDefault(); } catch (_) { }
+    try { refreshGiftCardBalanceHint(); } catch (_) { }
+  } else {
+    __giftCardBalance = null;
+  }
+}
+function updateSplitTenderPlacement() {
+  const wrap = document.getElementById('splitTenderFields');
+  if (!wrap) return;
+  const anchor = document.getElementById('splitTenderAnchor');
+  const giftWrap = document.getElementById('giftCardFields');
+  const target = isGiftCardPaymentSelected() ? giftWrap : anchor;
+  if (target && wrap.parentNode !== target) {
+    target.appendChild(wrap);
+  }
+}
+function toggleSplitTenderFields() {
+  const wrap = document.getElementById('splitTenderFields');
+  if (!wrap) return;
+  updateSplitTenderPlacement();
+  const show = isSplitTenderEnabled();
+  wrap.classList.toggle('d-none', !show);
+  if (show) {
+    try { updateSplitTenderAmountDefault(); } catch (_) { }
+  }
+}
+function updateGiftCardAmountDefault() {
+  const amountEl = document.getElementById('giftCardAmount');
+  if (!amountEl || !isGiftCardPaymentSelected()) return;
+  const current = String(amountEl.value || '').trim();
+  const isAuto = String(amountEl.dataset.autoValue || '') === 'true';
+  if (current && !isAuto) return;
+  const totalDue = toMoneyNumber(__lastTotal || 0);
+  const balance = Number.isFinite(__giftCardBalance) ? __giftCardBalance : null;
+  const nextAmount = balance === null ? totalDue : Math.min(balance, totalDue);
+  amountEl.value = money(nextAmount);
+  amountEl.dataset.autoValue = 'true';
+  try { updateSplitTenderAmountDefault(); } catch (_) { }
+}
 function updateCashChange() {
   const cashInput = document.getElementById('cashReceived');
   const changeEl = document.getElementById('changeDue');
   if (!cashInput || !changeEl) return;
   const cash = toMoneyNumber(cashInput.value || 0);
   const total = toMoneyNumber(__lastTotal || 0);
-  const change = Math.max(0, toMoneyNumber(cash - total));
+  const splitAmount = isSplitTenderEnabled() && isCashPaymentSelected()
+    ? toMoneyNumber(document.getElementById('splitTenderAmount')?.value || 0)
+    : 0;
+  const cashDue = Math.max(0, total - splitAmount);
+  const change = Math.max(0, toMoneyNumber(cash - cashDue));
   changeEl.textContent = money(change);
   try { refreshCustomerCartStateFromCashFields(); } catch (_) { }
+}
+function updateSplitTenderAmountDefault() {
+  if (!isSplitTenderEnabled() || !isGiftCardPaymentSelected()) return;
+  const amountEl = document.getElementById('splitTenderAmount');
+  if (!amountEl) return;
+  const current = String(amountEl.value || '').trim();
+  const isAuto = String(amountEl.dataset.autoValue || '') === 'true';
+  if (current && !isAuto) return;
+  const totalDue = toMoneyNumber(__lastTotal || 0);
+  const giftAmount = toMoneyNumber(document.getElementById('giftCardAmount')?.value || 0);
+  const remainder = Math.max(0, totalDue - giftAmount);
+  amountEl.value = money(remainder);
+  amountEl.dataset.autoValue = 'true';
+}
+async function refreshGiftCardBalanceHint() {
+  const hintEl = document.getElementById('giftCardBalanceHint');
+  const numberEl = document.getElementById('giftCardNumber');
+  if (!hintEl || !numberEl) return;
+  const number = String(numberEl.value || '').trim();
+  if (!number) {
+    hintEl.textContent = '';
+    __giftCardBalance = null;
+    return;
+  }
+  try {
+    const resp = await ipcRenderer.invoke('giftcards:lookup', { number });
+    if (!resp || !resp.card) {
+      hintEl.textContent = 'Gift card not found.';
+      __giftCardBalance = null;
+      return;
+    }
+    const status = String(resp.card.status || '').toUpperCase();
+    const balanceValue = toMoneyNumber(resp.card.balance || 0);
+    __giftCardBalance = balanceValue;
+    try {
+      const amountEl = document.getElementById('giftCardAmount');
+      if (amountEl) amountEl.dataset.autoValue = 'true';
+    } catch (_) { }
+    hintEl.textContent = `Status: ${status} · Balance: $${money(balanceValue)}`;
+    updateGiftCardAmountDefault();
+  } catch (_) {
+    hintEl.textContent = '';
+    __giftCardBalance = null;
+  }
 }
 
 function updatePrintButtonLabel() {
@@ -2476,6 +2735,7 @@ window.addEventListener('load', async () => {
   } catch (_) { }
   await loadCashiersIntoSelect();
   preparePaymentSelect();
+  prepareSplitTenderSelect();
   setupEntryDiscountControls();
   try { setDiscountReasonOptions(document.getElementById('edit_discountReason'), __discountReasons); } catch (_) { }
   await loadVendorsIntoDatalist();
@@ -2635,12 +2895,68 @@ window.addEventListener('load', async () => {
     const paySel = document.getElementById('paymentSelect');
     if (paySel) paySel.addEventListener('change', () => {
       toggleCashFields();
+      toggleGiftCardFields();
+      toggleSplitTenderFields();
       updateCashChange();
       try { renderTable(); } catch (_) { }
     });
     const cashEl = document.getElementById('cashReceived');
     if (cashEl) cashEl.addEventListener('input', updateCashChange);
+    const splitToggle = document.getElementById('splitTenderToggle');
+    if (splitToggle) {
+      splitToggle.addEventListener('change', () => {
+        toggleSplitTenderFields();
+        updateCashChange();
+        try { renderTable(); } catch (_) { }
+      });
+    }
+    const splitTypeEl = document.getElementById('splitTenderType');
+    if (splitTypeEl) {
+      splitTypeEl.addEventListener('change', () => {
+        try { renderTable(); } catch (_) { }
+      });
+    }
+    const splitAmountEl = document.getElementById('splitTenderAmount');
+    if (splitAmountEl) {
+      const markSplitManual = () => { splitAmountEl.dataset.autoValue = 'false'; };
+      splitAmountEl.addEventListener('input', () => { markSplitManual(); updateCashChange(); });
+      splitAmountEl.addEventListener('blur', () => {
+        markSplitManual();
+        formatPriceInput(splitAmountEl);
+        updateCashChange();
+        try { renderTable(); } catch (_) { }
+      });
+      splitAmountEl.addEventListener('change', () => {
+        markSplitManual();
+        formatPriceInput(splitAmountEl);
+        updateCashChange();
+        try { renderTable(); } catch (_) { }
+      });
+    }
+    const giftNumberEl = document.getElementById('giftCardNumber');
+    if (giftNumberEl) {
+      giftNumberEl.addEventListener('change', refreshGiftCardBalanceHint);
+      giftNumberEl.addEventListener('blur', refreshGiftCardBalanceHint);
+    }
+    const giftAmountEl = document.getElementById('giftCardAmount');
+    if (giftAmountEl) {
+      const markGiftManual = () => { giftAmountEl.dataset.autoValue = 'false'; };
+      giftAmountEl.addEventListener('blur', () => {
+        markGiftManual();
+        formatPriceInput(giftAmountEl);
+        updateSplitTenderAmountDefault();
+        try { renderTable(); } catch (_) { }
+      });
+      giftAmountEl.addEventListener('change', () => {
+        markGiftManual();
+        formatPriceInput(giftAmountEl);
+        updateSplitTenderAmountDefault();
+        try { renderTable(); } catch (_) { }
+      });
+    }
     toggleCashFields();
+    toggleGiftCardFields();
+    toggleSplitTenderFields();
     updateCashChange();
   } catch (_) { }
   // Receipt preference toggle -> update button label

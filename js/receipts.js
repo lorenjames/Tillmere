@@ -1237,6 +1237,25 @@ window.addEventListener('load', async () => {
   })();
   applyFilters();
 
+  const receiptParam = (() => {
+    try { return new URLSearchParams(window.location.search).get('receipt') || ''; } catch (_) { return ''; }
+  })();
+  if (receiptParam) {
+    try {
+      const q = document.getElementById('q');
+      if (q) q.value = receiptParam;
+      applyFilters();
+      const r = await ipcRenderer.invoke('receipts:get', receiptParam);
+      if (r) {
+        await openReceiptWindow(r, { autoPrint: false });
+      } else {
+        showToast('Receipt not found.', { type: 'error' });
+      }
+    } catch (err) {
+      showToast('Unable to open receipt: ' + (err?.message || err), { type: 'error' });
+    }
+  }
+
   $('#applyBtn').addEventListener('click', applyFilters);
   $('#q').addEventListener('keydown', e => { if (e.key === 'Enter') applyFilters(); });
   $('#exportBtn').addEventListener('click', exportCSV);
