@@ -43,7 +43,7 @@ function applyBrandingToReceiptWindow(win) {
     if (!win || !win.document) return;
     const name = getBrandingName();
     const addrLine = getBrandingAddressLine();
-    const logoSrc = getBrandingLogoSrc('assets/MiddletonsStoreFrontLogoBW.png');
+    const logoSrc = getBrandingLogoSrc('assets/NEW_MiddletonsBW.PNG');
     try {
       const brandEl = win.document.querySelector('.brand-wrap .brand');
       if (brandEl) brandEl.textContent = name;
@@ -648,7 +648,7 @@ async function openReceiptWindowCompact(r, opts = {}) {
       ${returnWatermark}
       ${voidBanner}
       <div class="hd">
-        <img src="assets/MiddletonsStoreFrontLogoBW.png" alt="Logo" width="40" height="40">
+        <img src="assets/NEW_MiddletonsBW.PNG" alt="Logo" style="height:40px; width:auto;">
         <div>
           <div class="brand">Middleton’s Antiques &amp; Uniques</div>
           <div class="addr muted">123 Antique Row, Lincoln, NE • (402) 555-1212</div>
@@ -1792,12 +1792,12 @@ async function openReceiptWindow(r, opts = {}) {
     <div class="invoice">
       <div class="actions"><button class="print-btn" onclick="window.print()">Print</button></div>
       <div class="sheet">
-        <img class="bgmark" src="assets/MiddletonsStoreFrontLogoBW.png" alt="">
+        <img class="bgmark" src="assets/NEW_MiddletonsBW.PNG" alt="">
         ${voidWatermark}
         ${returnWatermark}
         <div class="header">
           <div class="brand-wrap">
-            <img src="assets/MiddletonsStoreFrontLogoBW.png" alt="Logo" width="96" height="96" style="border-radius:12px" />
+            <img src="assets/NEW_MiddletonsBW.PNG" alt="Logo" style="height:96px; width:auto; border-radius:12px" />
             <div>
               <div class="brand">Middleton's Antiques &amp; Uniques</div>
               <div class="addr">123 Antique Row, Lincoln, NE · (402) 555-1212</div>

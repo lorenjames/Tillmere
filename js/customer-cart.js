@@ -33,7 +33,7 @@ const DEFAULT_CAROUSEL_SLIDES = [
   {
     title: 'Welcome to Middleton\'s',
     caption: 'Thank you for shopping small & local!',
-    image: './assets/MiddletonsStoreFrontLogo.png'
+    image: './assets/NEW_MiddletonsColor.PNG'
   },
   {
     title: 'Follow us on Facebook',

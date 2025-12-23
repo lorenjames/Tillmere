@@ -2410,7 +2410,7 @@ async function printReceipt() {
 
   const brandingName = __getBrandingName();
   const brandingAddr = __getBrandingAddressLine();
-  const logoSrc = __getBrandingLogoSrc('assets/MiddletonsStoreFrontLogoBW.png');
+  const logoSrc = __getBrandingLogoSrc('assets/NEW_MiddletonsBW.PNG');
 
   const giftBalanceLine = (payment || '') === 'Gift Card'
     ? `<div class="label">Gift Card Balance</div><div class="val">$${money(giftCardBalance || 0)}</div>`
@@ -2465,10 +2465,10 @@ async function printReceipt() {
       <body>
         <div class="invoice">
           <div class="sheet">
-            <img class="bgmark" src="assets/MiddletonsStoreFrontLogoBW.png" alt="">
+            <img class="bgmark" src="assets/NEW_MiddletonsBW.PNG" alt="">
             <div class="header">
               <div class="brand-wrap">
-                <img src="assets/MiddletonsStoreFrontLogoBW.png" alt="Logo" width="96" height="96" style="border-radius:12px" />
+                <img src="assets/NEW_MiddletonsBW.PNG" alt="Logo" style="height:96px; width:auto; border-radius:12px" />
                 <div>
                   <div class="brand">Middleton's Antiques &amp; Uniques</div>
                   <div class="addr">1615 S 17th St, Lincoln, NE · 531-500-0135</div>
@@ -2529,7 +2529,7 @@ async function printReceipt() {
     const safeName = escapeHtml(brandingName);
     const safeAddr = escapeHtml(brandingAddr);
     if (logoSrc) {
-      brandedHtml = brandedHtml.replace(/assets\/MiddletonsStoreFrontLogoBW\.png/g, logoSrc);
+      brandedHtml = brandedHtml.replace(/assets\/NEW_MiddletonsBW\.PNG/g, logoSrc);
     }
     if (safeName) {
       brandedHtml = brandedHtml.replace("Middleton's Antiques &amp; Uniques", safeName);
