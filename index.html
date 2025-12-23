@@ -250,6 +250,9 @@
                             <div class="col-12">
                                 <button class="btn btn-primary w-100" onclick="addItem()">Add Item</button>
                             </div>
+                            <div class="col-12">
+                                <button class="btn btn-outline-primary w-100" onclick="addGiftCardSaleItem()">Sell Gift Card</button>
+                            </div>
                             <div class="col-12 mt-2">
                                 <button class="btn btn-outline-secondary w-100" onclick="clearItemEntry()"
                                     data-bs-toggle="tooltip" data-bs-placement="top" title="Clear all entry fields">
@@ -768,6 +771,62 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" id="posReturnCancelBtn">Cancel</button>
                     <button type="button" class="btn btn-success" id="posReturnConfirmBtn">Record Return</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="giftCardActivateReminderModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title">Activate Gift Cards</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-2">
+                        This sale includes gift cards. Please activate them on the Gift Cards page before handing them to
+                        the customer.
+                    </p>
+                    <div class="small text-muted" id="giftCardReminderReceiptWrap">
+                        Receipt #:
+                        <span class="fw-semibold" id="giftCardReminderReceipt">-</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Later</button>
+                    <a class="btn btn-primary" href="giftcards.html" data-allow-nav="true" id="giftCardReminderLink">Open Gift Cards</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="giftCardSaleModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title">Sell Gift Card</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="giftCardSaleEmpty" class="alert alert-warning d-none mb-3" role="alert">
+                        No available gift cards are loaded. Please add a book in Gift Cards before selling one.
+                    </div>
+                    <div class="row g-2" id="giftCardSaleFields">
+                        <div class="col-12">
+                            <label for="giftCardSaleAmount" class="form-label">Amount ($)</label>
+                            <input type="number" class="form-control" id="giftCardSaleAmount" step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        <div class="col-12">
+                            <label for="giftCardSaleSelect" class="form-label">Available Card</label>
+                            <select class="form-select" id="giftCardSaleSelect"></select>
+                        </div>
+                        <div class="col-12 small text-muted" id="giftCardSaleHint"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <a class="btn btn-outline-secondary" href="giftcards.html" data-allow-nav="true">Open Gift Cards</a>
+                    <button type="button" class="btn btn-primary" id="giftCardSaleConfirmBtn">Add to Sale</button>
                 </div>
             </div>
         </div>

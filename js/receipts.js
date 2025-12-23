@@ -13,6 +13,10 @@ let branding = {
   bizPhone: '531-500-0135',
   logoPath: ''
 };
+let __greyscalePrint = false;
+function getGreyscalePrintCss() {
+  return __greyscalePrint ? '@media print { html{ filter: grayscale(100%); } }' : '';
+}
 function getBrandingName() {
   return String(branding?.bizName || "Middleton's Antiques & Uniques");
 }
@@ -101,6 +105,26 @@ function toMoneyNumber(n) {
   const num = Number(n);
   if (!Number.isFinite(num)) return 0;
   return Math.round(num * 100) / 100;
+}
+function getSplitTenderInfo(r) {
+  if (!r || !r.splitTenderEnabled) return null;
+  const total = toMoneyNumber(r.total || 0);
+  const splitAmount = toMoneyNumber(r.splitTenderAmount || 0);
+  const primaryAmount = Math.max(0, total - splitAmount);
+  return {
+    payment: String(r.payment || '').trim(),
+    splitType: String(r.splitTenderType || '').trim(),
+    primaryAmount,
+    splitAmount,
+    total
+  };
+}
+function getGiftCardInfo(r) {
+  if (!r) return null;
+  const number = String(r.giftCardNumber || '').trim();
+  const balance = toMoneyNumber(r.giftCardBalance || 0);
+  if (!number && balance === 0) return null;
+  return { number, balance };
 }
 // Derive the original (pre-discount) price for an item.
 function deriveOriginalPrice(it) {
@@ -348,6 +372,14 @@ function renderTable() {
       : r.voided
         ? `<button type="button" class="btn btn-outline-secondary" disabled>Return</button>`
         : `<button type="button" class="btn btn-outline-success" onclick="window.__onReceiptAction(event,'return','${rawId}')">Return</button>`;
+    const splitInfo = getSplitTenderInfo(r);
+    const splitLine = splitInfo
+      ? `<div class="text-muted small">Split: ${esc(splitInfo.payment || 'Tender 1')} $${money(splitInfo.primaryAmount)} · ${esc(splitInfo.splitType || 'Tender 2')} $${money(splitInfo.splitAmount)} (Total $${money(splitInfo.total)})</div>`
+      : '';
+    const giftInfo = getGiftCardInfo(r);
+    const giftLine = giftInfo
+      ? `<div class="text-muted small">Gift Card: ${giftInfo.number ? esc(giftInfo.number) : '—'} · Remaining $${money(giftInfo.balance)}</div>`
+      : '';
     html += `
       <tr>
         <td>${r.displayDate ? esc(r.displayDate) : (r.datetime ? new Date(r.datetime).toLocaleString() : '')}</td>
@@ -358,7 +390,11 @@ function renderTable() {
           ${commentPreview ? `<div class="text-muted small">Notes: ${esc(commentPreview)}</div>` : ''}
         </td>
         <td>${esc(r.cashier || '')}</td>
-        <td>${esc(r.payment || '')}</td>
+        <td>
+          ${esc(r.payment || '')}
+          ${splitLine}
+          ${giftLine}
+        </td>
         <td class="text-end">$${money(r.subtotal)}</td>
         <td class="text-end">$${money(r.tax)}</td>
         <td class="text-end fw-semibold">$${money(r.total)}</td>
@@ -432,6 +468,7 @@ async function openReceiptWindowCompact(r, opts = {}) {
         justify-content: center;
       }
     }
+    ${getGreyscalePrintCss()}
   </style>`;
 
 
@@ -456,6 +493,15 @@ async function openReceiptWindowCompact(r, opts = {}) {
   const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
   const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
   const netTotal = toMoneyNumber((r.total || 0) - returnTotal);
+  const splitInfo = getSplitTenderInfo(r);
+  const splitRows = splitInfo ? `
+        <div class="row"><div>${esc(splitInfo.payment || 'Tender 1')}</div><div>$${money(splitInfo.primaryAmount)}</div></div>
+        <div class="row"><div>${esc(splitInfo.splitType || 'Tender 2')}</div><div>$${money(splitInfo.splitAmount)}</div></div>
+        <div class="row"><div>Split Total</div><div>$${money(splitInfo.total)}</div></div>` : '';
+  const giftInfo = getGiftCardInfo(r);
+  const giftRows = giftInfo ? `
+        <div class="row"><div>Gift Card #</div><div>${esc(giftInfo.number || '-')}</div></div>
+        <div class="row"><div>Gift Card Balance</div><div>$${money(giftInfo.balance)}</div></div>` : '';
 
   const rows = (() => {
     const out = [];
@@ -571,6 +617,8 @@ async function openReceiptWindowCompact(r, opts = {}) {
         <div class="row"><div>Subtotal</div><div>$${money(r.subtotal)}</div></div>
         <div class="row"><div>${r.taxExempt ? 'Tax (Exempt)' : `Tax (${(Number(r.taxRate || 0) * 100).toFixed(2)}%)`}</div><div>$${money(r.tax)}</div></div>
         <div class="row total"><div>Total</div><div>$${money(r.total)}</div></div>
+        ${splitRows}
+        ${giftRows}
         ${r.returned && returnTotal > 0 ? `
         <div class="row"><div>Return Subtotal</div><div>-$${money(returnSubtotal)}</div></div>
         <div class="row"><div>Return Tax</div><div>-$${money(returnTax)}</div></div>
@@ -1281,6 +1329,7 @@ window.addEventListener('load', async () => {
       bizPhone: String(s?.bizPhone || branding.bizPhone),
       logoPath: String(s?.logoPath || '')
     };
+    __greyscalePrint = !!s?.greyscalePrint;
     applyBrandingToReceiptsPage();
     const btn = document.getElementById('reindexBtn');
     if (btn) btn.style.display = dev ? '' : 'none';
@@ -1300,6 +1349,9 @@ window.addEventListener('load', async () => {
         };
         applyBrandingToReceiptsPage();
       } catch (_) { }
+      if (typeof payload?.greyscalePrint === 'boolean') {
+        __greyscalePrint = !!payload.greyscalePrint;
+      }
     });
   } catch (_) { }
 
@@ -1492,6 +1544,7 @@ async function openReceiptWindow(r, opts = {}) {
         pointer-events: none;
       }
     }
+    ${getGreyscalePrintCss()}
   </style>`;
 
   const vendorTotals = {};
@@ -1515,6 +1568,15 @@ async function openReceiptWindow(r, opts = {}) {
   const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
   const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
   const netTotal = toMoneyNumber((r.total || 0) - returnTotal);
+  const splitInfo = getSplitTenderInfo(r);
+  const splitRows = splitInfo ? `
+          <div class="label">${esc(splitInfo.payment || 'Tender 1')}</div><div class="val">$${money(splitInfo.primaryAmount)}</div>
+          <div class="label">${esc(splitInfo.splitType || 'Tender 2')}</div><div class="val">$${money(splitInfo.splitAmount)}</div>
+          <div class="label">Split Total</div><div class="val">$${money(splitInfo.total)}</div>` : '';
+  const giftInfo = getGiftCardInfo(r);
+  const giftRows = giftInfo ? `
+          <div class="label">Gift Card #</div><div class="val">${esc(giftInfo.number || '-')}</div>
+          <div class="label">Gift Card Balance</div><div class="val">$${money(giftInfo.balance)}</div>` : '';
 
   const rows = (() => {
     const out = [];
@@ -1702,6 +1764,8 @@ async function openReceiptWindow(r, opts = {}) {
           <div class="label">Subtotal</div><div class="val">$${money(r.subtotal)}</div>
           <div class="label">${r.taxExempt ? 'Tax (Exempt)' : `Tax (${(Number(r.taxRate || 0) * 100).toFixed(2)}%)`}</div><div class="val">$${money(r.tax)}</div>
           <div class="label grand">Total</div><div class="val grand">$${money(r.total)}</div>
+          ${splitRows}
+          ${giftRows}
           ${r.returned && returnTotal > 0 ? `
           <div class="label">Return Subtotal</div><div class="val">-$${money(returnSubtotal)}</div>
           <div class="label">Return Tax</div><div class="val">-$${money(returnTax)}</div>

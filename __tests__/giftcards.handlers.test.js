@@ -108,4 +108,50 @@ describe('gift card handlers', () => {
     sell({}, { number: 'GC-0001', amount: 5, cashier: 'Alice' });
     expect(() => redeem({}, { number: 'GC-0001', amount: 10, cashier: 'Alice' })).toThrow(/balance is too low/i);
   });
+
+  test('sell throws on invalid amount or missing card', () => {
+    const addBook = getHandler('giftcards:addBook');
+    const sell = getHandler('giftcards:sell');
+
+    addBook({}, { prefix: 'GC-', start: 1, end: 1, pad: 4 });
+    expect(() => sell({}, { number: 'GC-0001', amount: 0, cashier: 'Alice' })).toThrow(/greater than 0/i);
+    expect(() => sell({}, { number: 'GC-9999', amount: 10, cashier: 'Alice' })).toThrow(/not found/i);
+  });
+
+  test('sell blocks activating an already active card', () => {
+    const addBook = getHandler('giftcards:addBook');
+    const sell = getHandler('giftcards:sell');
+
+    addBook({}, { prefix: 'GC-', start: 1, end: 1, pad: 4 });
+    sell({}, { number: 'GC-0001', amount: 25, cashier: 'Alice' });
+    expect(() => sell({}, { number: 'GC-0001', amount: 30, cashier: 'Alice' })).toThrow(/already active/i);
+  });
+
+  test('redeem throws when card is inactive', () => {
+    const addBook = getHandler('giftcards:addBook');
+    const redeem = getHandler('giftcards:redeem');
+
+    addBook({}, { prefix: 'GC-', start: 1, end: 1, pad: 4 });
+    expect(() => redeem({}, { number: 'GC-0001', amount: 5, cashier: 'Alice' })).toThrow(/not active/i);
+  });
+
+  test('lookup returns null for unknown cards', () => {
+    const lookup = getHandler('giftcards:lookup');
+
+    expect(lookup({}, { number: 'GC-4040' })).toBeNull();
+  });
+
+  test('sell stores receipt number and note on transaction', () => {
+    const addBook = getHandler('giftcards:addBook');
+    const sell = getHandler('giftcards:sell');
+    const load = getHandler('giftcards:load');
+
+    addBook({}, { prefix: 'GC-', start: 1, end: 1, pad: 4 });
+    sell({}, { number: 'GC-0001', amount: 40, cashier: 'Alice', receiptNumber: 'R-100', note: 'VIP' });
+    const data = load();
+    const txn = data.transactions[0];
+    expect(txn.type).toBe('sale');
+    expect(txn.receiptNumber).toBe('R-100');
+    expect(txn.note).toBe('VIP');
+  });
 });

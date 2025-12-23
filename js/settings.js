@@ -1055,6 +1055,9 @@ async function loadSettings() {
     const sp = Boolean(s?.silentPrint);
     const spEl = document.getElementById('silentPrint');
     if (spEl) spEl.checked = sp;
+    const gs = Boolean(s?.greyscalePrint);
+    const gsEl = document.getElementById('greyscalePrint');
+    if (gsEl) gsEl.checked = gs;
     // Branding fields
     try {
       const navBrand = document.querySelector('.navbar-brand');
@@ -1140,8 +1143,12 @@ async function savePrintSettings() {
   try {
     const silentPrint = !!document.getElementById('silentPrint')?.checked;
     const printerName = String(document.getElementById('printerSelect')?.value || '');
-    const saved = await ipcRenderer.invoke('settings:saveSilent', { silentPrint, printerName });
-    showToast('Saved. Silent Print: ' + (saved.silentPrint ? 'On' : 'Off'), { type: 'success' });
+    const greyscalePrint = !!document.getElementById('greyscalePrint')?.checked;
+    const saved = await ipcRenderer.invoke('settings:saveSilent', { silentPrint, printerName, greyscalePrint });
+    showToast(
+      `Saved. Silent Print: ${saved.silentPrint ? 'On' : 'Off'} | Greyscale: ${saved.greyscalePrint ? 'On' : 'Off'}`,
+      { type: 'success' }
+    );
   } catch (e) { showToast('Failed to save printing settings: ' + (e?.message || e), { type: 'error' }); }
 }
 

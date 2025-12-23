@@ -8,6 +8,7 @@ let __taxExemptInfo = { id: '', name: '' };
 let __noTaxModal = null;
 let __cancelConfirmModal = null;
 let __silentPrint = true;
+let __greyscalePrint = false;
 let items = []; // { name, price, vendorName, comment }
 let __vendorsCache = [];
 let __editModal = null;
@@ -16,9 +17,15 @@ let __cashAudio = null;
 let __allowNavigation = false;
 let __lastTotal = 0;
 let __lastCustomerCartState = null;
-let __giftCardBalance = null;
-let __suppressRefocusUntil = 0;
-let __qtyPickerOpen = false;
+  let __giftCardBalance = null;
+  let __giftCardReminderModal = null;
+  let __giftCardSaleModal = null;
+  let __pendingGiftCardReminder = null;
+  let __suppressRefocusUntil = 0;
+  let __qtyPickerOpen = false;
+const GIFT_CARD_ITEM_NAME = 'Gift Card Sale';
+const GIFT_CARD_VENDOR_CODE = 'STORE-GC';
+const GIFT_CARD_VENDOR_NAME = 'Store Gift Cards';
 let __discountReasons = [
   'Store Promo',
   'Vendor Promo',
@@ -560,6 +567,73 @@ function showToast(message, opts = {}) {
     const ms = Math.max(1000, Number(opts.duration || 2500));
     setTimeout(() => { try { el.remove(); } catch (_) { } }, ms);
   } catch (_) { }
+}
+function hasGiftCardSaleItems(list) {
+  return (Array.isArray(list) ? list : []).some((it) => {
+    const name = String(it?.name || '').toLowerCase();
+    return name.includes('gift card') || name.includes('giftcard');
+  });
+}
+function extractGiftCardSaleDetails(list) {
+  const itemsIn = Array.isArray(list) ? list : [];
+  const saleItem = itemsIn.find((it) => {
+    const name = String(it?.name || '').toLowerCase();
+    return name.includes('gift card') || name.includes('giftcard');
+  });
+  if (!saleItem) return null;
+  const comment = String(saleItem.comment || '');
+  const match = comment.match(/card\s*#\s*([^\s]+)/i);
+  const cardNumber = match ? match[1].trim() : '';
+  const amount = toMoneyNumber(saleItem.price || saleItem.originalPrice || 0);
+  return { cardNumber, amount };
+}
+function queueGiftCardActivationReminder(payload) {
+  __pendingGiftCardReminder = payload || null;
+}
+function showGiftCardActivationReminder() {
+  const payload = __pendingGiftCardReminder;
+  if (!payload) return;
+  const modalEl = document.getElementById('giftCardActivateReminderModal');
+  if (!modalEl || !window.bootstrap) {
+    __pendingGiftCardReminder = null;
+    return;
+  }
+  const receipt = String(payload.receiptNumber || '').trim();
+  const cardNumber = String(payload.cardNumber || '').trim();
+  const amount = Number(payload.amount || 0);
+  const receiptWrap = document.getElementById('giftCardReminderReceiptWrap');
+  const receiptEl = document.getElementById('giftCardReminderReceipt');
+  if (receiptEl) receiptEl.textContent = receipt || '-';
+  if (receiptWrap) receiptWrap.classList.toggle('d-none', !receipt);
+  try {
+    const link = document.getElementById('giftCardReminderLink');
+    if (link) {
+      const params = new URLSearchParams();
+      if (cardNumber) params.set('activateCard', cardNumber);
+      if (Number.isFinite(amount) && amount > 0) params.set('amount', amount.toFixed(2));
+      if (receipt) params.set('receipt', receipt);
+      const qs = params.toString();
+      link.setAttribute('href', qs ? `giftcards.html?${qs}` : 'giftcards.html');
+    }
+  } catch (_) { }
+  if (!__giftCardReminderModal) {
+    __giftCardReminderModal = new bootstrap.Modal(modalEl);
+  }
+  __pendingGiftCardReminder = null;
+  try { __giftCardReminderModal.show(); } catch (_) { }
+}
+function giftCardBookLabel(bookId, books) {
+  const list = Array.isArray(books) ? books : [];
+  const book = list.find(b => b.id === bookId);
+  if (!book) return '';
+  return book.label || book.prefix || book.id || '';
+}
+async function fetchGiftCardsData() {
+  try {
+    const data = await ipcRenderer.invoke('giftcards:load');
+    if (data && typeof data === 'object') return data;
+  } catch (_) { }
+  return { books: [], cards: [], transactions: [] };
 }
 function clearFieldError(el) {
   try { el?.classList?.remove('is-invalid'); } catch (_) { }
@@ -1165,6 +1239,25 @@ function installNavigationGuards() {
 // ---------- Data ----------
 async function fetchVendors() { return (await ipcRenderer.invoke('vendors:load')) || []; }
 async function fetchCashiers() { return (await ipcRenderer.invoke('cashiers:load')) || []; }
+async function ensureGiftCardVendor() {
+  const list = await fetchVendors();
+  const vendors = Array.isArray(list) ? list : [];
+  const existing = findVendorStrict(vendors, GIFT_CARD_VENDOR_CODE) || findVendorStrict(vendors, GIFT_CARD_VENDOR_NAME);
+  if (existing) {
+    __vendorsCache = vendors;
+    return existing;
+  }
+  vendors.push({
+    name: GIFT_CARD_VENDOR_NAME,
+    code: GIFT_CARD_VENDOR_CODE,
+    phone: '',
+    email: ''
+  });
+  const saved = await ipcRenderer.invoke('vendors:save', vendors);
+  __vendorsCache = Array.isArray(saved) ? saved : vendors;
+  try { setVendorDatalistOptions(__vendorsCache); } catch (_) { }
+  return findVendorStrict(__vendorsCache, GIFT_CARD_VENDOR_CODE) || null;
+}
 
 // ---------- Vendors (datalist + filtering) ----------
 async function loadVendorsIntoDatalist() {
@@ -1400,6 +1493,90 @@ async function addItem() {
   // Return focus to the first entry field for rapid entry
   try { nameEl.focus(); } catch (_) { }
   // Persist current tab state after adding an item
+  try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
+}
+
+async function addGiftCardSaleItem() {
+  const modalEl = document.getElementById('giftCardSaleModal');
+  if (!modalEl || !window.bootstrap) {
+    showToast('Gift card sale modal is unavailable.', { type: 'error' });
+    return;
+  }
+  if (!__giftCardSaleModal) {
+    __giftCardSaleModal = new bootstrap.Modal(modalEl);
+  }
+  const amountEl = document.getElementById('giftCardSaleAmount');
+  const selectEl = document.getElementById('giftCardSaleSelect');
+  const hintEl = document.getElementById('giftCardSaleHint');
+  const emptyEl = document.getElementById('giftCardSaleEmpty');
+  const fieldsEl = document.getElementById('giftCardSaleFields');
+  const confirmBtn = document.getElementById('giftCardSaleConfirmBtn');
+  if (amountEl) amountEl.value = '';
+  if (hintEl) hintEl.textContent = '';
+  if (selectEl) selectEl.innerHTML = '<option value="" selected disabled>Select a card...</option>';
+  if (confirmBtn) confirmBtn.disabled = true;
+
+  const data = await fetchGiftCardsData();
+  const cards = Array.isArray(data?.cards) ? data.cards : [];
+  const books = Array.isArray(data?.books) ? data.books : [];
+  const available = cards.filter(c => String(c.status || '') === 'available');
+  available.sort((a, b) => String(a.number || '').localeCompare(String(b.number || '')));
+  if (!available.length) {
+    if (emptyEl) emptyEl.classList.remove('d-none');
+    if (fieldsEl) fieldsEl.classList.add('d-none');
+    if (confirmBtn) confirmBtn.disabled = true;
+    __giftCardSaleModal.show();
+    return;
+  }
+  if (emptyEl) emptyEl.classList.add('d-none');
+  if (fieldsEl) fieldsEl.classList.remove('d-none');
+  if (selectEl) {
+    available.forEach(card => {
+      const opt = document.createElement('option');
+      const bookName = giftCardBookLabel(card.bookId, books);
+      opt.value = String(card.number || '');
+      opt.textContent = bookName ? `${card.number} (${bookName})` : String(card.number || '');
+      selectEl.appendChild(opt);
+    });
+  }
+  if (hintEl) hintEl.textContent = `${available.length} card${available.length === 1 ? '' : 's'} available.`;
+  if (confirmBtn) confirmBtn.disabled = false;
+  __giftCardSaleModal.show();
+  setTimeout(() => { try { amountEl?.focus(); } catch (_) { } }, 120);
+}
+
+async function confirmGiftCardSaleItem() {
+  const amountEl = document.getElementById('giftCardSaleAmount');
+  const selectEl = document.getElementById('giftCardSaleSelect');
+  const rawAmount = String(amountEl?.value || '').trim();
+  const amount = toMoneyNumber(rawAmount);
+  const cardNumber = String(selectEl?.value || '').trim();
+  if (!rawAmount || !Number.isFinite(amount) || amount <= 0) {
+    showToast('Enter a valid gift card amount.', { type: 'error' });
+    try { amountEl?.focus(); } catch (_) { }
+    return;
+  }
+  if (!cardNumber) {
+    showToast('Select an available gift card.', { type: 'error' });
+    try { selectEl?.focus(); } catch (_) { }
+    return;
+  }
+  try { await ensureGiftCardVendor(); } catch (_) { }
+  items.push({
+    name: GIFT_CARD_ITEM_NAME,
+    price: amount,
+    originalPrice: amount,
+    quantity: 1,
+    vendorName: GIFT_CARD_VENDOR_CODE,
+    comment: `Card #${cardNumber}`,
+    discountType: 'none',
+    discountValue: 0,
+    discountAmount: 0,
+    discountReason: ''
+  });
+  renderTable();
+  try { if (__giftCardSaleModal) __giftCardSaleModal.hide(); } catch (_) { }
+  try { document.getElementById('itemName')?.focus(); } catch (_) { }
   try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
 }
 
@@ -1963,6 +2140,7 @@ async function printReceipt() {
   document.getElementById('receiptTax').textContent = money(tax);
   document.getElementById('receiptTotal').textContent = money(total);
 
+  let giftCardBalance = 0;
   if ((payment || '') === 'Gift Card') {
     try {
       const resp = await ipcRenderer.invoke('giftcards:redeem', {
@@ -1975,6 +2153,7 @@ async function printReceipt() {
         showToast('Gift card redemption failed. Please verify the card balance.', { type: 'error' });
         return;
       }
+      giftCardBalance = toMoneyNumber(resp.card?.balance ?? 0);
     } catch (err) {
       showToast('Gift card redemption failed: ' + (err?.message || err), { type: 'error' });
       return;
@@ -2010,30 +2189,39 @@ async function printReceipt() {
         discountReason
       };
     });
-    await ipcRenderer.invoke('receipts:add', {
-      datetime: new Date(saleDate.getTime()).toISOString(),
-      backdated: !!usedBackdate,
-      displayDate: usedBackdate ? (saleDate.toLocaleDateString() + ' - back dated') : saleDate.toLocaleString(),
-      number,
-      cashier,
-      payment,
-      items: savedItems,
-      taxRate: Number(TAX_RATE),
-      subtotal: Number(subtotal),
-      tax: Number(tax),
-      total: Number(total),
-      giftCardNumber: giftCardNumber || '',
-      giftCardAmount: giftCardAmount || 0,
-      splitTenderEnabled: !!splitEnabled,
-      splitTenderType: splitEnabled ? splitType : '',
-      splitTenderAmount: splitEnabled ? splitAmount : 0,
-      taxExempt: !!__taxExempt,
-      taxExemptId: String(__taxExemptInfo?.id || ''),
-      taxExemptName: String(__taxExemptInfo?.name || '')
-    });
-  } catch (e) {
-    console.error('Failed to save receipt:', e);
-  }
+      await ipcRenderer.invoke('receipts:add', {
+        datetime: new Date(saleDate.getTime()).toISOString(),
+        backdated: !!usedBackdate,
+        displayDate: usedBackdate ? (saleDate.toLocaleDateString() + ' - back dated') : saleDate.toLocaleString(),
+        number,
+        cashier,
+        payment,
+        items: savedItems,
+        taxRate: Number(TAX_RATE),
+        subtotal: Number(subtotal),
+        tax: Number(tax),
+        total: Number(total),
+        giftCardNumber: giftCardNumber || '',
+        giftCardAmount: giftCardAmount || 0,
+        giftCardBalance: giftCardBalance || 0,
+        splitTenderEnabled: !!splitEnabled,
+        splitTenderType: splitEnabled ? splitType : '',
+        splitTenderAmount: splitEnabled ? splitAmount : 0,
+        taxExempt: !!__taxExempt,
+        taxExemptId: String(__taxExemptInfo?.id || ''),
+        taxExemptName: String(__taxExemptInfo?.name || '')
+      });
+      if (hasGiftCardSaleItems(savedItems)) {
+        const details = extractGiftCardSaleDetails(savedItems) || {};
+        queueGiftCardActivationReminder({
+          receiptNumber: number,
+          cardNumber: details.cardNumber || '',
+          amount: details.amount || 0
+        });
+      }
+    } catch (e) {
+      console.error('Failed to save receipt:', e);
+    }
 
   const style = `
     <style>
@@ -2078,6 +2266,7 @@ async function printReceipt() {
           width: 60%; height: auto; opacity: .08; pointer-events: none;
         }
       }
+      ${__greyscalePrint ? '@media print { html{ filter: grayscale(100%); } }' : ''}
     </style>`;
 
   const vendorsList = await fetchVendors();
@@ -2111,6 +2300,12 @@ async function printReceipt() {
   const brandingAddr = __getBrandingAddressLine();
   const logoSrc = __getBrandingLogoSrc('assets/MiddletonsStoreFrontLogoBW.png');
 
+  const giftBalanceLine = (payment || '') === 'Gift Card'
+    ? `<div class="label">Gift Card Balance</div><div class="val">$${money(giftCardBalance || 0)}</div>`
+    : '';
+  const giftNumberLine = (payment || '') === 'Gift Card'
+    ? `<div class="label">Gift Card #</div><div class="val">${escapeHtml(giftCardNumber || '-')}</div>`
+    : '';
   const html = `
     <html>
       <head>
@@ -2175,6 +2370,8 @@ async function printReceipt() {
               <div class="label">Subtotal</div><div class="val">$${money(subtotal)}</div>
               <div class="label">${__taxExempt ? 'Tax (Exempt)' : `Tax (${(TAX_RATE * 100).toFixed(2)}%)`}</div><div class="val">$${money(tax)}</div>
               <div class="label grand">Total</div><div class="val grand">$${money(total)}</div>
+              ${giftNumberLine}
+              ${giftBalanceLine}
             </div>
             ${__taxExempt ? `<div class="thanks">Exempt: ${escapeHtml(__taxExemptInfo?.name || '')} — ID: ${escapeHtml(__taxExemptInfo?.id || '')}</div>` : ''}
 
@@ -2312,11 +2509,12 @@ function resetAfterSale() {
       }
     } catch (_) { }
     // Reset receipt preference to default (checked)
-    if (receiptPref) receiptPref.checked = true;
-    updatePrintButtonLabel();
-    // Return focus to the first entry field
-    try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
-  } catch (_) { }
+      if (receiptPref) receiptPref.checked = true;
+      updatePrintButtonLabel();
+      try { showGiftCardActivationReminder(); } catch (_) { }
+      // Return focus to the first entry field
+      try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
+    } catch (_) { }
   // Close the completed sale tab and switch appropriately
   try { __completeSaleAndCloseTab(); } catch (_) { }
 }
@@ -2352,7 +2550,6 @@ async function completePrintWithHtml(html, opts = {}) {
       if (w) { w.document.write(html); w.document.close(); }
     } catch (_) { }
   }
-
   // Reset POS
   resetAfterSale();
 }
@@ -2718,6 +2915,7 @@ window.addEventListener('load', async () => {
     const tr = Number(s?.taxRate);
     if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr;
     __silentPrint = !!s?.silentPrint;
+    __greyscalePrint = !!s?.greyscalePrint;
     try {
       const list = Array.isArray(s?.discountReasons) ? s.discountReasons : [];
       const cleaned = list.map(r => String(r || '').trim()).filter(Boolean);
@@ -2779,11 +2977,15 @@ window.addEventListener('load', async () => {
   } catch (_) { }
   if (addrEl) addrEl.textContent = '1615 S 17th St, Lincoln, NE 68502 · 531-500-0135';
 
-  // New Sale button adds a new tab
-  try {
-    const btn = document.getElementById('newSaleBtn');
-    if (btn) btn.addEventListener('click', () => { try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { } __createNewCartTab(); });
-  } catch (_) { }
+    // New Sale button adds a new tab
+    try {
+      const btn = document.getElementById('newSaleBtn');
+      if (btn) btn.addEventListener('click', () => { try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { } __createNewCartTab(); });
+    } catch (_) { }
+    try {
+      const giftCardConfirmBtn = document.getElementById('giftCardSaleConfirmBtn');
+      if (giftCardConfirmBtn) giftCardConfirmBtn.addEventListener('click', confirmGiftCardSaleItem);
+    } catch (_) { }
   // Cancel Sale: clears and closes current tab
   try {
     const cancelBtn = document.getElementById('cancelSaleBtn');
@@ -3099,6 +3301,7 @@ try {
     const tr = Number(payload?.taxRate);
     if (!isNaN(tr) && tr >= 0 && tr <= 1) { TAX_RATE = tr; renderTable(); updateTaxRateLabel(); }
     if (typeof payload?.silentPrint === 'boolean') { __silentPrint = !!payload.silentPrint; }
+    if (typeof payload?.greyscalePrint === 'boolean') { __greyscalePrint = !!payload.greyscalePrint; }
     try {
       if (payload) {
         __branding = {
@@ -3158,12 +3361,17 @@ try {
       // cart flows
       addItem,
       clearItemEntry,
+      addGiftCardSaleItem,
+      confirmGiftCardSaleItem,
       printReceipt,
       removeItem,
       // totals & UI
       renderTable,
       updateTaxRateLabel,
       updateCashChange,
+      queueGiftCardActivationReminder,
+      showGiftCardActivationReminder,
+      extractGiftCardSaleDetails,
       // tiny test hooks
       __test: {
         setTaxRate: (v) => { try { TAX_RATE = Number(v); updateTaxRateLabel(); } catch (_) { } },

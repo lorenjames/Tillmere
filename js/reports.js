@@ -52,6 +52,9 @@ let branding = {
     bizPhone: '531-500-0135',
     logoPath: ''
 };
+let __greyscalePrint = false;
+const getGreyscalePrintCss = () =>
+    __greyscalePrint ? '@media print { html{ filter: grayscale(100%); } }' : '';
 const getBrandingName = () =>
     String(branding?.bizName || "Middleton's Antiques & Uniques");
 const getBrandingAddressLine = () => {
@@ -593,6 +596,7 @@ function openReceiptWindowFromReports(r) {
     .actions{display:flex;justify-content:flex-end;margin:8px}
     .print-btn{background:#2563eb;color:#fff;border:none;border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer}
     @media print{ .actions{display:none} }
+    ${getGreyscalePrintCss()}
   </style>`;
 
         const rowsHtml = (r.items || []).map((it, idx) => {
@@ -1425,6 +1429,7 @@ window.addEventListener('DOMContentLoaded', () => {
                     logoPath: String(s?.logoPath || '')
                 };
             } catch (_) { }
+            __greyscalePrint = !!s?.greyscalePrint;
         }).catch(() => {});
     } catch (_) { }
     // Live updates
@@ -1441,6 +1446,9 @@ window.addEventListener('DOMContentLoaded', () => {
                     };
                 }
             } catch (_) { }
+            if (typeof payload?.greyscalePrint === 'boolean') {
+                __greyscalePrint = !!payload.greyscalePrint;
+            }
         });
     } catch (_) { }
 

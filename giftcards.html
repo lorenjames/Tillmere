@@ -97,38 +97,6 @@
                     </div>
                 </div>
 
-                <div class="card shadow-sm mb-3">
-                    <div class="card-body">
-                        <h5 class="card-title mb-3">Sell / Activate Gift Card</h5>
-                        <div class="form-grid">
-                            <div class="span-2">
-                                <label for="sellNumber" class="form-label">Gift Card #</label>
-                                <input type="text" id="sellNumber" class="form-control" placeholder="Card number">
-                            </div>
-                            <div>
-                                <label for="sellAmount" class="form-label">Amount ($)</label>
-                                <input type="number" id="sellAmount" class="form-control" step="0.01" min="0" placeholder="0.00">
-                            </div>
-                            <div>
-                                <label for="sellCashier" class="form-label">Cashier</label>
-                                <select id="sellCashier" class="form-select"></select>
-                            </div>
-                            <div class="span-2">
-                                <label for="sellReceipt" class="form-label">Receipt # (optional)</label>
-                                <input type="text" id="sellReceipt" class="form-control" placeholder="e.g., MID-20251231-121314">
-                            </div>
-                            <div class="span-2">
-                                <label for="sellNote" class="form-label">Note (optional)</label>
-                                <input type="text" id="sellNote" class="form-control" placeholder="Optional note">
-                            </div>
-                            <div class="d-grid">
-                                <label class="form-label invisible">Sell</label>
-                                <button class="btn btn-success" id="sellCardBtn">Activate</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
             </div>
 
             <div class="col-12 col-xl-5">
@@ -190,6 +158,7 @@
                                 <th>Card #</th>
                                 <th>Book</th>
                                 <th class="text-end">Status</th>
+                                <th class="text-end">Action</th>
                             </tr>
                         </thead>
                         <tbody id="availableTable"></tbody>
@@ -236,6 +205,7 @@
                                 <th>Receipt #</th>
                                 <th>Date</th>
                                 <th class="text-end">Amount</th>
+                                <th class="text-end">Remaining</th>
                             </tr>
                         </thead>
                         <tbody id="redeemedTable"></tbody>
@@ -247,6 +217,59 @@
     </main>
 
     <script src="js/giftcards.js"></script>
+
+    <div class="modal fade" id="activateGiftCardModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title">Activate Gift Card</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-grid">
+                        <div class="span-2">
+                            <label for="activateNumber" class="form-label">Gift Card #</label>
+                            <input type="text" id="activateNumber" class="form-control" readonly>
+                        </div>
+                        <div>
+                            <label for="activateAmount" class="form-label">Amount ($)</label>
+                            <input type="number" id="activateAmount" class="form-control" step="0.01" min="0" placeholder="0.00">
+                        </div>
+                        <div>
+                            <label for="activateCashier" class="form-label">Cashier</label>
+                            <select id="activateCashier" class="form-select"></select>
+                        </div>
+                        <div class="span-2">
+                            <label for="activateReceipt" class="form-label">Receipt # (optional)</label>
+                            <input type="text" id="activateReceipt" class="form-control" placeholder="e.g., MID-20251231-121314">
+                        </div>
+                        <div class="span-2">
+                            <label for="activateNote" class="form-label">Note (optional)</label>
+                            <input type="text" id="activateNote" class="form-control" placeholder="Optional note">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-success" id="activateCardBtn">Activate</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="giftcardReceiptModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 class="modal-title">Receipt</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="giftcardReceiptBody" class="small text-muted">Loading receipt…</div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

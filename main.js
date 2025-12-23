@@ -484,6 +484,7 @@ function readSettings() {
         backupDir: '',
         silentPrint: true,
         printerName: '',
+        greyscalePrint: false,
         // Branding defaults (match existing hard-coded UI)
         bizName: "Middleton's Antiques & Uniques",
         bizAddress: '1615 S 17th St, Lincoln, NE 68502',
@@ -697,6 +698,7 @@ function buildDbRecord(receipt, opts = {}) {
         taxExemptName: String(receipt.taxExemptName || '').trim(),
         giftCardNumber: String(receipt.giftCardNumber || '').trim(),
         giftCardAmount: normalizeNumber(receipt.giftCardAmount),
+        giftCardBalance: normalizeNumber(receipt.giftCardBalance),
         splitTenderEnabled: receipt.splitTenderEnabled ? 1 : 0,
         splitTenderType: String(receipt.splitTenderType || '').trim(),
         splitTenderAmount: normalizeNumber(receipt.splitTenderAmount),
@@ -729,6 +731,7 @@ function mapDbRow(row) {
         taxExemptName: row.taxExemptName || '',
         giftCardNumber: row.giftCardNumber || '',
         giftCardAmount: normalizeNumber(row.giftCardAmount),
+        giftCardBalance: normalizeNumber(row.giftCardBalance),
         splitTenderEnabled: !!row.splitTenderEnabled,
         splitTenderType: row.splitTenderType || '',
         splitTenderAmount: normalizeNumber(row.splitTenderAmount),
@@ -764,6 +767,7 @@ function createSqliteReceiptsStore() {
             taxExemptName TEXT,
             giftCardNumber TEXT,
             giftCardAmount REAL DEFAULT 0,
+            giftCardBalance REAL DEFAULT 0,
             splitTenderEnabled INTEGER DEFAULT 0,
             splitTenderType TEXT,
             splitTenderAmount REAL DEFAULT 0,
@@ -785,6 +789,9 @@ function createSqliteReceiptsStore() {
         if (!cols.includes('giftCardAmount')) {
             db.exec('ALTER TABLE receipts ADD COLUMN giftCardAmount REAL DEFAULT 0;');
         }
+        if (!cols.includes('giftCardBalance')) {
+            db.exec('ALTER TABLE receipts ADD COLUMN giftCardBalance REAL DEFAULT 0;');
+        }
         if (!cols.includes('splitTenderEnabled')) {
             db.exec('ALTER TABLE receipts ADD COLUMN splitTenderEnabled INTEGER DEFAULT 0;');
         }
@@ -803,7 +810,7 @@ function createSqliteReceiptsStore() {
     const columns = [
         'id', 'number', 'datetime', 'displayDate', 'cashier', 'payment',
         'subtotal', 'tax', 'total', 'taxRate', 'taxExempt',
-        'taxExemptId', 'taxExemptName', 'giftCardNumber', 'giftCardAmount',
+        'taxExemptId', 'taxExemptName', 'giftCardNumber', 'giftCardAmount', 'giftCardBalance',
         'splitTenderEnabled', 'splitTenderType', 'splitTenderAmount', 'items', 'voided',
         'voidInfo', 'returned', 'returnInfo', 'backdated', 'createdAt', 'updatedAt'
     ];
@@ -1877,6 +1884,7 @@ ipcMain.handle('print:silent', async (_evt, html) => {
                 const s = readSettings();
                 const deviceName = String(s?.printerName || '').trim();
                 const opts = { silent: true, printBackground: true };
+                if (s?.greyscalePrint) opts.color = false;
                 if (deviceName) opts.deviceName = deviceName;
                 win.webContents.print(opts, (success, failureReason) => {
                     try { win.destroy(); } catch (_) { }
@@ -1900,12 +1908,14 @@ ipcMain.handle('print:silent', async (_evt, html) => {
 // Save only silent printing toggle
 ipcMain.handle('settings:saveSilent', (_evt, incoming) => {
     const current = readSettings();
+    const hasGreyscale = Object.prototype.hasOwnProperty.call(incoming || {}, 'greyscalePrint');
     const safe = {
         taxRate: Number(current?.taxRate ?? 0.0725),
         developerMode: !!current?.developerMode,
         backupDir: String(current?.backupDir || ''),
         silentPrint: !!incoming?.silentPrint,
-        printerName: String((incoming?.printerName ?? current?.printerName) || '')
+        printerName: String((incoming?.printerName ?? current?.printerName) || ''),
+        greyscalePrint: hasGreyscale ? !!incoming?.greyscalePrint : !!current?.greyscalePrint
     };
     const saved = saveSettings(safe);
     try {
