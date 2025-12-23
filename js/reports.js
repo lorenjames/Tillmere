@@ -6,6 +6,20 @@ if (!ipcRenderer) {
 console.log('[reports] script loaded');
 window.addEventListener('error', e => console.error('[reports] error:', e.message));
 
+function wireCloseAppLink() {
+    if (!ipcRenderer) return;
+    const closeAppLink = document.getElementById('closeAppLink');
+    if (!closeAppLink) return;
+    closeAppLink.addEventListener('click', () => {
+        try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wireCloseAppLink);
+} else {
+    wireCloseAppLink();
+}
+
 const money = n => Number(n || 0).toFixed(2);
 const esc = s => String(s || '')
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;')

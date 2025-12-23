@@ -3,6 +3,20 @@
 let ipcRenderer = null;
 try { ({ ipcRenderer } = require('electron')); } catch (_) { ipcRenderer = null; }
 
+function wireCloseAppLink() {
+  if (!ipcRenderer) return;
+  const closeAppLink = document.getElementById('closeAppLink');
+  if (!closeAppLink) return;
+  closeAppLink.addEventListener('click', () => {
+    try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', wireCloseAppLink);
+} else {
+  wireCloseAppLink();
+}
+
 const DRAWER_DENOMS = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
 let __drawerState = null;
 let __managerMode = false;

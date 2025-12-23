@@ -1,6 +1,19 @@
 // receipts.js
 const { ipcRenderer } = require('electron');
 
+function wireCloseAppLink() {
+  const closeAppLink = document.getElementById('closeAppLink');
+  if (!closeAppLink) return;
+  closeAppLink.addEventListener('click', () => {
+    try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', wireCloseAppLink);
+} else {
+  wireCloseAppLink();
+}
+
 let all = [];
 let filtered = [];
 let currentPage = 1;

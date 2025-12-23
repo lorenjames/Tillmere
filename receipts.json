@@ -33,7 +33,7 @@
       "reason": "Broken",
       "user": "system",
       "userObj": null,
-      "when": "2025-12-23T15:24:51.879Z",
+      "when": "2025-12-23T17:56:39.037Z",
       "items": [
         {
           "name": "Chair",
@@ -2731,6 +2731,36 @@
       "user": "me",
       "userObj": null,
       "when": "2025-12-23T15:24:51.850Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1766512599005-311",
+    "id": "MID-1766512599005-311",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2025-12-23T17:56:39.011Z"
     },
     "total": 20
   },

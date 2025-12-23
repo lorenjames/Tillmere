@@ -2316,6 +2316,11 @@ ipcMain.handle('app:getVersion', () => {
     try { return app.getVersion(); } catch (_) { return ''; }
 });
 
+// Allow renderers to request an app quit from configuration dropdowns.
+ipcMain.handle('app:quit', () => {
+    try { app.quit(); return true; } catch (_) { return false; }
+});
+
 // Focus the main window on request (helps recover after hidden windows/dialogs)
 ipcMain.handle('app:focus', () => {
     try { if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.focus(); return true; } } catch (_) { }

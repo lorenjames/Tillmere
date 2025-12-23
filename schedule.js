@@ -1,6 +1,19 @@
 const { ipcRenderer } = require('electron');
 const { generateMonthGrid, resolveDayInfo } = require('./calendar-utils');
 
+function wireCloseAppLink() {
+  const closeAppLink = document.getElementById('closeAppLink');
+  if (!closeAppLink) return;
+  closeAppLink.addEventListener('click', () => {
+    try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', wireCloseAppLink);
+} else {
+  wireCloseAppLink();
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FALLBACK_STORE_HOURS = { start: '10:00', end: '18:00' };
 const FALLBACK_BASE_SHIFTS = [

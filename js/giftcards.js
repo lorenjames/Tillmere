@@ -1,6 +1,19 @@
 // giftcards.js
 const { ipcRenderer } = require('electron');
 
+function wireCloseAppLink() {
+  const closeAppLink = document.getElementById('closeAppLink');
+  if (!closeAppLink) return;
+  closeAppLink.addEventListener('click', () => {
+    try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', wireCloseAppLink);
+} else {
+  wireCloseAppLink();
+}
+
 const DISPLAY_LIMIT = 200;
 let cache = { books: [], cards: [], transactions: [] };
 let GIFT_CARD_SURCHARGE_RATE = 0.03;

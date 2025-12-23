@@ -418,3 +418,10 @@
 2025-12-23T15:24:51.856Z [sale:update] cashier="unknown" receiptId="MID-1766503491845-685" timestamp="2025-12-23T15:24:51.855Z" changes="id,total"
 2025-12-23T15:24:51.878Z [sale] cashier="unknown" receiptId="R-1" timestamp="2025-01-02T00:00:00Z"
 2025-12-23T15:24:51.880Z [sale:return] cashier="system" receiptId="R-1" timestamp="2025-12-23T15:24:51.879Z" reason="Broken"
+2025-12-23T17:56:39.008Z [sale] cashier="unknown" receiptId="MID-1766512599005-311" timestamp="2025-01-01T00:00:00Z"
+2025-12-23T17:56:39.012Z [sale:void] cashier="me" receiptId="MID-1766512599005-311" timestamp="2025-12-23T17:56:39.011Z" reason="Test"
+2025-12-23T17:56:39.017Z [sale:update] cashier="unknown" receiptId="MID-1766512599005-311" timestamp="2025-12-23T17:56:39.016Z" changes="id,total"
+2025-12-23T17:56:39.036Z [sale] cashier="unknown" receiptId="R-1" timestamp="2025-01-02T00:00:00Z"
+2025-12-23T17:56:39.038Z [sale:return] cashier="system" receiptId="R-1" timestamp="2025-12-23T17:56:39.037Z" reason="Broken"
+2025-12-23T17:56:39.041Z [developer:mode] action="enable" success=false error="Invalid developer password"
+2025-12-23T17:56:39.135Z [developer:mode] action="enable" success=true expiresAt=1766513799132

@@ -1,6 +1,19 @@
 // renderer.js
 const { ipcRenderer } = require('electron');
 
+function wireCloseAppLink() {
+  const closeAppLink = document.getElementById('closeAppLink');
+  if (!closeAppLink) return;
+  closeAppLink.addEventListener('click', () => {
+    try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', wireCloseAppLink);
+} else {
+  wireCloseAppLink();
+}
+
 // ---------- Globals ----------
 let TAX_RATE = 0.0725;
 let GIFT_CARD_SURCHARGE_RATE = 0.03;
@@ -2347,7 +2360,7 @@ async function printReceipt() {
        .bgmark{
           position: fixed;
           top: 50%; left: 50%; transform: translate(-50%, -50%);
-          width: 60%; height: auto; opacity: .08; pointer-events: none;
+          width: 60%; height: auto; opacity: .12; pointer-events: none;
         }
       .header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
       .brand-wrap{display:flex;gap:12px;align-items:center}
@@ -2375,7 +2388,7 @@ async function printReceipt() {
         .bgmark{
           position: fixed;
           top: 50%; left: 50%; transform: translate(-50%, -50%);
-          width: 60%; height: auto; opacity: .08; pointer-events: none;
+          width: 60%; height: auto; opacity: .12; pointer-events: none;
         }
       }
       ${__greyscalePrint ? '@media print { html{ filter: grayscale(100%); } }' : ''}

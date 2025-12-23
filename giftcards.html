@@ -47,7 +47,7 @@
                 <a class="nav-link" href="reports.html">Reports</a>
                 <div class="nav-item dropdown me-2">
                     <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown"
-                        aria-expanded="false">Configuration</a>
+                        aria-expanded="false" aria-label="Configuration" title="Configuration"><span class="config-hamburger" aria-hidden="true">&#9776;</span></a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
                         <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
@@ -55,6 +55,8 @@
                         <li><a class="dropdown-item" href="giftcards.html">Gift Cards</a></li>
                         <li><a class="dropdown-item" href="opening.html" data-allow-nav="true">Opening / Closing</a></li>
                         <li><a class="dropdown-item" href="settings.html">Settings</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button class="dropdown-item text-danger" type="button" id="closeAppLink">Close App</button></li>
                     </ul>
                 </div>
             </div>
@@ -273,3 +275,4 @@
 </body>
 
 </html>
+
