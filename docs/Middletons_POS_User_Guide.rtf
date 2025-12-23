@@ -1,98 +1,112 @@
 {\rtf1\ansi\deff0{\fonttbl{\f0 Arial;}}
 \fs24
-\b Middletons POS — Simple User Guide\b0\par
+\b Middletons POS - Comprehensive User Guide\b0\par
 \par
-This guide is written for beginners and seniors. Each step tells you exactly what to click and what to type. If something doesn’t work, don’t worry — read the tips at the end or ask a helper.\par
+This guide covers all features in the system. Use it as a reference for daily operations, manager tasks, and developer tools.\par
 \par
-\b Getting Started\b0\par
+\b Navigation and Basics\b0\par
 {\pard\li360
-\bullet\tab Open the app. A small splash screen shows first; the main window opens automatically.\par
-\bullet\tab Along the top are buttons to move around: POS, Receipts, Reports, and Configuration.\par
+\bullet\tab Top navigation: POS, Receipts, Reports, and the hamburger menu (Configuration).\par
+\bullet\tab Configuration menu: Manage Vendors, Manage Cashiers, Schedule, Gift Cards, Opening / Closing, Settings, and Close App.\par
+\bullet\tab The app warns before leaving POS if a cart has items to prevent accidental loss.\par
 \pard}
 \par
-\b Make a Sale (POS)\b0\par
+\b POS (Sales)\b0\par
 {\pard\li360
-\bullet\tab Pick Cashier: click “Cashier” and choose your name.\par
-\bullet\tab Pick Payment: click “Payment” and choose Cash, Card, Check, or Gift Card.\par
-\bullet\tab Add an Item:\par
-{\pard\li720
-\bullet\tab Item: type what it is (for example “Lamp”).\par
-\bullet\tab Price: type the selling price (for example 25 or 25.00).\par
-\bullet\tab Vendor: type the vendor’s name or code. Suggestions appear as you type. Press Tab or Enter to accept.\par
-\bullet\tab Discount (only if needed): change “Discount” from “No discount” to “Percent” or “Amount,” then type the value (e.g., 10% or $5.00). You can add a reason (optional).\par
-\bullet\tab Click “Add Item.”\par
-\pard}
-\bullet\tab Fix a Mistake: next to any item, click “Edit” (to change it) or “Remove” (to delete it).\par
-\bullet\tab Totals: Subtotal, Tax, and Total update automatically. Tax rate shows next to the “Tax” line.\par
-\bullet\tab Cash Change: if paying by Cash, a “Cash Received” box appears. Type how much the customer gives you; “Change Due” shows the correct change.\par
-\bullet\tab Print & Save: click “Print & Save.” You’ll hear a cash register “ka‑ching.” If Cash, a large message shows the “Change Due.” Click “OK.” Then the receipt print window opens — use your normal print button. After printing, the cart clears for the next sale.\par
+\bullet\tab Start a sale: choose Cashier and Payment at the top.\par
+\bullet\tab Optional toggles: Back-date sale (choose Sale Date), No Tax (Tax Exempt) opens a modal to enter purchaser/organization and tax ID, Split tender allows two payment types.\par
+\bullet\tab Add an item: enter Item name, Price, Qty (use the picker or type), Vendor name or code (auto-suggest), optional Discount (percent or amount) and Reason, and optional Comment. Click Add Item.\par
+\bullet\tab Edit or remove items from the Cart list.\par
+\bullet\tab Totals: Subtotal, Tax, Card fee on gift card sales, and Total update automatically.\par
+\bullet\tab Cash payments: enter Cash Received to see Change Due.\par
+\bullet\tab Gift card payments: enter card number and redeem amount; balance appears.\par
+\bullet\tab Split tender: choose second tender and amount.\par
+\bullet\tab Sell Gift Card: use the Sell Gift Card button to add a gift card sale item. If cards are not loaded, open Gift Cards to add a book.\par
+\bullet\tab New Sale opens another sale tab; Cancel Sale clears the active sale.\par
+\bullet\tab Print & Save: records the sale, plays the register sound, and opens the receipt for printing (or prints silently if enabled). The cart clears after printing.\par
+\bullet\tab Gift card reminder: if the sale includes gift cards, a reminder prompts you to activate them on the Gift Cards page.\par
 \pard}
 \par
 \b Receipts\b0\par
 {\pard\li360
-\bullet\tab Go to “Receipts” to search past sales.\par
-\bullet\tab Filter: Use the search box (receipt #, item, vendor, cashier, or payment). Set From/To dates. Choose Cashier/Payment or leave “All.” Click “Apply.” Use “Clear Filters” to reset.\par
-\bullet\tab View/Print: In “Actions,” click “View” to open a receipt or “Print” to print it again.\par
-\bullet\tab Void a Receipt (use with care): Click “Void,” choose your name, type a reason (e.g., “duplicate sale”), and confirm. Voided receipts remain listed with a note.\par
+\bullet\tab Search and filter by receipt number, item, vendor, cashier, payment, date range, and void status.\par
+\bullet\tab Vendor subtotals update to match the active filter.\par
+\bullet\tab Actions: View opens a receipt, Print prints again.\par
+\bullet\tab Void a receipt: choose cashier, enter a reason, and confirm. Voided receipts remain visible and are marked.\par
+\bullet\tab Record returns: search a receipt, choose full return or selected items, add a reason, and update. Returns are marked on receipts.\par
 \pard}
 \par
 \b Reports\b0\par
 {\pard\li360
-\bullet\tab Go to “Reports” to see Sales per Vendor and a Credit Card Fee summary.\par
-\bullet\tab Dates: Pick “From” and “To,” then click “Run Report.” Shortcuts: “Today” and “Current Month.”\par
-\bullet\tab Results: Table shows totals per vendor (cash, card, check, gift card, other), gross total, and item count. The fee section shows 5% of gross card sales per vendor (reference only).\par
-\bullet\tab Print: Click “Print” for the summary or “Print Detailed” for per‑vendor details.\par
-\bullet\tab Export: Click “Export CSV” to download a spreadsheet of what you see.\par
-\bullet\tab Back Up Data (Manual): Click “Backup Data.” Choose a folder and filename (for example, Documents\\Middletons\\Backups). It saves a single .json file with everything.\par
-\bullet\tab Restore from Backup (careful): Click “Restore Data,” pick a previous backup file, and confirm. This replaces your current data with the backup.\par
+\bullet\tab Sales per Vendor: filter by date and vendor, run report, export CSV, or print summary/detailed reports.\par
+\bullet\tab Credit card fee summary shows 5 percent of gross card sales per vendor.\par
+\bullet\tab Tax Exempt Sales report is available in Manager Mode and includes purchaser info, receipt, totals, and cashier.\par
+\bullet\tab Developer Mode shows Backup Data and Restore Data for full data backups.\par
 \pard}
 \par
-\b Automatic Backups\b0\par
+\b Gift Cards\b0\par
 {\pard\li360
-\bullet\tab When you close the app, it automatically writes “middletons-backup-latest.json” into the app data backup folder (for example, %APPDATA%\\Middletons\\backups).\par
-\bullet\tab Automatic backups stay in that app data folder so you can keep manual exports elsewhere; ask a helper if you need the path.\par
-\bullet\tab Tip: Do a manual backup once to set your preferred folder.\par
+\bullet\tab Book Intake: add a book using prefix, pad length, and start/end numbers to create cards.\par
+\bullet\tab Activate cards from the Available list with amount, cashier, receipt (optional), and note.\par
+\bullet\tab Lookup Balance: enter a card number to see balance and history.\par
+\bullet\tab Inventory Summary: view available, active, and redeemed counts plus book summary.\par
+\bullet\tab Lists: Available, Active (with balance), and Redeemed (receipt/date/amount/remaining).\par
+\pard}
+\par
+\b Opening / Closing (Cash Drawer)\b0\par
+{\pard\li360
+\bullet\tab Opening: enter counts for each denomination and submit. Add a note if prompted for changes.\par
+\bullet\tab Closing: enter closing counts, see the deposit amount, and submit the closing.\par
+\bullet\tab Verify Deposit: confirm deposit total and enter a deposit number.\par
+\bullet\tab Submit Daily Totals: review closing totals, deposit amount, and notes, then verify and submit.\par
+\bullet\tab Print Deposit Report: enabled after closing data exists.\par
+\bullet\tab Manager Mode unlocks drawer history and target comparisons.\par
+\pard}
+\par
+\b Schedule\b0\par
+{\pard\li360
+\bullet\tab Week View shows daily shifts and assignments; use Prev/Next Week to navigate.\par
+\bullet\tab Monthly Coverage provides a calendar view and print option.\par
+\bullet\tab Configure Hours: set base shifts, store hours, and special hours for holidays or exceptions.\par
 \pard}
 \par
 \b Vendors\b0\par
 {\pard\li360
-\bullet\tab Go to Configuration → Manage Vendors.\par
-\bullet\tab Add a vendor name and an optional short code (like “JSM”). Codes help fast entry on the POS page and show on receipts.\par
-\bullet\tab You can edit or delete vendors later.\par
+\bullet\tab Add vendor name and optional code. Codes speed POS entry and print on receipts.\par
+\bullet\tab Edit or delete vendors as needed.\par
 \pard}
 \par
 \b Cashiers\b0\par
 {\pard\li360
-\bullet\tab Go to Configuration → Manage Cashiers.\par
-\bullet\tab Add each cashier’s name so you can select it on the POS screen.\par
-\bullet\tab You can edit or remove names later.\par
+\bullet\tab Add cashier names for POS selection and schedule assignment.\par
+\bullet\tab Edit or remove names as needed.\par
 \pard}
 \par
 \b Settings\b0\par
 {\pard\li360
-\bullet\tab Go to Configuration → Settings.\par
-\bullet\tab Tax Rate: type a decimal (for example 0.0725 for 7.25%) and save. The POS updates tax automatically.\par
-\bullet\tab Developer Mode: ignore this unless a helper asks you to turn it on (it exposes a technical “Reindex IDs” tool on the Receipts page).\par
+\bullet\tab Manager Mode unlocks sales tax, gift card surcharge, denomination targets, discount reasons, and vendor promotions.\par
+\bullet\tab Sales Tax: set the percent rate used at POS.\par
+\bullet\tab Gift Card Surcharge: applied to gift card sales paid by card.\par
+\bullet\tab Denomination Targets: set expected drawer counts and target total.\par
+\bullet\tab Discount Reasons: manage the POS discount reason list.\par
+\bullet\tab Vendor Promotions: set vendor discounts with dates.\par
+\bullet\tab Developer Mode toggles developer-only tools on other pages.\par
+\bullet\tab Passwords: change manager/developer passwords.\par
+\bullet\tab Printing: enable silent print, choose printer, and force greyscale receipts.\par
+\bullet\tab Branding: set business name, address, phone, and receipt/report logo.\par
+\bullet\tab App Version is shown at the bottom.\par
 \pard}
 \par
-\b Everyday Tips\b0\par
+\b Closing the App\b0\par
 {\pard\li360
-\bullet\tab If you try to leave the POS page with items in the cart, the app asks you to confirm so you don’t lose a sale by accident.\par
-\bullet\tab If the app asks you to select a cashier or payment, pick them at the top of the POS page and try again.\par
-\bullet\tab For vendor entry on POS: type the code or name; suggestions appear; press Tab or Enter to fill in the best match.\par
-\bullet\tab Keep prices simple: you can type “25” instead of “25.00” — the app formats it.\par
+\bullet\tab Use Configuration > Close App to exit safely. The app performs automatic backup on close.\par
 \pard}
 \par
-\b Good Habits\b0\par
+\b Troubleshooting and Tips\b0\par
 {\pard\li360
-\bullet\tab Make a manual backup to an easy-to-find folder (like Documents\\Middletons\\Backups); manual copies stay there while automatic backups remain in %APPDATA%\\Middletons\\backups.\par
-\bullet\tab Print test: once per day, try printing a test page to ensure the printer is ready.\par
-\bullet\tab If something looks wrong, don’t panic: you can void a receipt and re‑ring the sale.\par
-\pard}
-\par
-\b Need Help?\b0\par
-{\pard\li360
-\bullet\tab Ask your support person to help you find your backup folder, printer settings, or to recover from a backup.\par
-\bullet\tab If you see a confusing message, write it down (or take a picture) and share it with your helper.\par
+\bullet\tab If printing fails, check printer selection in Settings and retry Print & Save.\par
+\bullet\tab For tax exempt sales, ensure purchaser name and tax ID are entered when No Tax is selected.\par
+\bullet\tab Use manual backups regularly if you need copies outside the automatic backup folder.\par
+\bullet\tab If data looks wrong, stop and consult a manager before restoring a backup.\par
 \pard}
 }

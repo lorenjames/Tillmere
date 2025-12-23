@@ -9,6 +9,7 @@ let mainWindow;
 let splashWindow;
 let calendarWindow;
 let customerWindow;
+let userGuideWindow;
 let latestCartState = null;
 
 const userDir = app.getPath('userData');
@@ -36,6 +37,7 @@ const DRAWER_DENOMS = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
 const MODE_TIMEOUT_MS = 20 * 60 * 1000;
 const RECEIPTS_DB_FILE = path.join(userDir, 'receipts.sqlite3');
 const SCHEDULE_FILE = path.join(userDir, 'schedule.json');
+const USER_GUIDE_FILE = path.join(__dirname, 'docs', 'Middletons_POS_User_Guide.html');
 const DEFAULT_STORE_HOURS = { start: '10:00', end: '18:00' };
 const DEFAULT_BASE_SHIFTS = [
     { name: 'Morning Shift', start: '10:00', end: '14:00' },
@@ -2319,6 +2321,32 @@ ipcMain.handle('app:getVersion', () => {
 // Allow renderers to request an app quit from configuration dropdowns.
 ipcMain.handle('app:quit', () => {
     try { app.quit(); return true; } catch (_) { return false; }
+});
+
+// Open the user guide from the Configuration menu.
+ipcMain.handle('app:openUserGuide', () => {
+    try {
+        if (userGuideWindow && !userGuideWindow.isDestroyed()) {
+            userGuideWindow.focus();
+            return true;
+        }
+        userGuideWindow = new BrowserWindow({
+            width: 1000,
+            height: 720,
+            minWidth: 820,
+            minHeight: 600,
+            backgroundColor: '#f5f2eb',
+            title: "Middleton's User Guide",
+            webPreferences: {
+                contextIsolation: true,
+                nodeIntegration: false
+            }
+        });
+        userGuideWindow.setMenuBarVisibility(false);
+        userGuideWindow.loadFile(USER_GUIDE_FILE);
+        userGuideWindow.on('closed', () => { userGuideWindow = null; });
+        return true;
+    } catch (_) { return false; }
 });
 
 // Focus the main window on request (helps recover after hidden windows/dialogs)

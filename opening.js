@@ -6,10 +6,18 @@ try { ({ ipcRenderer } = require('electron')); } catch (_) { ipcRenderer = null;
 function wireCloseAppLink() {
   if (!ipcRenderer) return;
   const closeAppLink = document.getElementById('closeAppLink');
-  if (!closeAppLink) return;
-  closeAppLink.addEventListener('click', () => {
-    try { ipcRenderer.invoke('app:quit'); } catch (_) { }
-  });
+  if (closeAppLink) {
+    closeAppLink.addEventListener('click', () => {
+      try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+    });
+  }
+  const userGuideLink = document.getElementById('userGuideLink');
+  if (userGuideLink) {
+    userGuideLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+    });
+  }
 }
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', wireCloseAppLink);
