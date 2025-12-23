@@ -3,6 +3,7 @@ const { ipcRenderer } = require('electron');
 
 // ---------- Globals ----------
 let TAX_RATE = 0.0725;
+let GIFT_CARD_SURCHARGE_RATE = 0.03;
 let __taxExempt = false;
 let __taxExemptInfo = { id: '', name: '' };
 let __noTaxModal = null;
@@ -17,12 +18,12 @@ let __cashAudio = null;
 let __allowNavigation = false;
 let __lastTotal = 0;
 let __lastCustomerCartState = null;
-  let __giftCardBalance = null;
-  let __giftCardReminderModal = null;
-  let __giftCardSaleModal = null;
-  let __pendingGiftCardReminder = null;
-  let __suppressRefocusUntil = 0;
-  let __qtyPickerOpen = false;
+let __giftCardBalance = null;
+let __giftCardReminderModal = null;
+let __giftCardSaleModal = null;
+let __pendingGiftCardReminder = null;
+let __suppressRefocusUntil = 0;
+let __qtyPickerOpen = false;
 const GIFT_CARD_ITEM_NAME = 'Gift Card Sale';
 const GIFT_CARD_VENDOR_CODE = 'STORE-GC';
 const GIFT_CARD_VENDOR_NAME = 'Store Gift Cards';
@@ -635,6 +636,23 @@ async function fetchGiftCardsData() {
   } catch (_) { }
   return { books: [], cards: [], transactions: [] };
 }
+function isGiftCardSaleItem(item) {
+  const name = String(item?.name || '').toLowerCase();
+  return name.includes('gift card') || name.includes('giftcard');
+}
+function getGiftCardSaleTotal(list) {
+  return (Array.isArray(list) ? list : []).reduce((sum, it) => {
+    if (!isGiftCardSaleItem(it)) return sum;
+    const qty = Math.max(1, parseInt(it.quantity || 1, 10));
+    const unit = toMoneyNumber(it.price || 0);
+    return sum + toMoneyNumber(unit * qty);
+  }, 0);
+}
+function isCardTenderSelected(payment, splitEnabled, splitType) {
+  const main = String(payment || '');
+  const split = String(splitType || '');
+  return main === 'Card' || (splitEnabled && split === 'Card');
+}
 function clearFieldError(el) {
   try { el?.classList?.remove('is-invalid'); } catch (_) { }
 }
@@ -778,6 +796,10 @@ function formatPercent(value) {
   const str = isWhole ? String(Math.round(pct)) : pct.toFixed(2).replace(/\.?0+$/, '');
   return `${str}%`;
 }
+function formatRatePct(rate) {
+  const pct = Math.max(0, Number(rate || 0) * 100);
+  return pct.toFixed(2).replace(/\.?0+$/, '');
+}
 function formatDiscountLabel(type, value, amount) {
   if (type === 'percent') {
     const pct = formatPercent(value);
@@ -857,6 +879,11 @@ function updateTaxRateLabel() {
   const effRate = __taxExempt ? 0 : Number(TAX_RATE);
   if (el) el.textContent = (effRate * 100).toFixed(2);
   try { if (note) note.classList.toggle('d-none', !__taxExempt); } catch (_) { }
+}
+function updateGiftCardFeeLabel() {
+  const el = document.getElementById('giftCardFeeLabel');
+  if (!el) return;
+  el.textContent = `Card Fee (${formatRatePct(GIFT_CARD_SURCHARGE_RATE)}% on gift card sales)`;
 }
 function selectHasRealOptions(selectEl) {
   try {
@@ -1751,6 +1778,7 @@ function renderTable() {
   const tbody = document.querySelector('#itemTable tbody');
   tbody.innerHTML = '';
   let subtotal = 0;
+  let giftCardSubtotal = 0;
   const customerItems = [];
   items.forEach((it, i) => {
     const qty = Math.max(1, parseInt(it.quantity || 1, 10));
@@ -1762,6 +1790,7 @@ function renderTable() {
     const discountSuffix = hasDiscount ? buildDiscountSuffix(it.discountType, it.discountValue, discountAmount, reason, escapeHtml) : '';
     const lineTotal = toMoneyNumber(finalPrice * qty);
     subtotal += lineTotal;
+    if (isGiftCardSaleItem(it)) giftCardSubtotal += lineTotal;
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${escapeHtml(it.name)}${it.comment ? `<div class="text-muted small">${escapeHtml(it.comment)}</div>` : ''}</td>
@@ -1796,21 +1825,25 @@ function renderTable() {
       comment: String(it.comment || '')
     });
   });
-  const tax = __taxExempt ? 0 : toMoneyNumber(subtotal * TAX_RATE);
-  const total = toMoneyNumber(subtotal + tax);
-  const cashReceivedRaw = document.getElementById('cashReceived')?.value || '';
-  const cashReceivedAmount = toMoneyNumber(cashReceivedRaw);
-  const splitAmount = isSplitTenderEnabled() && isCashPaymentSelected()
-    ? toMoneyNumber(document.getElementById('splitTenderAmount')?.value || 0)
+  const paymentSelect = document.getElementById('paymentSelect');
+  const paymentValue = String(paymentSelect?.value || (__carts.get(__activeCartId) || {}).payment || '');
+  const splitEnabled = isSplitTenderEnabled();
+  const splitTenderType = document.getElementById('splitTenderType')?.value || '';
+  const taxableSubtotal = Math.max(0, subtotal - giftCardSubtotal);
+  const tax = __taxExempt ? 0 : toMoneyNumber(taxableSubtotal * TAX_RATE);
+  const cardFee = isCardTenderSelected(paymentValue, splitEnabled, splitTenderType)
+    ? toMoneyNumber(giftCardSubtotal * GIFT_CARD_SURCHARGE_RATE)
     : 0;
-  const cashDue = Math.max(0, total - splitAmount);
-  const changeDue = Math.max(0, cashReceivedAmount - cashDue);
+  const total = toMoneyNumber(subtotal + tax + cardFee);
+  const cashReceivedRaw = getCashReceivedRaw();
+  const cashReceivedAmount = toMoneyNumber(cashReceivedRaw);
+  const cashDue = getCashDue(total);
+  const changeDue = isCashTenderSelected()
+    ? Math.max(0, cashReceivedAmount - cashDue)
+    : 0;
   const cartMeta = __carts.get(__activeCartId) || {};
   const cashierSelect = document.getElementById('cashierSelect');
-  const paymentSelect = document.getElementById('paymentSelect');
   const cashierValue = String(cashierSelect?.value || cartMeta.cashier || '');
-  const paymentValue = String(paymentSelect?.value || cartMeta.payment || '');
-  const splitTenderType = document.getElementById('splitTenderType')?.value || '';
   const splitTenderAmount = document.getElementById('splitTenderAmount')?.value || '';
   const payload = {
     cartId: String(__activeCartId || ''),
@@ -1824,6 +1857,7 @@ function renderTable() {
     subtotal,
     tax,
     total,
+    cardFee,
     cashReceived: cashReceivedRaw,
     changeDue
   };
@@ -1831,6 +1865,11 @@ function renderTable() {
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('subtotal', money(subtotal));
   set('tax', money(tax));
+  set('cardFeeAmount', money(cardFee));
+  try {
+    const feeRow = document.getElementById('cardFeeRow');
+    if (feeRow) feeRow.classList.toggle('d-none', !(cardFee > 0));
+  } catch (_) { }
   set('total', money(total));
   __lastTotal = toMoneyNumber(total);
   try { updateCashChange(); } catch (_) { }
@@ -1857,14 +1896,13 @@ function sendCustomerCartState(payload) {
 
 function refreshCustomerCartStateFromCashFields() {
   if (!__lastCustomerCartState) return;
-  const cashReceivedRaw = document.getElementById('cashReceived')?.value || '';
+  const cashReceivedRaw = getCashReceivedRaw();
   const cashReceivedAmount = toMoneyNumber(cashReceivedRaw);
   const total = toMoneyNumber(__lastCustomerCartState.total || 0);
-  const splitAmount = isSplitTenderEnabled() && isCashPaymentSelected()
-    ? toMoneyNumber(document.getElementById('splitTenderAmount')?.value || 0)
+  const cashDue = getCashDue(total);
+  const changeDue = isCashTenderSelected()
+    ? Math.max(0, cashReceivedAmount - cashDue)
     : 0;
-  const cashDue = Math.max(0, total - splitAmount);
-  const changeDue = Math.max(0, cashReceivedAmount - cashDue);
   const nextPayload = {
     ...__lastCustomerCartState,
     cashReceived: cashReceivedRaw,
@@ -1956,7 +1994,7 @@ async function printReceipt() {
         markFieldError(splitAmountEl);
         return;
       }
-      if (splitAmount > totalDue + 0.009) {
+      if (splitType !== 'Cash' && splitAmount > totalDue + 0.009) {
         showToast('Split amount cannot exceed the total due.', { type: 'error' });
         try { splitAmountEl?.focus(); } catch (_) { }
         markFieldError(splitAmountEl);
@@ -1964,21 +2002,26 @@ async function printReceipt() {
       }
     }
   }
+  const cashTendered = (payment || '') === 'Cash' || (splitEnabled && splitType === 'Cash');
   // If Cash is selected, require a cash tendered amount
-  if ((payment || '') === 'Cash' && !isBackdated) {
-    const raw = String(cashEl?.value ?? '').trim();
+  if (cashTendered && !isBackdated) {
+    const raw = splitEnabled && splitType === 'Cash'
+      ? String(splitAmountEl?.value ?? '').trim()
+      : String(cashEl?.value ?? '').trim();
     if (!raw) {
       showToast('Enter the cash received from the customer.', { type: 'error' });
-      try { cashEl?.focus(); } catch (_) { }
-      markFieldError(cashEl);
+      try { (splitEnabled && splitType === 'Cash' ? splitAmountEl : cashEl)?.focus(); } catch (_) { }
+      markFieldError(splitEnabled && splitType === 'Cash' ? splitAmountEl : cashEl);
       return;
     }
     const cashNum = toMoneyNumber(raw);
     if (isNaN(cashNum) || cashNum < 0) {
       showToast('Enter a valid non-negative cash amount.', { type: 'error' });
-      try { cashEl?.focus(); } catch (_) { }
-      markFieldError(cashEl, () => {
-        const rawVal = String(cashEl?.value ?? '').trim();
+      try { (splitEnabled && splitType === 'Cash' ? splitAmountEl : cashEl)?.focus(); } catch (_) { }
+      markFieldError(splitEnabled && splitType === 'Cash' ? splitAmountEl : cashEl, () => {
+        const rawVal = splitEnabled && splitType === 'Cash'
+          ? String(splitAmountEl?.value ?? '').trim()
+          : String(cashEl?.value ?? '').trim();
         const parsed = toMoneyNumber(rawVal);
         return rawVal !== '' && !isNaN(parsed) && parsed >= 0;
       });
@@ -1991,6 +2034,16 @@ async function printReceipt() {
     giftCardNumber = String(giftNumberEl?.value || '').trim();
     const rawAmount = String(giftAmountEl?.value || '').trim();
     giftCardAmount = rawAmount ? toMoneyNumber(rawAmount) : totalDue;
+    if (splitEnabled && splitType === 'Cash' && Number.isFinite(__giftCardBalance)) {
+      const fullAmount = Math.min(__giftCardBalance, totalDue);
+      giftCardAmount = fullAmount;
+      try {
+        if (giftAmountEl) {
+          giftAmountEl.value = money(fullAmount);
+          giftAmountEl.dataset.autoValue = 'true';
+        }
+      } catch (_) { }
+    }
     if (!giftCardNumber) {
       showToast('Enter the gift card number.', { type: 'error' });
       try { giftNumberEl?.focus(); } catch (_) { }
@@ -2011,20 +2064,35 @@ async function printReceipt() {
     }
     if (splitEnabled) {
       const remainder = totalDue - giftCardAmount;
-      if (!splitAmountRaw && remainder > 0.009) {
-        showToast('Enter the second tender amount for the remaining balance.', { type: 'error' });
-        try { splitAmountEl?.focus(); } catch (_) { }
-        markFieldError(splitAmountEl);
-        return;
-      }
-      if (splitAmountRaw && Math.abs(giftCardAmount + splitAmount - totalDue) > 0.009) {
-        showToast('Gift card and second tender amounts must equal the total due.', { type: 'error' });
-        try { splitAmountEl?.focus(); } catch (_) { }
-        markFieldError(splitAmountEl);
-        return;
+      if (splitType === 'Cash') {
+        if (!splitAmountRaw && remainder > 0.009) {
+          showToast('Enter the cash received for the remaining balance.', { type: 'error' });
+          try { splitAmountEl?.focus(); } catch (_) { }
+          markFieldError(splitAmountEl);
+          return;
+        }
+        if (splitAmountRaw && splitAmount + 0.009 < remainder) {
+          showToast('Cash received must cover the remaining balance.', { type: 'error' });
+          try { splitAmountEl?.focus(); } catch (_) { }
+          markFieldError(splitAmountEl);
+          return;
+        }
+      } else {
+        if (!splitAmountRaw && remainder > 0.009) {
+          showToast('Enter the second tender amount for the remaining balance.', { type: 'error' });
+          try { splitAmountEl?.focus(); } catch (_) { }
+          markFieldError(splitAmountEl);
+          return;
+        }
+        if (splitAmountRaw && Math.abs(giftCardAmount + splitAmount - totalDue) > 0.009) {
+          showToast('Gift card and second tender amounts must equal the total due.', { type: 'error' });
+          try { splitAmountEl?.focus(); } catch (_) { }
+          markFieldError(splitAmountEl);
+          return;
+        }
       }
     } else if (Math.abs(giftCardAmount - totalDue) > 0.009) {
-      showToast('Gift card amount must match the total due.', { type: 'error' });
+      showToast('Gift card amount not enough to cover total, add a second tender to complete sale.', { type: 'error' });
       try { giftAmountEl?.focus(); } catch (_) { }
       markFieldError(giftAmountEl);
       return;
@@ -2109,7 +2177,7 @@ async function printReceipt() {
     } catch (_) { /* tolerate missing print container in tests */ }
   }
   if (rowsEl) rowsEl.innerHTML = '';
-  let subtotal = 0; const vendorTotals = {};
+  let subtotal = 0; let giftCardSubtotal = 0; const vendorTotals = {};
   items.forEach(it => {
     const qty = Math.max(1, parseInt(it.quantity || 1, 10));
     const finalPrice = toMoneyNumber(it.price || 0); // unit final
@@ -2120,6 +2188,7 @@ async function printReceipt() {
     const discountSuffix = hasDiscount ? buildDiscountSuffix(it.discountType, it.discountValue, discountAmount, reason, escapeHtml) : '';
     const lineTotal = toMoneyNumber(finalPrice * qty);
     subtotal += lineTotal;
+    if (isGiftCardSaleItem(it)) giftCardSubtotal += lineTotal;
     const v = findVendorLoose(vendors, it.vendorName); const code = v?.code || '';
     if (code) vendorTotals[code] = (vendorTotals[code] || 0) + lineTotal;
     const tr = document.createElement('tr');
@@ -2135,7 +2204,12 @@ async function printReceipt() {
       <td class="price">$${money(lineTotal)}</td>`;
     if (rowsEl) rowsEl.appendChild(tr);
   });
-  const tax = __taxExempt ? 0 : toMoneyNumber(subtotal * TAX_RATE); const total = toMoneyNumber(subtotal + tax);
+  const taxableSubtotal = Math.max(0, subtotal - giftCardSubtotal);
+  const cardFee = isCardTenderSelected(payment, splitEnabled, splitType)
+    ? toMoneyNumber(giftCardSubtotal * GIFT_CARD_SURCHARGE_RATE)
+    : 0;
+  const tax = __taxExempt ? 0 : toMoneyNumber(taxableSubtotal * TAX_RATE);
+  const total = toMoneyNumber(subtotal + tax + cardFee);
   document.getElementById('receiptSubtotal').textContent = money(subtotal);
   document.getElementById('receiptTax').textContent = money(tax);
   document.getElementById('receiptTotal').textContent = money(total);
@@ -2159,6 +2233,44 @@ async function printReceipt() {
       return;
     }
   }
+
+  const cashReceived = cashTendered ? getCashReceivedAmount() : 0;
+  const cashDue = cashTendered ? getCashDue(total) : 0;
+  const changeDue = cashTendered ? Math.max(0, cashReceived - cashDue) : 0;
+  try {
+    const giftRow = document.getElementById('receiptGiftCardRow');
+    const giftAmountEl = document.getElementById('receiptGiftCardAmount');
+    if (giftRow) giftRow.classList.toggle('d-none', (payment || '') !== 'Gift Card');
+    if (giftAmountEl) giftAmountEl.textContent = money(giftCardAmount || 0);
+
+    const giftBalRow = document.getElementById('receiptGiftBalanceRow');
+    const giftBalEl = document.getElementById('receiptGiftCardBalance');
+    if (giftBalRow) giftBalRow.classList.toggle('d-none', (payment || '') !== 'Gift Card');
+    if (giftBalEl) giftBalEl.textContent = money(giftCardBalance || 0);
+
+    const splitRow = document.getElementById('receiptSplitTenderRow');
+    const splitLabelEl = document.getElementById('receiptSplitTenderLabel');
+    const splitAmountEl = document.getElementById('receiptSplitTenderAmount');
+    const showSplit = !!splitEnabled && !!splitType && splitType !== 'Cash';
+    if (splitRow) splitRow.classList.toggle('d-none', !showSplit);
+    if (splitLabelEl && splitType) splitLabelEl.textContent = `${splitType} Tender`;
+    if (splitAmountEl) splitAmountEl.textContent = money(splitAmount || 0);
+
+    const cashTenderRow = document.getElementById('receiptCashTenderRow');
+    const cashTenderEl = document.getElementById('receiptCashTenderAmount');
+    if (cashTenderRow) cashTenderRow.classList.toggle('d-none', !cashTendered);
+    if (cashTenderEl) cashTenderEl.textContent = money(cashDue);
+
+    const cashReceivedRow = document.getElementById('receiptCashReceivedRow');
+    const cashReceivedEl = document.getElementById('receiptCashReceivedAmount');
+    if (cashReceivedRow) cashReceivedRow.classList.toggle('d-none', !cashTendered);
+    if (cashReceivedEl) cashReceivedEl.textContent = money(cashReceived);
+
+    const changeRow = document.getElementById('receiptChangeDueRow');
+    const changeEl = document.getElementById('receiptChangeDueAmount');
+    if (changeRow) changeRow.classList.toggle('d-none', !cashTendered);
+    if (changeEl) changeEl.textContent = money(changeDue);
+  } catch (_) { }
 
   // Persist receipt so it appears on the Receipts page
   try {
@@ -2189,39 +2301,39 @@ async function printReceipt() {
         discountReason
       };
     });
-      await ipcRenderer.invoke('receipts:add', {
-        datetime: new Date(saleDate.getTime()).toISOString(),
-        backdated: !!usedBackdate,
-        displayDate: usedBackdate ? (saleDate.toLocaleDateString() + ' - back dated') : saleDate.toLocaleString(),
-        number,
-        cashier,
-        payment,
-        items: savedItems,
-        taxRate: Number(TAX_RATE),
-        subtotal: Number(subtotal),
-        tax: Number(tax),
-        total: Number(total),
-        giftCardNumber: giftCardNumber || '',
-        giftCardAmount: giftCardAmount || 0,
-        giftCardBalance: giftCardBalance || 0,
-        splitTenderEnabled: !!splitEnabled,
-        splitTenderType: splitEnabled ? splitType : '',
-        splitTenderAmount: splitEnabled ? splitAmount : 0,
-        taxExempt: !!__taxExempt,
-        taxExemptId: String(__taxExemptInfo?.id || ''),
-        taxExemptName: String(__taxExemptInfo?.name || '')
+    await ipcRenderer.invoke('receipts:add', {
+      datetime: new Date(saleDate.getTime()).toISOString(),
+      backdated: !!usedBackdate,
+      displayDate: usedBackdate ? (saleDate.toLocaleDateString() + ' - back dated') : saleDate.toLocaleString(),
+      number,
+      cashier,
+      payment,
+      items: savedItems,
+      taxRate: Number(TAX_RATE),
+      subtotal: Number(subtotal),
+      tax: Number(tax),
+      total: Number(total),
+      giftCardNumber: giftCardNumber || '',
+      giftCardAmount: giftCardAmount || 0,
+      giftCardBalance: giftCardBalance || 0,
+      splitTenderEnabled: !!splitEnabled,
+      splitTenderType: splitEnabled ? splitType : '',
+      splitTenderAmount: splitEnabled ? splitAmount : 0,
+      taxExempt: !!__taxExempt,
+      taxExemptId: String(__taxExemptInfo?.id || ''),
+      taxExemptName: String(__taxExemptInfo?.name || '')
+    });
+    if (hasGiftCardSaleItems(savedItems)) {
+      const details = extractGiftCardSaleDetails(savedItems) || {};
+      queueGiftCardActivationReminder({
+        receiptNumber: number,
+        cardNumber: details.cardNumber || '',
+        amount: details.amount || 0
       });
-      if (hasGiftCardSaleItems(savedItems)) {
-        const details = extractGiftCardSaleDetails(savedItems) || {};
-        queueGiftCardActivationReminder({
-          receiptNumber: number,
-          cardNumber: details.cardNumber || '',
-          amount: details.amount || 0
-        });
-      }
-    } catch (e) {
-      console.error('Failed to save receipt:', e);
     }
+  } catch (e) {
+    console.error('Failed to save receipt:', e);
+  }
 
   const style = `
     <style>
@@ -2281,10 +2393,10 @@ async function printReceipt() {
     const discountSuffix = hasDiscount ? buildDiscountSuffix(it.discountType, it.discountValue, discountAmount, reason, escapeHtml) : '';
     const amount = qty * unit;
     return `
-      <tr>
-        <td class="num">${idx + 1}</td>
-        <td>
-          <div class="desc">${escapeHtml(it.name)}</div>
+        <tr>
+          <td class="num">${idx + 1}</td>
+          <td>
+            <div class="desc">${escapeHtml(it.name)}</div>
           ${it.comment ? `<div class="vendor">${escapeHtml(it.comment)}</div>` : ''}
           ${code ? `<div class="vendor">Vendor: ${escapeHtml(code)}</div>` : ''}
           ${hasDiscount ? `<div class="original-line">Original: $${money(originalPrice)}</div>` : ''}
@@ -2292,8 +2404,8 @@ async function printReceipt() {
         </td>
         <td class="num">${qty}</td>
         <td class="num">$${money(unit)}</td>
-        <td class="num">$${money(amount)}</td>
-      </tr>`;
+          <td class="num">$${money(amount)}</td>
+        </tr>`;
   }).join('');
 
   const brandingName = __getBrandingName();
@@ -2306,9 +2418,27 @@ async function printReceipt() {
   const giftNumberLine = (payment || '') === 'Gift Card'
     ? `<div class="label">Gift Card #</div><div class="val">${escapeHtml(giftCardNumber || '-')}</div>`
     : '';
+  const giftTenderLine = (payment || '') === 'Gift Card'
+    ? `<div class="label">Gift Card Tender</div><div class="val">$${money(giftCardAmount || 0)}</div>`
+    : '';
+  const splitTenderLine = splitEnabled && splitType && splitType !== 'Cash'
+    ? `<div class="label">${escapeHtml(splitType)} Tender</div><div class="val">$${money(splitAmount || 0)}</div>`
+    : '';
+  const cashTenderLine = cashTendered
+    ? `<div class="label">Cash Tender</div><div class="val">$${money(cashDue)}</div>`
+    : '';
+  const cashReceivedLine = cashTendered
+    ? `<div class="label">Cash Received</div><div class="val">$${money(cashReceived)}</div>`
+    : '';
+  const changeDueLine = cashTendered
+    ? `<div class="label">Change Due</div><div class="val">$${money(changeDue)}</div>`
+    : '';
+  const cardFeeLine = cardFee > 0
+    ? `<div class="label">Card Fee (${formatRatePct(GIFT_CARD_SURCHARGE_RATE)}%)</div><div class="val">$${money(cardFee)}</div>`
+    : '';
   const html = `
-    <html>
-      <head>
+      <html>
+        <head>
         <meta charset="utf-8" />
         <title>${escapeHtml(number)} - Sales Invoice</title>
         <base href="${document.baseURI}">
@@ -2366,13 +2496,19 @@ async function printReceipt() {
               </thead>
               <tbody>${rowsHtml || `<tr><td colspan="5" class="label">No items</td></tr>`}</tbody>
             </table>
-            <div class="totals">
-              <div class="label">Subtotal</div><div class="val">$${money(subtotal)}</div>
-              <div class="label">${__taxExempt ? 'Tax (Exempt)' : `Tax (${(TAX_RATE * 100).toFixed(2)}%)`}</div><div class="val">$${money(tax)}</div>
-              <div class="label grand">Total</div><div class="val grand">$${money(total)}</div>
-              ${giftNumberLine}
-              ${giftBalanceLine}
-            </div>
+              <div class="totals">
+                <div class="label">Subtotal</div><div class="val">$${money(subtotal)}</div>
+                <div class="label">${__taxExempt ? 'Tax (Exempt)' : `Tax (${(TAX_RATE * 100).toFixed(2)}%)`}</div><div class="val">$${money(tax)}</div>
+                ${cardFeeLine}
+                <div class="label grand">Total</div><div class="val grand">$${money(total)}</div>
+                ${giftTenderLine}
+                ${splitTenderLine}
+                ${cashTenderLine}
+                ${cashReceivedLine}
+                ${changeDueLine}
+                ${giftNumberLine}
+                ${giftBalanceLine}
+              </div>
             ${__taxExempt ? `<div class="thanks">Exempt: ${escapeHtml(__taxExemptInfo?.name || '')} — ID: ${escapeHtml(__taxExemptInfo?.id || '')}</div>` : ''}
 
             <div class="thanks">Thank you for shopping small!</div>
@@ -2414,11 +2550,17 @@ async function printReceipt() {
   // If paying cash, show a dismissible Bootstrap alert with change due,
   // then proceed to print after it is dismissed. Otherwise, proceed immediately.
   try {
-    if ((payment || '') === 'Cash') {
-      const cashEl = document.getElementById('cashReceived');
-      const cash = toMoneyNumber(cashEl?.value || 0);
+    if (cashTendered) {
+      const cash = getCashReceivedAmount();
       const totalRounded = toMoneyNumber(total);
-      const change = Math.max(0, toMoneyNumber(cash - totalRounded));
+      const cashDue = (payment || '') === 'Cash'
+        ? Math.max(0, totalRounded - (splitEnabled ? splitAmount : 0))
+        : (splitEnabled && splitType === 'Cash')
+          ? ((payment || '') === 'Gift Card'
+            ? Math.max(0, totalRounded - giftCardAmount)
+            : Math.max(0, splitAmount))
+          : 0;
+      const change = Math.max(0, toMoneyNumber(cash - cashDue));
       try { refreshCustomerCartStateFromCashFields(); } catch (_) { }
 
       const alertEl = document.createElement('div');
@@ -2509,12 +2651,12 @@ function resetAfterSale() {
       }
     } catch (_) { }
     // Reset receipt preference to default (checked)
-      if (receiptPref) receiptPref.checked = true;
-      updatePrintButtonLabel();
-      try { showGiftCardActivationReminder(); } catch (_) { }
-      // Return focus to the first entry field
-      try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
-    } catch (_) { }
+    if (receiptPref) receiptPref.checked = true;
+    updatePrintButtonLabel();
+    try { showGiftCardActivationReminder(); } catch (_) { }
+    // Return focus to the first entry field
+    try { const first = document.getElementById('itemName'); first?.focus(); } catch (_) { }
+  } catch (_) { }
   // Close the completed sale tab and switch appropriately
   try { __completeSaleAndCloseTab(); } catch (_) { }
 }
@@ -2564,6 +2706,40 @@ function isCashPaymentSelected() {
 function isGiftCardPaymentSelected() {
   try { const sel = document.getElementById('paymentSelect'); return (sel?.value || '') === 'Gift Card'; } catch (_) { return false; }
 }
+function isSplitCashSelected() {
+  try {
+    const splitType = document.getElementById('splitTenderType')?.value || '';
+    return isSplitTenderEnabled() && splitType === 'Cash';
+  } catch (_) { return false; }
+}
+function isCashTenderSelected() {
+  return isCashPaymentSelected() || isSplitCashSelected();
+}
+function getCashDue(total) {
+  const splitAmount = isSplitTenderEnabled()
+    ? toMoneyNumber(document.getElementById('splitTenderAmount')?.value || 0)
+    : 0;
+  if (isCashPaymentSelected()) {
+    return Math.max(0, total - splitAmount);
+  }
+  if (isSplitCashSelected()) {
+    if (isGiftCardPaymentSelected()) {
+      const giftAmount = toMoneyNumber(document.getElementById('giftCardAmount')?.value || 0);
+      return Math.max(0, total - giftAmount);
+    }
+    return Math.max(0, splitAmount);
+  }
+  return 0;
+}
+function getCashReceivedRaw() {
+  if (isSplitCashSelected()) {
+    return String(document.getElementById('splitTenderAmount')?.value || '');
+  }
+  return String(document.getElementById('cashReceived')?.value || '');
+}
+function getCashReceivedAmount() {
+  return toMoneyNumber(getCashReceivedRaw());
+}
 function isSplitTenderEnabled() {
   try { const toggle = document.getElementById('splitTenderToggle'); return !!toggle?.checked; } catch (_) { return false; }
 }
@@ -2608,6 +2784,16 @@ function toggleSplitTenderFields() {
 function updateGiftCardAmountDefault() {
   const amountEl = document.getElementById('giftCardAmount');
   if (!amountEl || !isGiftCardPaymentSelected()) return;
+  const splitType = document.getElementById('splitTenderType')?.value || '';
+  const forceFullBalance = isSplitTenderEnabled() && splitType === 'Cash';
+  if (forceFullBalance && Number.isFinite(__giftCardBalance)) {
+    const totalDue = toMoneyNumber(__lastTotal || 0);
+    const fullAmount = Math.min(__giftCardBalance, totalDue);
+    amountEl.value = money(fullAmount);
+    amountEl.dataset.autoValue = 'true';
+    try { updateSplitTenderAmountDefault(); } catch (_) { }
+    return;
+  }
   const current = String(amountEl.value || '').trim();
   const isAuto = String(amountEl.dataset.autoValue || '') === 'true';
   if (current && !isAuto) return;
@@ -2622,13 +2808,12 @@ function updateCashChange() {
   const cashInput = document.getElementById('cashReceived');
   const changeEl = document.getElementById('changeDue');
   if (!cashInput || !changeEl) return;
-  const cash = toMoneyNumber(cashInput.value || 0);
+  const cash = getCashReceivedAmount();
   const total = toMoneyNumber(__lastTotal || 0);
-  const splitAmount = isSplitTenderEnabled() && isCashPaymentSelected()
-    ? toMoneyNumber(document.getElementById('splitTenderAmount')?.value || 0)
+  const cashDue = getCashDue(total);
+  const change = isCashTenderSelected()
+    ? Math.max(0, toMoneyNumber(cash - cashDue))
     : 0;
-  const cashDue = Math.max(0, total - splitAmount);
-  const change = Math.max(0, toMoneyNumber(cash - cashDue));
   changeEl.textContent = money(change);
   try { refreshCustomerCartStateFromCashFields(); } catch (_) { }
 }
@@ -2914,6 +3099,8 @@ window.addEventListener('load', async () => {
     const s = await ipcRenderer.invoke('settings:load');
     const tr = Number(s?.taxRate);
     if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr;
+    const gcRate = Number(s?.giftCardSurchargeRate);
+    if (!isNaN(gcRate) && gcRate >= 0 && gcRate <= 1) GIFT_CARD_SURCHARGE_RATE = gcRate;
     __silentPrint = !!s?.silentPrint;
     __greyscalePrint = !!s?.greyscalePrint;
     try {
@@ -2949,6 +3136,7 @@ window.addEventListener('load', async () => {
   try { setupPosReturnModal(); } catch (_) { }
   renderTable();
   updateTaxRateLabel();
+  updateGiftCardFeeLabel();
   try { __applyBrandingToDocument(); } catch (_) { }
   installNavigationGuards();
   // Clean up any stray overlays after startup
@@ -2977,15 +3165,15 @@ window.addEventListener('load', async () => {
   } catch (_) { }
   if (addrEl) addrEl.textContent = '1615 S 17th St, Lincoln, NE 68502 · 531-500-0135';
 
-    // New Sale button adds a new tab
-    try {
-      const btn = document.getElementById('newSaleBtn');
-      if (btn) btn.addEventListener('click', () => { try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { } __createNewCartTab(); });
-    } catch (_) { }
-    try {
-      const giftCardConfirmBtn = document.getElementById('giftCardSaleConfirmBtn');
-      if (giftCardConfirmBtn) giftCardConfirmBtn.addEventListener('click', confirmGiftCardSaleItem);
-    } catch (_) { }
+  // New Sale button adds a new tab
+  try {
+    const btn = document.getElementById('newSaleBtn');
+    if (btn) btn.addEventListener('click', () => { try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { } __createNewCartTab(); });
+  } catch (_) { }
+  try {
+    const giftCardConfirmBtn = document.getElementById('giftCardSaleConfirmBtn');
+    if (giftCardConfirmBtn) giftCardConfirmBtn.addEventListener('click', confirmGiftCardSaleItem);
+  } catch (_) { }
   // Cancel Sale: clears and closes current tab
   try {
     const cancelBtn = document.getElementById('cancelSaleBtn');
@@ -3108,6 +3296,7 @@ window.addEventListener('load', async () => {
     if (splitToggle) {
       splitToggle.addEventListener('change', () => {
         toggleSplitTenderFields();
+        toggleCashFields();
         updateCashChange();
         try { renderTable(); } catch (_) { }
       });
@@ -3115,6 +3304,8 @@ window.addEventListener('load', async () => {
     const splitTypeEl = document.getElementById('splitTenderType');
     if (splitTypeEl) {
       splitTypeEl.addEventListener('change', () => {
+        toggleCashFields();
+        updateCashChange();
         try { renderTable(); } catch (_) { }
       });
     }
@@ -3300,6 +3491,12 @@ try {
   ipcRenderer.on('settings:changed', (_evt, payload) => {
     const tr = Number(payload?.taxRate);
     if (!isNaN(tr) && tr >= 0 && tr <= 1) { TAX_RATE = tr; renderTable(); updateTaxRateLabel(); }
+    const gcRate = Number(payload?.giftCardSurchargeRate);
+    if (!isNaN(gcRate) && gcRate >= 0 && gcRate <= 1) {
+      GIFT_CARD_SURCHARGE_RATE = gcRate;
+      renderTable();
+      updateGiftCardFeeLabel();
+    }
     if (typeof payload?.silentPrint === 'boolean') { __silentPrint = !!payload.silentPrint; }
     if (typeof payload?.greyscalePrint === 'boolean') { __greyscalePrint = !!payload.greyscalePrint; }
     try {

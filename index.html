@@ -114,6 +114,7 @@
                             <div class="col-6">
                                 <label for="paymentSelect" class="form-label">Payment</label>
                                 <select id="paymentSelect" class="form-select">
+                                    <option value="" disabled selected>Select...</option>
                                     <option value="Cash">Cash</option>
                                     <option value="Card">Card</option>
                                     <option value="Check">Check</option>
@@ -299,6 +300,10 @@
                             <div class="text-muted">Tax (<span id="taxRatePct">7.25</span>%): <span id="taxExemptNote"
                                     class="badge text-bg-warning ms-1 d-none">Exempt</span></div>
                             <div class="fw-semibold">$<span id="tax">0.00</span></div>
+                        </div>
+                        <div class="d-flex justify-content-between d-none" id="cardFeeRow">
+                            <div class="text-muted" id="giftCardFeeLabel">Card Fee (3% on gift card sales)</div>
+                            <div class="fw-semibold">$<span id="cardFeeAmount">0.00</span></div>
                         </div>
                         <hr>
                         <div class="d-flex justify-content-between fs-5">
@@ -537,6 +542,30 @@
                         <div class="row total">
                             <div>Total</div>
                             <div>$<span id="receiptTotal">0.00</span></div>
+                        </div>
+                        <div class="row d-none" id="receiptGiftCardRow">
+                            <div>Gift Card</div>
+                            <div>$<span id="receiptGiftCardAmount">0.00</span></div>
+                        </div>
+                        <div class="row d-none" id="receiptSplitTenderRow">
+                            <div id="receiptSplitTenderLabel">Second Tender</div>
+                            <div>$<span id="receiptSplitTenderAmount">0.00</span></div>
+                        </div>
+                        <div class="row d-none" id="receiptCashTenderRow">
+                            <div>Cash Tender</div>
+                            <div>$<span id="receiptCashTenderAmount">0.00</span></div>
+                        </div>
+                        <div class="row d-none" id="receiptCashReceivedRow">
+                            <div>Cash Received</div>
+                            <div>$<span id="receiptCashReceivedAmount">0.00</span></div>
+                        </div>
+                        <div class="row d-none" id="receiptChangeDueRow">
+                            <div>Change Due</div>
+                            <div>$<span id="receiptChangeDueAmount">0.00</span></div>
+                        </div>
+                        <div class="row d-none" id="receiptGiftBalanceRow">
+                            <div>Gift Card Balance</div>
+                            <div>$<span id="receiptGiftCardBalance">0.00</span></div>
                         </div>
                     </div>
 

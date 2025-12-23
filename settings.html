@@ -78,6 +78,25 @@
       <div class="col" data-requires-manager style="display:none;">
         <div class="card shadow-sm">
           <div class="card-body">
+            <h5 class="card-title mb-3">Gift Card Surcharge</h5>
+            <div class="row g-2 align-items-end">
+              <div class="col-8 col-md-6">
+                <label for="giftCardSurchargePct" class="form-label">Surcharge Rate (%)</label>
+                <input type="number" step="0.01" min="0" id="giftCardSurchargePct" class="form-control" placeholder="e.g., 3.00">
+              </div>
+              <div class="col-4 col-md-3 d-grid">
+                <label class="form-label invisible">Save</label>
+                <button id="saveGiftCardSurchargeBtn" class="btn btn-primary">Save</button>
+              </div>
+            </div>
+            <div class="text-muted small mt-2">Applied to gift card sales when payment includes Card.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
             <div class="d-flex justify-content-between align-items-start">
               <div>
                 <h5 class="card-title mb-1">Denomination Targets</h5>

@@ -26,6 +26,7 @@ function setupPrintDom() {
       <span id="total"></span>
       <span id="taxRatePct"></span>
       <span id="taxExemptNote" class="d-none"></span>
+      <div id="cardFeeRow" class="d-none"><span id="cardFeeAmount"></span></div>
       <select id="cashierSelect"><option value="">Select...</option><option value="Cashier">Cashier</option></select>
       <select id="paymentSelect">
         <option value="">Select...</option>
@@ -56,7 +57,7 @@ function setupPrintDom() {
 describe('printReceipt validations and save', () => {
   beforeEach(() => {
     ipcRenderer.invoke.mockImplementation(async (channel) => {
-      if (channel === 'vendors:load') return [{ name: 'Vendor A', code: 'V1' }];
+      if (channel === 'vendors:load') return [{ name: 'Vendor A', code: 'V1' }, { name: 'Store Gift Cards', code: 'STORE-GC' }];
       if (channel === 'cashiers:load') return [{ name: 'Cashier' }];
       if (channel === 'giftcards:redeem') return { ok: true };
       if (channel === 'print:silent') return true;
@@ -188,5 +189,40 @@ describe('printReceipt validations and save', () => {
     await printReceipt();
     expect(openSpy).toHaveBeenCalled();
     openSpy.mockRestore();
+  });
+
+  test('gift card sales are non-taxable and add card fee when paying by card', async () => {
+    const { printReceipt } = require('../js/renderer.js');
+    document.getElementById('itemName').value = 'Gift Card Sale';
+    document.getElementById('itemPrice').value = '100';
+    document.getElementById('itemQty').value = '1';
+    document.getElementById('itemVendor').value = 'STORE-GC';
+    await addItem();
+    document.getElementById('cashierSelect').value = 'Cashier';
+    document.getElementById('paymentSelect').value = 'Card';
+    await printReceipt();
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('receipts:add', expect.objectContaining({
+      subtotal: 100,
+      tax: 0,
+      total: 103
+    }));
+  });
+
+  test('gift card sales are excluded from tax when paying cash', async () => {
+    const { printReceipt } = require('../js/renderer.js');
+    document.getElementById('itemName').value = 'Gift Card Sale';
+    document.getElementById('itemPrice').value = '50';
+    document.getElementById('itemQty').value = '1';
+    document.getElementById('itemVendor').value = 'STORE-GC';
+    await addItem();
+    document.getElementById('cashierSelect').value = 'Cashier';
+    document.getElementById('paymentSelect').value = 'Cash';
+    document.getElementById('cashReceived').value = '50';
+    await printReceipt();
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('receipts:add', expect.objectContaining({
+      subtotal: 50,
+      tax: 0,
+      total: 50
+    }));
   });
 });

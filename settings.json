@@ -1,5 +1,6 @@
 {
   "taxRate": 0.05,
+  "giftCardSurchargeRate": 0.03,
   "developerMode": true,
   "backupDir": "",
   "silentPrint": true,
@@ -30,5 +31,5 @@
     "Store Approved"
   ],
   "vendorPromotions": [],
-  "developerModeExpiresAt": 1766502946944
+  "developerModeExpiresAt": 1766504691500
 }

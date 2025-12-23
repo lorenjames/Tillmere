@@ -3,6 +3,7 @@ const { ipcRenderer } = require('electron');
 
 const DISPLAY_LIMIT = 200;
 let cache = { books: [], cards: [], transactions: [] };
+let GIFT_CARD_SURCHARGE_RATE = 0.03;
 
 function escapeHtml(s) {
     return String(s || '')
@@ -21,6 +22,10 @@ function toMoneyNumber(n) {
     const num = Number(n);
     if (!Number.isFinite(num)) return 0;
     return Math.round(num * 100) / 100;
+}
+function formatRatePct(rate) {
+    const pct = Math.max(0, Number(rate || 0) * 100);
+    return pct.toFixed(2).replace(/\.?0+$/, '');
 }
 function showToast(message, opts = {}) {
     try {
@@ -382,6 +387,16 @@ function buildReceiptHtml(receipt) {
     const primaryAmount = Math.max(0, toMoneyNumber(receipt.total || 0) - splitAmount);
     const giftNumber = String(receipt.giftCardNumber || '').trim();
     const giftBalance = toMoneyNumber(receipt.giftCardBalance || 0);
+    const giftCardSaleTotal = items.reduce((sum, it) => {
+        const name = String(it?.name || '').toLowerCase();
+        if (!name.includes('gift card') && !name.includes('giftcard')) return sum;
+        const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+        const unit = toMoneyNumber(it.price || 0);
+        return sum + toMoneyNumber(unit * qty);
+    }, 0);
+    const isCardTender = String(receipt.payment || '') === 'Card'
+        || (splitEnabled && String(receipt.splitTenderType || '') === 'Card');
+    const cardFee = isCardTender ? toMoneyNumber(giftCardSaleTotal * GIFT_CARD_SURCHARGE_RATE) : 0;
     const splitBlock = splitEnabled ? `
         <div class="d-flex justify-content-between"><div>${escapeHtml(receipt.payment || 'Tender 1')}</div><div>$${money(primaryAmount)}</div></div>
         <div class="d-flex justify-content-between"><div>${escapeHtml(receipt.splitTenderType || 'Tender 2')}</div><div>$${money(splitAmount)}</div></div>
@@ -391,6 +406,9 @@ function buildReceiptHtml(receipt) {
         <div class="d-flex justify-content-between"><div>Gift Card #</div><div>${escapeHtml(giftNumber || '-')}</div></div>
         <div class="d-flex justify-content-between"><div>Gift Card Balance</div><div>$${money(giftBalance)}</div></div>
     ` : '';
+    const cardFeeBlock = cardFee > 0
+        ? `<div class="d-flex justify-content-between"><div>Card Fee (${formatRatePct(GIFT_CARD_SURCHARGE_RATE)}%)</div><div>$${money(cardFee)}</div></div>`
+        : '';
     return `
         <div class="mb-2">
             <div><strong>Receipt #:</strong> ${escapeHtml(receipt.number || receipt.id || '')}</div>
@@ -414,6 +432,7 @@ function buildReceiptHtml(receipt) {
         <div class="mt-2">
             <div class="d-flex justify-content-between"><div>Subtotal</div><div>$${money(receipt.subtotal || 0)}</div></div>
             <div class="d-flex justify-content-between"><div>Tax</div><div>$${money(receipt.tax || 0)}</div></div>
+            ${cardFeeBlock}
             <div class="d-flex justify-content-between fw-semibold"><div>Total</div><div>$${money(receipt.total || 0)}</div></div>
             ${splitBlock}
             ${giftBlock}
@@ -445,6 +464,11 @@ async function openReceiptModal(receiptId) {
 }
 
 window.addEventListener('load', async () => {
+    try {
+        const s = await ipcRenderer.invoke('settings:load');
+        const rate = Number(s?.giftCardSurchargeRate);
+        if (!isNaN(rate) && rate >= 0 && rate <= 1) GIFT_CARD_SURCHARGE_RATE = rate;
+    } catch (_) { }
     await loadCashiers();
     await refreshAll();
     document.getElementById('addBookBtn')?.addEventListener('click', addBook);
@@ -475,5 +499,11 @@ window.addEventListener('load', async () => {
             const receipt = String(params.get('receipt') || '').trim();
             openActivateModal(cardNumber, { amount, receipt });
         }
+    } catch (_) { }
+    try {
+        ipcRenderer.on('settings:changed', (_evt, payload) => {
+            const rate = Number(payload?.giftCardSurchargeRate);
+            if (!isNaN(rate) && rate >= 0 && rate <= 1) GIFT_CARD_SURCHARGE_RATE = rate;
+        });
     } catch (_) { }
 });

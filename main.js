@@ -480,6 +480,7 @@ function saveScheduleData(patch) {
 function readSettings() {
     const def = {
         taxRate: 0.0725,
+        giftCardSurchargeRate: 0.03,
         developerMode: false,
         backupDir: '',
         silentPrint: true,
@@ -625,6 +626,7 @@ function ensureDataFiles() {
     if (!fs.existsSync(SETTINGS_FILE)) {
         writeJson(SETTINGS_FILE, {
             taxRate: 0.0725,
+            giftCardSurchargeRate: 0.03,
             dailyDrawerTotal: 0,
             drawerDenominationTargets: defaultDenominationTargets()
         });
@@ -1735,6 +1737,22 @@ ipcMain.handle('settings:saveTax', (_evt, incoming) => {
     const safe = {
         taxRate: Math.max(0, Math.min(1, Number(incoming?.taxRate ?? current.taxRate ?? 0.0725))),
         developerMode: !!current.developerMode
+    };
+    const saved = saveSettings(safe);
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
+// Save gift card surcharge rate
+ipcMain.handle('settings:saveGiftCardSurcharge', (_evt, incoming) => {
+    const current = readSettings();
+    const safe = {
+        giftCardSurchargeRate: Math.max(0, Math.min(1, Number(incoming?.giftCardSurchargeRate ?? current.giftCardSurchargeRate ?? 0.03)))
     };
     const saved = saveSettings(safe);
     try {

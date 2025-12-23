@@ -232,7 +232,10 @@ function renderCart(payload) {
   const paymentValue = String(payload?.payment || '');
   const changeDueText = formatMoney(payload?.changeDue);
   const cashReceivedText = formatMoney(payload?.cashReceived);
-  const isCashPayment = paymentValue.trim().toLowerCase() === 'cash';
+  const splitEnabled = !!payload?.splitTenderEnabled;
+  const splitType = String(payload?.splitTenderType || '');
+  const isCashPayment = paymentValue.trim().toLowerCase() === 'cash'
+    || (splitEnabled && splitType.trim().toLowerCase() === 'cash');
   const metaPieces = [];
   if (payload?.cashier) metaPieces.push(`Cashier: ${payload.cashier}`);
   if (payload?.payment) metaPieces.push(`Payment: ${payload.payment}`);

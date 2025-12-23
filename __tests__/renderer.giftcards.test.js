@@ -1,11 +1,26 @@
 jest.mock('electron');
-const { ipcRenderer } = require('electron');
+let ipcRenderer;
 
 function setupGiftCardModalDom() {
   document.body.innerHTML = `
     <div>
       <input id="itemName" />
       <datalist id="vendorList"></datalist>
+      <table id="itemTable"><tbody></tbody></table>
+      <span id="subtotal"></span>
+      <span id="tax"></span>
+      <span id="total"></span>
+      <span id="taxRatePct"></span>
+      <span id="taxExemptNote" class="d-none"></span>
+      <div id="cardFeeRow" class="d-none"><span id="cardFeeAmount"></span></div>
+      <input id="cashReceived" />
+      <input id="giftCardAmount" />
+      <input id="splitTenderAmount" />
+      <input type="checkbox" id="splitTenderToggle" />
+      <select id="splitTenderType"><option value="">Select...</option><option value="Card">Card</option></select>
+      <select id="paymentSelect"><option value="">Select...</option><option value="Card">Card</option></select>
+      <select id="cashierSelect"><option value="">Select...</option><option value="Cashier">Cashier</option></select>
+
       <div id="giftCardSaleModal"></div>
       <div id="giftCardSaleFields"></div>
       <div id="giftCardSaleEmpty" class="d-none"></div>
@@ -36,6 +51,7 @@ describe('gift card renderer flows', () => {
     jest.clearAllMocks();
     setupGiftCardModalDom();
     installBootstrapMock();
+    ipcRenderer = require('electron').ipcRenderer;
     ipcRenderer.invoke.mockImplementation(async (channel) => {
       if (channel === 'giftcards:load') {
         return {

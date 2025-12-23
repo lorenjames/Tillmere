@@ -46,6 +46,11 @@ let __activityListenerAttached = false;
 
 function toPct(val) { return (Number(val || 0) * 100).toFixed(2); }
 function fromPct(pct) { return Number(pct || 0) / 100; }
+function clampRate(rate) {
+  const num = Number(rate);
+  if (!Number.isFinite(num)) return 0;
+  return Math.max(0, Math.min(1, num));
+}
 
 function toBool(val) {
   if (typeof val === 'string') {
@@ -1045,6 +1050,9 @@ async function loadSettings() {
     const s = await ipcRenderer.invoke('settings:load');
     const rate = Number(s?.taxRate ?? 0.0725);
     document.getElementById('taxRatePct').value = toPct(rate);
+    const giftRate = Number(s?.giftCardSurchargeRate ?? 0.03);
+    const giftRateEl = document.getElementById('giftCardSurchargePct');
+    if (giftRateEl) giftRateEl.value = toPct(giftRate);
     const dev = toBool(s?.developerMode);
     const devExpires = Math.max(0, Number(s?.developerModeExpiresAt || 0));
     const devActive = dev && devExpires && devExpires > Date.now();
@@ -1129,10 +1137,23 @@ async function loadSettings() {
 async function saveTaxSettings() {
   try {
     const pct = document.getElementById('taxRatePct').value;
-    const rate = fromPct(pct);
+    const rate = clampRate(fromPct(pct));
     const saved = await ipcRenderer.invoke('settings:saveTax', { taxRate: rate });
     showToast('Saved. Tax rate: ' + toPct(saved.taxRate) + '%', { type: 'success' });
   } catch (e) { showToast('Failed to save tax rate: ' + (e?.message || e), { type: 'error' }); }
+}
+
+async function saveGiftCardSurchargeSettings() {
+  try {
+    if (!__managerMode) {
+      showToast('Enable Manager Mode to edit the gift card surcharge.', { type: 'error' });
+      return;
+    }
+    const pct = document.getElementById('giftCardSurchargePct')?.value || '';
+    const rate = clampRate(fromPct(pct));
+    const saved = await ipcRenderer.invoke('settings:saveGiftCardSurcharge', { giftCardSurchargeRate: rate });
+    showToast('Saved. Gift card surcharge: ' + toPct(saved.giftCardSurchargeRate) + '%', { type: 'success' });
+  } catch (e) { showToast('Failed to save gift card surcharge: ' + (e?.message || e), { type: 'error' }); }
 }
 
 async function saveDevSettings() {
@@ -1212,6 +1233,7 @@ window.addEventListener('DOMContentLoaded', () => {
   setManagerMode(managerState.enabled, { expiresAt: managerState.expiresAt });
   setDeveloperMode(false);
   document.getElementById('saveBtn')?.addEventListener('click', saveTaxSettings);
+  document.getElementById('saveGiftCardSurchargeBtn')?.addEventListener('click', saveGiftCardSurchargeSettings);
   document.getElementById('devModeBtn')?.addEventListener('click', toggleDeveloperMode);
   document.getElementById('savePrintBtn')?.addEventListener('click', savePrintSettings);
   document.getElementById('saveBrandingBtn')?.addEventListener('click', saveBrandingSettings);
@@ -1234,6 +1256,10 @@ window.addEventListener('DOMContentLoaded', () => {
       ipcRenderer.on('settings:changed', (_evt, payload) => {
         if (payload?.drawerDenominationTargets || payload?.denominationTargets) {
           renderDenominationTargetInputs(payload.drawerDenominationTargets || payload.denominationTargets || {});
+        }
+        if (Object.prototype.hasOwnProperty.call(payload || {}, 'giftCardSurchargeRate')) {
+          const giftRateEl = document.getElementById('giftCardSurchargePct');
+          if (giftRateEl) giftRateEl.value = toPct(payload.giftCardSurchargeRate || 0);
         }
       });
     } catch (_) {}

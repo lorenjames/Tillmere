@@ -11,6 +11,10 @@ const esc = s => String(s || '')
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+const formatRatePct = rate => {
+    const pct = Math.max(0, Number(rate || 0) * 100);
+    return pct.toFixed(2).replace(/\.?0+$/, '');
+};
 
 let receipts = [];
 let vendors = [];
@@ -53,6 +57,7 @@ let branding = {
     logoPath: ''
 };
 let __greyscalePrint = false;
+let GIFT_CARD_SURCHARGE_RATE = 0.03;
 const getGreyscalePrintCss = () =>
     __greyscalePrint ? '@media print { html{ filter: grayscale(100%); } }' : '';
 const getBrandingName = () =>
@@ -515,18 +520,35 @@ function runDetailedReport() {
 }
 
 // lightweight receipt view window used by reports page
-function openReceiptWindowFromReports(r) {
-    try {
-        const toMoneyNumber = n => {
-            const num = Number(n);
-            return Number.isFinite(num) ? Math.round(num * 100) / 100 : 0;
-        };
-        const deriveOriginalPrice = it => {
-            if (typeof it?.originalPrice === 'number' && !Number.isNaN(it.originalPrice)) return toMoneyNumber(it.originalPrice);
-            const price = toMoneyNumber(it?.price || 0);
-            const discount = toMoneyNumber(it?.discountAmount || 0);
-            return toMoneyNumber(price + discount);
-        };
+  function openReceiptWindowFromReports(r) {
+      try {
+          const toMoneyNumber = n => {
+              const num = Number(n);
+              return Number.isFinite(num) ? Math.round(num * 100) / 100 : 0;
+          };
+          const isGiftCardSaleItem = it => {
+              const name = String(it?.name || '').toLowerCase();
+              return name.includes('gift card') || name.includes('giftcard');
+          };
+          const getGiftCardSaleTotal = receipt => {
+              return (Array.isArray(receipt?.items) ? receipt.items : []).reduce((sum, it) => {
+                  if (!isGiftCardSaleItem(it)) return sum;
+                  const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+                  const unit = toMoneyNumber(it.price || 0);
+                  return sum + toMoneyNumber(unit * qty);
+              }, 0);
+          };
+          const isCardTenderSelected = (payment, splitEnabled, splitType) => {
+              const main = String(payment || '');
+              const split = String(splitType || '');
+              return main === 'Card' || (splitEnabled && split === 'Card');
+          };
+          const deriveOriginalPrice = it => {
+              if (typeof it?.originalPrice === 'number' && !Number.isNaN(it.originalPrice)) return toMoneyNumber(it.originalPrice);
+              const price = toMoneyNumber(it?.price || 0);
+              const discount = toMoneyNumber(it?.discountAmount || 0);
+              return toMoneyNumber(price + discount);
+          };
         const formatPercentText = value => {
             const pct = toMoneyNumber(value);
             if (pct <= 0) return '';
@@ -569,10 +591,16 @@ function openReceiptWindowFromReports(r) {
                 returnSubtotal += qty * price;
             });
         }
-        const taxRate = Number(r.taxRate || 0);
-        const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
-        const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
-        const netTotal = toMoneyNumber((r.total || 0) - returnTotal);
+          const taxRate = Number(r.taxRate || 0);
+          const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
+          const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
+          const netTotal = toMoneyNumber((r.total || 0) - returnTotal);
+          const cardFee = isCardTenderSelected(r.payment, !!r.splitTenderEnabled, r.splitTenderType)
+              ? toMoneyNumber(getGiftCardSaleTotal(r) * GIFT_CARD_SURCHARGE_RATE)
+              : 0;
+          const cardFeeLine = cardFee > 0
+              ? `<div style="display:flex; justify-content:space-between;"><div class="label">Card Fee (${formatRatePct(GIFT_CARD_SURCHARGE_RATE)}%)</div><div><strong>$${money(cardFee)}</strong></div></div>`
+              : '';
 
         const style = `
   <style>
@@ -684,6 +712,7 @@ function openReceiptWindowFromReports(r) {
             <div>
               <div style="display:flex; justify-content:space-between;"><div class="label">Subtotal</div><div><strong>$${money(r.subtotal || 0)}</strong></div></div>
               <div style="display:flex; justify-content:space-between;"><div class="label">Tax</div><div><strong>$${money(r.tax || 0)}</strong></div></div>
+              ${cardFeeLine}
               <div style="display:flex; justify-content:space-between;"><div class="label" style="font-weight:800">Total</div><div><strong>$${money(r.total || 0)}</strong></div></div>
               ${r.returned && returnTotal > 0 ? `
               <div style="display:flex; justify-content:space-between;"><div class="label">Return Subtotal</div><div><strong>-$${money(returnSubtotal)}</strong></div></div>
@@ -1430,6 +1459,8 @@ window.addEventListener('DOMContentLoaded', () => {
                 };
             } catch (_) { }
             __greyscalePrint = !!s?.greyscalePrint;
+            const rate = Number(s?.giftCardSurchargeRate);
+            if (!isNaN(rate) && rate >= 0 && rate <= 1) GIFT_CARD_SURCHARGE_RATE = rate;
         }).catch(() => {});
     } catch (_) { }
     // Live updates
@@ -1449,6 +1480,8 @@ window.addEventListener('DOMContentLoaded', () => {
             if (typeof payload?.greyscalePrint === 'boolean') {
                 __greyscalePrint = !!payload.greyscalePrint;
             }
+            const rate = Number(payload?.giftCardSurchargeRate);
+            if (!isNaN(rate) && rate >= 0 && rate <= 1) GIFT_CARD_SURCHARGE_RATE = rate;
         });
     } catch (_) { }
 
