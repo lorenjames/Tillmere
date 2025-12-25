@@ -27,6 +27,7 @@ let TAX_RATE = 0.0725;
 let GIFT_CARD_SURCHARGE_RATE = 0.03;
 let __taxExempt = false;
 let __taxExemptInfo = { id: '', name: '' };
+let __taxExemptOrgs = [];
 let __noTaxModal = null;
 let __cancelConfirmModal = null;
 let __silentPrint = true;
@@ -36,7 +37,6 @@ let __vendorsCache = [];
 let __editModal = null;
 let __returnModal = null;
 let __cashAudio = null;
-let __allowNavigation = false;
 let __lastTotal = 0;
 let __lastCustomerCartState = null;
 let __giftCardBalance = null;
@@ -97,6 +97,33 @@ const __TABS_STORAGE_KEY = 'posTabsV1';
 const __SESSION_KEY = 'posSessionIdV1';
 let __sessionId = '';
 let __isQuitting = false;
+const __WINDOW_SESSION_PREFIX = `${__SESSION_KEY}=`;
+
+function __readWindowSessionId() {
+  try {
+    const name = String(window.name || '');
+    if (!name) return '';
+    const parts = name.split(';');
+    const hit = parts.find(part => part.startsWith(__WINDOW_SESSION_PREFIX));
+    return hit ? hit.slice(__WINDOW_SESSION_PREFIX.length) : '';
+  } catch (_) { return ''; }
+}
+function __writeWindowSessionId(id) {
+  try {
+    const name = String(window.name || '');
+    const parts = name ? name.split(';').filter(Boolean) : [];
+    let updated = false;
+    const next = parts.map(part => {
+      if (part.startsWith(__WINDOW_SESSION_PREFIX)) {
+        updated = true;
+        return `${__WINDOW_SESSION_PREFIX}${id}`;
+      }
+      return part;
+    });
+    if (!updated) next.push(`${__WINDOW_SESSION_PREFIX}${id}`);
+    window.name = next.join(';');
+  } catch (_) { }
+}
 
 function __todayYmd() {
   const now = new Date();
@@ -274,6 +301,7 @@ function __renderTabs() {
       btn.addEventListener('click', () => { __switchToCart(btn.getAttribute('data-cartid')); });
     });
     try { __updateCancelSaleButtonEnabled(); } catch (_) { }
+    try { __updateDirtyCartBanner(); } catch (_) { }
   } catch (_) { }
 }
 function __switchToCart(id) {
@@ -435,6 +463,7 @@ function __persistTabs() {
       session: __sessionId || ''
     };
     localStorage.setItem(__TABS_STORAGE_KEY, JSON.stringify(payload));
+    try { __updateDirtyCartBanner(); } catch (_) { }
   } catch (_) { }
 }
 function __restoreTabs() {
@@ -469,6 +498,85 @@ function __updateCancelSaleButtonEnabled() {
     // Keep enabled even when only one tab remains to allow cancelling the lone sale.
     btn.disabled = false;
     try { btn.classList.remove('disabled'); } catch (_) { }
+  } catch (_) { }
+}
+
+function __getDirtyCartTitles() {
+  try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
+  const titles = [];
+  try {
+    for (const [, st] of __carts.entries()) {
+      if (Array.isArray(st?.items) && st.items.length > 0) {
+        titles.push(st.title || 'Sale');
+      }
+    }
+  } catch (_) { }
+  return titles;
+}
+
+function __hasDirtyCarts() {
+  return __getDirtyCartTitles().length > 0;
+}
+
+function __updateDirtyCartBanner() {
+  const banner = document.getElementById('dirtyCartBanner');
+  if (!banner) return;
+  const countEl = document.getElementById('dirtyCartCount');
+  const listEl = document.getElementById('dirtyCartList');
+  const titles = __getDirtyCartTitles();
+  if (!titles.length) {
+    banner.classList.add('d-none');
+    return;
+  }
+  banner.classList.remove('d-none');
+  if (countEl) countEl.textContent = String(titles.length);
+  if (listEl) {
+    const shown = titles.slice(0, 3);
+    const more = titles.length > shown.length ? ` (+${titles.length - shown.length} more)` : '';
+    listEl.textContent = `${shown.join(', ')}${more}`;
+  }
+}
+
+function __normalizeTaxExemptOrgs(list) {
+  const incoming = Array.isArray(list) ? list : [];
+  const cleaned = [];
+  const seen = new Set();
+  incoming.forEach((org) => {
+    const name = String(org?.name || '').trim();
+    const id = String(org?.id || org?.taxId || '').trim();
+    if (!name || !id) return;
+    const key = `${name.toLowerCase()}|${id.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    cleaned.push({ name, id });
+  });
+  return cleaned.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+}
+
+function __renderTaxExemptOrgOptions() {
+  const listEl = document.getElementById('taxExemptOrgList');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+  (__taxExemptOrgs || []).forEach((org) => {
+    const opt = document.createElement('option');
+    opt.value = org.name;
+    opt.setAttribute('data-tax-id', org.id);
+    listEl.appendChild(opt);
+  });
+}
+
+function __setTaxExemptOrgs(list) {
+  __taxExemptOrgs = __normalizeTaxExemptOrgs(list);
+  __renderTaxExemptOrgOptions();
+}
+
+function __syncTaxExemptIdFromName(nameEl, idEl) {
+  try {
+    if (!nameEl || !idEl) return;
+    const nameVal = String(nameEl.value || '').trim().toLowerCase();
+    if (!nameVal) return;
+    const match = (__taxExemptOrgs || []).find(org => String(org?.name || '').trim().toLowerCase() === nameVal);
+    if (match && match.id) idEl.value = match.id;
   } catch (_) { }
 }
 
@@ -1183,33 +1291,9 @@ function setupEntryDiscountControls() {
 }
 function installNavigationGuards() {
   try {
-    const restoreUiAfterGuardCancel = () => {
-      try {
-        // Close open Bootstrap UI pieces that may leave overlays on cancel
-        document.querySelectorAll('.dropdown-menu.show').forEach(m => m.classList.remove('show'));
-        document.querySelectorAll('.offcanvas.show').forEach(el => { el.classList.remove('show'); el.setAttribute('aria-hidden', 'true'); el.style.display = 'none'; });
-        document.querySelectorAll('.navbar-collapse.show').forEach(el => { el.classList.remove('show'); el.style.display = ''; });
-        // Clean up any stray backdrops or overlay states
-        cleanupStrayBackdrops();
-        nukeBlockingOverlays();
-        document.body.classList.remove('modal-open');
-        // Give user a moment to click any field; don't auto-refocus during that window
-        __suppressRefocusUntil = Date.now() + 1500;
-        // Nudge focus back to Item for keyboard entry, but allow immediate click override
-        setTimeout(() => { try { document.getElementById('itemName')?.focus(); } catch (_) { } }, 50);
-        // One more cleanup pass after transitions settle
-        setTimeout(() => { try { cleanupStrayBackdrops(); document.body.style.pointerEvents = 'auto'; } catch (_) { } }, 220);
-      } catch (_) { }
-    };
-    const hasDirtyCart = () => {
-      try { return Array.isArray(items) && items.length > 0; } catch (_) { return false; }
-    };
-
-    // Block window unload (refresh, close, navigate)
+    // Confirm app quit; allow normal navigation away from POS.
     window.addEventListener('beforeunload', (e) => {
       try {
-        if (__allowNavigation) return;
-
         // If the app is quitting, show a confirm that names the first tab with items
         if (typeof __isQuitting !== 'undefined' && __isQuitting) {
           try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
@@ -1233,52 +1317,10 @@ function installNavigationGuards() {
           return; // allow unload
         }
 
-        // Not quitting: prevent navigating away if there's a dirty cart, and show a toast
-        if (hasDirtyCart()) {
-          e.preventDefault();
-          try { showToast('You have items in the cart. Complete the sale or empty the cart to leave.', { type: 'error', duration: 3500 }); } catch (_) { }
-          restoreUiAfterGuardCancel();
+        if (__hasDirtyCarts()) {
+          try { sessionStorage.setItem('posDirtyNavToast', '1'); } catch (_) { }
         }
-      } catch (_) { }
-    });
-
-    // Intercept clicks on links/buttons that would navigate away
-    document.addEventListener('click', (e) => {
-      try {
-        if (__allowNavigation) return;
-        const el = e.target instanceof Element ? e.target.closest('a, button') : null;
-        if (!el) return;
-        // Skip non-navigation UI toggles (Bootstrap dropdowns, modals, offcanvas)
-        const toggleAttr = el.getAttribute('data-bs-toggle');
-        if (toggleAttr) return;
-        // Only guard real navigations
-        const href = el.tagName === 'A' ? (el.getAttribute('href') || '') : '';
-        const willNavigate = href && href !== '#' && !href.startsWith('javascript:');
-        const allowNav = el.getAttribute('data-allow-nav') === 'true';
-        if (willNavigate && allowNav) {
-          __allowNavigation = true;
-          return;
-        }
-        if (willNavigate && hasDirtyCart()) {
-          e.preventDefault();
-          e.stopPropagation();
-          // Inform user without blocking native prompts
-          try { showToast('You have items in the cart. Complete the sale or empty the cart to leave.', { type: 'error', duration: 3500 }); } catch (_) { }
-          restoreUiAfterGuardCancel();
-          return;
-        }
-      } catch (_) { }
-    }, true);
-
-    // Block common reload shortcuts
-    window.addEventListener('keydown', (e) => {
-      try {
-        if (__allowNavigation) return;
-        const isReload = (e.key === 'F5') || (e.key === 'r' && (e.ctrlKey || e.metaKey));
-        if (isReload && hasDirtyCart()) {
-          e.preventDefault();
-          try { showToast('You have items in the cart. Complete the sale or empty the cart to reload.', { type: 'error', duration: 3500 }); } catch (_) { }
-        }
+        return;
       } catch (_) { }
     });
   } catch (_) { }
@@ -3110,11 +3152,12 @@ function openReturnModal() {
 window.addEventListener('load', async () => {
   // Establish a per-app-run session id so we only restore tabs within a single run
   try {
-    __sessionId = sessionStorage.getItem(__SESSION_KEY);
+    __sessionId = sessionStorage.getItem(__SESSION_KEY) || __readWindowSessionId();
     if (!__sessionId) {
       __sessionId = `S-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
       sessionStorage.setItem(__SESSION_KEY, __sessionId);
     }
+    __writeWindowSessionId(__sessionId);
   } catch (_) { __sessionId = `S-${Date.now()}-${Math.floor(Math.random() * 100000)}`; }
   try {
     const s = await ipcRenderer.invoke('settings:load');
@@ -3132,6 +3175,7 @@ window.addEventListener('load', async () => {
     try {
       __vendorPromotions = normalizeVendorPromotions(s?.vendorPromotions || []);
     } catch (_) { __vendorPromotions = []; }
+    try { __setTaxExemptOrgs(s?.taxExemptOrgs || []); } catch (_) { }
     __branding = {
       bizName: String(s?.bizName || __branding.bizName),
       bizAddress: String(s?.bizAddress || __branding.bizAddress),
@@ -3214,6 +3258,16 @@ window.addEventListener('load', async () => {
       __createNewCartTab();
     }
   } catch (_) { __createNewCartTab(); }
+
+  try {
+    const flag = sessionStorage.getItem('posDirtyNavToast');
+    if (flag) {
+      sessionStorage.removeItem('posDirtyNavToast');
+      if (__hasDirtyCarts()) {
+        showToast('Open sales were kept. Complete or cancel to clear them.', { type: 'info', duration: 3500 });
+      }
+    }
+  } catch (_) { }
 
   // Persist tabs on leave/hidden (but not when quitting the app)
   try {
@@ -3424,6 +3478,8 @@ window.addEventListener('load', async () => {
         // Prefill if available
         if (nameEl) nameEl.value = String(__taxExemptInfo?.name || '');
         if (idEl) idEl.value = String(__taxExemptInfo?.id || '');
+        try { __renderTaxExemptOrgOptions(); } catch (_) { }
+        try { __syncTaxExemptIdFromName(nameEl, idEl); } catch (_) { }
         __noTaxModal.show();
         setTimeout(() => { try { (nameEl || idEl)?.focus(); } catch (_) { } }, 100);
       } catch (_) { }
@@ -3473,6 +3529,10 @@ window.addEventListener('load', async () => {
         if (!__taxExempt && toggle) toggle.checked = false;
       } catch (_) { }
     });
+    if (nameEl) {
+      nameEl.addEventListener('change', () => __syncTaxExemptIdFromName(nameEl, idEl));
+      nameEl.addEventListener('blur', () => __syncTaxExemptIdFromName(nameEl, idEl));
+    }
     // If modal is closed by backdrop/close button, revert toggle when not applied
     if (modalEl) modalEl.addEventListener('hidden.bs.modal', () => {
       try { if (!__taxExempt && toggle) toggle.checked = false; } catch (_) { }
@@ -3545,6 +3605,11 @@ try {
       if (Array.isArray(payload?.vendorPromotions)) {
         __vendorPromotions = normalizeVendorPromotions(payload.vendorPromotions);
         applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true });
+      }
+    } catch (_) { }
+    try {
+      if (Array.isArray(payload?.taxExemptOrgs)) {
+        __setTaxExemptOrgs(payload.taxExemptOrgs);
       }
     } catch (_) { }
     // After settings changes, clear any leftover overlays that might capture input

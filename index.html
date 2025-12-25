@@ -64,6 +64,14 @@
             font-size: .85rem;
         }
         .qty-input { min-width: 110px; }
+        .tax-exempt-datalist {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='10' viewBox='0 0 16 10'%3E%3Cpath d='M1.5 1.5l6.5 6.5 6.5-6.5' fill='none' stroke='%236c757d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.75rem center;
+            background-size: 14px 9px;
+            padding-right: 2rem;
+        }
     </style>
 
 </head>
@@ -100,6 +108,12 @@
         <!-- Multi-sale tabs -->
         <div class="d-flex align-items-center mb-3">
             <ul id="saleTabs" class="nav nav-tabs flex-grow-1"></ul>
+        </div>
+        <div id="dirtyCartBanner" class="alert alert-warning d-none mb-3" role="alert">
+            <div class="fw-semibold">Open sales are in progress.</div>
+            <div class="small text-muted">
+                <span id="dirtyCartCount">0</span> tab(s) have items: <span id="dirtyCartList"></span>
+            </div>
         </div>
         <div class="row g-4">
             <!-- Left column: Sale meta + Entry stacked -->
@@ -614,8 +628,9 @@
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="noTaxName" class="form-label">Name / Organization</label>
-                            <input type="text" id="noTaxName" class="form-control"
+                            <input type="text" id="noTaxName" class="form-control tax-exempt-datalist" list="taxExemptOrgList"
                                 placeholder="e.g., Lincoln Public Schools">
+                            <datalist id="taxExemptOrgList"></datalist>
                         </div>
                         <div class="mb-2">
                             <label for="noTaxId" class="form-label">Tax ID (alphanumeric)</label>

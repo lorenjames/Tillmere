@@ -189,6 +189,46 @@
         </div>
       </div>
 
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-1">Tax Exempt Organizations</h5>
+            <div class="text-muted small">Saved organizations appear as suggestions on the POS tax exemption screen.</div>
+            <div class="row g-2 align-items-end mt-2">
+              <div class="col-12 col-md-5">
+                <label for="taxOrgName" class="form-label">Name / Organization</label>
+                <input type="text" id="taxOrgName" class="form-control" placeholder="e.g., Lincoln Public Schools">
+              </div>
+              <div class="col-12 col-md-4">
+                <label for="taxOrgId" class="form-label">Tax ID (alphanumeric)</label>
+                <input type="text" id="taxOrgId" class="form-control" placeholder="e.g., EXEMPT1234">
+                <div class="form-text">Letters and numbers only; no spaces or symbols.</div>
+              </div>
+              <div class="col-12 col-md-3 d-grid">
+                <label class="form-label invisible">Save</label>
+                <button id="saveTaxOrgBtn" class="btn btn-primary">Add Organization</button>
+              </div>
+            </div>
+            <div class="d-flex justify-content-end mt-2">
+              <button id="cancelTaxOrgEditBtn" class="btn btn-outline-secondary btn-sm" style="display:none;">Cancel Edit</button>
+            </div>
+            <div class="table-responsive mt-3">
+              <table class="table table-sm align-middle mb-1" id="taxOrgTable">
+                <thead class="table-light">
+                  <tr>
+                    <th>Name / Organization</th>
+                    <th>Tax ID</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div class="text-muted small" id="taxOrgEmpty">No organizations added yet.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="col" data-requires-developer style="display:none;">
         <div class="card shadow-sm">
           <div class="card-body">

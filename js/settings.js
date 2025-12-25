@@ -64,6 +64,8 @@ let __managerMode = false;
 let __developerMode = false;
 let __passwordsModal = null;
 let __activityListenerAttached = false;
+let __taxExemptOrgs = [];
+let __taxOrgEditingIndex = -1;
 
 function toPct(val) { return (Number(val || 0) * 100).toFixed(2); }
 function fromPct(pct) { return Number(pct || 0) / 100; }
@@ -645,6 +647,125 @@ function writeDiscountReasonsToTextarea(list) {
   } catch (_) { }
 }
 
+function normalizeTaxExemptOrgs(list) {
+  const incoming = Array.isArray(list) ? list : [];
+  const cleaned = [];
+  const seen = new Set();
+  incoming.forEach((org) => {
+    const name = String(org?.name || '').trim();
+    const id = String(org?.id || org?.taxId || '').trim();
+    if (!name || !id) return;
+    const key = `${name.toLowerCase()}|${id.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    cleaned.push({ name, id });
+  });
+  return cleaned.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+}
+
+function resetTaxOrgForm() {
+  __taxOrgEditingIndex = -1;
+  try { const nameEl = document.getElementById('taxOrgName'); if (nameEl) nameEl.value = ''; } catch (_) { }
+  try { const idEl = document.getElementById('taxOrgId'); if (idEl) idEl.value = ''; } catch (_) { }
+  try {
+    const btn = document.getElementById('saveTaxOrgBtn');
+    if (btn) btn.textContent = 'Add Organization';
+  } catch (_) { }
+  try {
+    const cancelBtn = document.getElementById('cancelTaxOrgEditBtn');
+    if (cancelBtn) cancelBtn.style.display = 'none';
+  } catch (_) { }
+}
+
+function renderTaxOrgTable() {
+  const tbody = document.querySelector('#taxOrgTable tbody');
+  const empty = document.getElementById('taxOrgEmpty');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!Array.isArray(__taxExemptOrgs) || __taxExemptOrgs.length === 0) {
+    if (empty) empty.style.display = '';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  __taxExemptOrgs.forEach((org, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${org.name}</td>
+      <td>${org.id}</td>
+      <td>
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-primary" data-role="edit">Edit</button>
+          <button class="btn btn-outline-danger" data-role="delete">Delete</button>
+        </div>
+      </td>`;
+    const editBtn = tr.querySelector('[data-role="edit"]');
+    const delBtn = tr.querySelector('[data-role="delete"]');
+    if (editBtn) editBtn.addEventListener('click', () => startTaxOrgEdit(idx));
+    if (delBtn) delBtn.addEventListener('click', () => deleteTaxOrg(idx));
+    tbody.appendChild(tr);
+  });
+}
+
+function startTaxOrgEdit(idx) {
+  const org = __taxExemptOrgs[idx];
+  if (!org) return;
+  __taxOrgEditingIndex = idx;
+  try { const nameEl = document.getElementById('taxOrgName'); if (nameEl) nameEl.value = org.name; } catch (_) { }
+  try { const idEl = document.getElementById('taxOrgId'); if (idEl) idEl.value = org.id; } catch (_) { }
+  try {
+    const btn = document.getElementById('saveTaxOrgBtn');
+    if (btn) btn.textContent = 'Update Organization';
+  } catch (_) { }
+  try {
+    const cancelBtn = document.getElementById('cancelTaxOrgEditBtn');
+    if (cancelBtn) cancelBtn.style.display = '';
+  } catch (_) { }
+}
+
+async function persistTaxExemptOrgs(message = 'Tax exempt organizations saved.') {
+  try {
+    const saved = await ipcRenderer.invoke('settings:saveTaxExemptOrgs', { taxExemptOrgs: __taxExemptOrgs });
+    __taxExemptOrgs = normalizeTaxExemptOrgs(saved?.taxExemptOrgs || __taxExemptOrgs);
+    renderTaxOrgTable();
+    resetTaxOrgForm();
+    showToast(message, { type: 'success' });
+  } catch (e) {
+    showToast('Failed to save tax exempt organizations: ' + (e?.message || e), { type: 'error' });
+  }
+}
+
+async function addOrUpdateTaxOrg() {
+  if (!__managerMode) {
+    showToast('Enable Manager Mode to manage tax exempt organizations.', { type: 'error' });
+    return;
+  }
+  const name = String(document.getElementById('taxOrgName')?.value || '').trim();
+  const id = String(document.getElementById('taxOrgId')?.value || '').trim();
+  const okId = /^[a-z0-9]+$/i.test(id);
+  if (!name) { showToast('Enter a name or organization.', { type: 'error' }); return; }
+  if (!okId) { showToast('Tax ID must be alphanumeric (no spaces).', { type: 'error' }); return; }
+  const entry = { name, id };
+  if (__taxOrgEditingIndex >= 0 && __taxExemptOrgs[__taxOrgEditingIndex]) {
+    __taxExemptOrgs[__taxOrgEditingIndex] = entry;
+    __taxExemptOrgs = normalizeTaxExemptOrgs(__taxExemptOrgs);
+    await persistTaxExemptOrgs('Organization updated.');
+    return;
+  }
+  __taxExemptOrgs.push(entry);
+  __taxExemptOrgs = normalizeTaxExemptOrgs(__taxExemptOrgs);
+  await persistTaxExemptOrgs('Organization added.');
+}
+
+async function deleteTaxOrg(idx) {
+  if (!__managerMode) {
+    showToast('Enable Manager Mode to manage tax exempt organizations.', { type: 'error' });
+    return;
+  }
+  if (!__taxExemptOrgs[idx]) return;
+  __taxExemptOrgs.splice(idx, 1);
+  await persistTaxExemptOrgs('Organization deleted.');
+}
+
 // --- Vendor promotions (settings UI only) ---
 let __vendorPromotions = [];
 let __promoModal = null;
@@ -1145,6 +1266,9 @@ async function loadSettings() {
 
     // Discount reasons
     writeDiscountReasonsToTextarea(s?.discountReasons || []);
+    __taxExemptOrgs = normalizeTaxExemptOrgs(s?.taxExemptOrgs || []);
+    renderTaxOrgTable();
+    resetTaxOrgForm();
     __vendorPromotions = normalizeVendorPromotions(s?.vendorPromotions || []);
     renderVendorPromoSummary();
     renderVendorPromoInlineTable();
@@ -1259,6 +1383,8 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('savePrintBtn')?.addEventListener('click', savePrintSettings);
   document.getElementById('saveBrandingBtn')?.addEventListener('click', saveBrandingSettings);
   document.getElementById('saveDiscountReasonsBtn')?.addEventListener('click', saveDiscountReasons);
+  document.getElementById('saveTaxOrgBtn')?.addEventListener('click', addOrUpdateTaxOrg);
+  document.getElementById('cancelTaxOrgEditBtn')?.addEventListener('click', resetTaxOrgForm);
   document.getElementById('openVendorPromosBtn')?.addEventListener('click', openVendorPromoModal);
   document.getElementById('saveVendorPromoBtn')?.addEventListener('click', addOrUpdateVendorPromo);
   document.getElementById('managerModeBtn')?.addEventListener('click', toggleManagerMode);
@@ -1277,6 +1403,11 @@ window.addEventListener('DOMContentLoaded', () => {
       ipcRenderer.on('settings:changed', (_evt, payload) => {
         if (payload?.drawerDenominationTargets || payload?.denominationTargets) {
           renderDenominationTargetInputs(payload.drawerDenominationTargets || payload.denominationTargets || {});
+        }
+        if (Array.isArray(payload?.taxExemptOrgs)) {
+          __taxExemptOrgs = normalizeTaxExemptOrgs(payload.taxExemptOrgs);
+          renderTaxOrgTable();
+          resetTaxOrgForm();
         }
         if (Object.prototype.hasOwnProperty.call(payload || {}, 'giftCardSurchargeRate')) {
           const giftRateEl = document.getElementById('giftCardSurchargePct');

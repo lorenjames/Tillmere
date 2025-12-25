@@ -479,6 +479,21 @@ function saveScheduleData(patch) {
     writeJson(SCHEDULE_FILE, next);
     return next;
 }
+function normalizeTaxExemptOrgs(list) {
+    const incoming = Array.isArray(list) ? list : [];
+    const cleaned = [];
+    const seen = new Set();
+    incoming.forEach((org) => {
+        const name = String(org?.name || '').trim();
+        const id = String(org?.id || org?.taxId || '').trim();
+        if (!name || !id) return;
+        const key = `${name.toLowerCase()}|${id.toLowerCase()}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        cleaned.push({ name, id });
+    });
+    return cleaned.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+}
 function readSettings() {
     const def = {
         taxRate: 0.0725,
@@ -497,13 +512,15 @@ function readSettings() {
         drawerDenominationTargets: defaultDenominationTargets(),
         discountReasons: DEFAULT_DISCOUNT_REASONS,
         vendorPromotions: DEFAULT_VENDOR_PROMOTIONS,
-        developerModeExpiresAt: 0
+        developerModeExpiresAt: 0,
+        taxExemptOrgs: []
     };
     try {
         const cur = readJson(SETTINGS_FILE, def);
         const merged = { ...def, ...(cur || {}) };
         merged.vendorPromotions = normalizeVendorPromotions(merged.vendorPromotions || []);
         merged.drawerDenominationTargets = normalizeCounts(merged.drawerDenominationTargets || {});
+        merged.taxExemptOrgs = normalizeTaxExemptOrgs(merged.taxExemptOrgs || []);
         return merged;
     } catch (_) { return def; }
 }
@@ -611,6 +628,7 @@ function saveSettings(patch) {
             next.vendorPromotions = [];
         }
         next.drawerDenominationTargets = normalizeCounts(next.drawerDenominationTargets || {});
+        next.taxExemptOrgs = normalizeTaxExemptOrgs(next.taxExemptOrgs || cur.taxExemptOrgs || []);
         writeJson(SETTINGS_FILE, next);
         return next;
     } catch (e) { console.error('Failed to save settings', e); return readSettings(); }
@@ -1686,6 +1704,20 @@ ipcMain.handle('settings:saveDiscountReasons', (_evt, incoming) => {
 ipcMain.handle('settings:saveVendorPromotions', (_evt, incoming) => {
     const list = normalizeVendorPromotions(incoming?.vendorPromotions ?? incoming);
     const safe = { vendorPromotions: list };
+    const saved = saveSettings(safe);
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
+// Save tax exempt organizations (name + ID)
+ipcMain.handle('settings:saveTaxExemptOrgs', (_evt, incoming) => {
+    const list = normalizeTaxExemptOrgs(incoming?.taxExemptOrgs ?? incoming);
+    const safe = { taxExemptOrgs: list };
     const saved = saveSettings(safe);
     try {
         const { BrowserWindow } = require('electron');
