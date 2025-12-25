@@ -34,6 +34,28 @@
         .table th {
             vertical-align: middle;
         }
+        .giftcards-collapsible {
+            position: relative;
+        }
+        .giftcards-table-wrapper {
+            max-height: 520px;
+            overflow: auto;
+        }
+        .giftcards-collapsed .giftcards-table-wrapper {
+            max-height: 260px;
+        }
+        .giftcards-toggle {
+            width: 100%;
+            border: 0;
+            background: transparent;
+            color: #6c757d;
+            padding: 6px 0 0;
+            font-size: 18px;
+            line-height: 1;
+        }
+        .giftcards-toggle:hover {
+            color: #0d6efd;
+        }
     </style>
 </head>
 
@@ -154,20 +176,26 @@
                     <h5 class="card-title mb-0">Available Gift Cards</h5>
                     <div class="text-muted small" id="availableCount">0 available</div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Card #</th>
-                                <th>Book</th>
-                                <th class="text-end">Status</th>
-                                <th class="text-end">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="availableTable"></tbody>
-                    </table>
+                <div id="availableSection" class="giftcards-collapsible giftcards-collapsed">
+                    <div class="table-responsive giftcards-table-wrapper" id="availableTableWrapper">
+                        <table class="table table-striped align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Card #</th>
+                                    <th>Book</th>
+                                    <th class="text-end">Status</th>
+                                    <th class="text-end">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="availableTable"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="availableHint"></div>
+                    <button class="giftcards-toggle" id="availableToggle" type="button" aria-expanded="false" aria-controls="availableTableWrapper" title="Show full list">
+                        <span class="giftcards-toggle-icon" aria-hidden="true">&#x25BC;</span>
+                        <span class="visually-hidden">Show all available gift cards</span>
+                    </button>
                 </div>
-                <div class="small text-muted mt-2" id="availableHint"></div>
             </div>
         </div>
 
@@ -177,20 +205,26 @@
                     <h5 class="card-title mb-0">Active Gift Cards</h5>
                     <div class="text-muted small" id="activeCount">0 active</div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Card #</th>
-                                <th>Book</th>
-                                <th class="text-end">Balance</th>
-                                <th class="text-end">Sold</th>
-                            </tr>
-                        </thead>
-                        <tbody id="activeTable"></tbody>
-                    </table>
+                <div id="activeSection" class="giftcards-collapsible giftcards-collapsed">
+                    <div class="table-responsive giftcards-table-wrapper" id="activeTableWrapper">
+                        <table class="table table-striped align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Card #</th>
+                                    <th>Book</th>
+                                    <th class="text-end">Balance</th>
+                                    <th class="text-end">Sold</th>
+                                </tr>
+                            </thead>
+                            <tbody id="activeTable"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="activeHint"></div>
+                    <button class="giftcards-toggle" id="activeToggle" type="button" aria-expanded="false" aria-controls="activeTableWrapper" title="Show full list">
+                        <span class="giftcards-toggle-icon" aria-hidden="true">&#x25BC;</span>
+                        <span class="visually-hidden">Show all active gift cards</span>
+                    </button>
                 </div>
-                <div class="small text-muted mt-2" id="activeHint"></div>
             </div>
         </div>
 
@@ -200,21 +234,27 @@
                     <h5 class="card-title mb-0">Redeemed Gift Cards</h5>
                     <div class="text-muted small" id="redeemedCount">0 redeemed</div>
                 </div>
-                <div class="table-responsive">
-                    <table class="table table-striped align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Card #</th>
-                                <th>Receipt #</th>
-                                <th>Date</th>
-                                <th class="text-end">Amount</th>
-                                <th class="text-end">Remaining</th>
-                            </tr>
-                        </thead>
-                        <tbody id="redeemedTable"></tbody>
-                    </table>
+                <div id="redeemedSection" class="giftcards-collapsible giftcards-collapsed">
+                    <div class="table-responsive giftcards-table-wrapper" id="redeemedTableWrapper">
+                        <table class="table table-striped align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Card #</th>
+                                    <th>Receipt #</th>
+                                    <th>Date</th>
+                                    <th class="text-end">Amount</th>
+                                    <th class="text-end">Remaining</th>
+                                </tr>
+                            </thead>
+                            <tbody id="redeemedTable"></tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mt-2" id="redeemedHint"></div>
+                    <button class="giftcards-toggle" id="redeemedToggle" type="button" aria-expanded="false" aria-controls="redeemedTableWrapper" title="Show full list">
+                        <span class="giftcards-toggle-icon" aria-hidden="true">&#x25BC;</span>
+                        <span class="visually-hidden">Show all redeemed gift cards</span>
+                    </button>
                 </div>
-                <div class="small text-muted mt-2" id="redeemedHint"></div>
             </div>
         </div>
     </main>

@@ -23,6 +23,7 @@ if (document.readyState === 'loading') {
 }
 
 const DISPLAY_LIMIT = 200;
+const SECTION_COLLAPSE_PX = 260;
 let cache = { books: [], cards: [], transactions: [] };
 let GIFT_CARD_SURCHARGE_RATE = 0.03;
 
@@ -166,6 +167,7 @@ function renderAvailableTable() {
             ? `Showing first ${DISPLAY_LIMIT} cards.`
             : '';
     }
+    requestAnimationFrame(() => updateGiftcardCollapseUi('availableSection', 'availableTableWrapper', 'availableToggle'));
 }
 
 function renderActiveTable() {
@@ -194,6 +196,7 @@ function renderActiveTable() {
             ? `Showing first ${DISPLAY_LIMIT} cards.`
             : '';
     }
+    requestAnimationFrame(() => updateGiftcardCollapseUi('activeSection', 'activeTableWrapper', 'activeToggle'));
 }
 
 function renderRedeemedTable() {
@@ -227,6 +230,7 @@ function renderRedeemedTable() {
             ? `Showing latest ${DISPLAY_LIMIT} redemptions.`
             : '';
     }
+    requestAnimationFrame(() => updateGiftcardCollapseUi('redeemedSection', 'redeemedTableWrapper', 'redeemedToggle'));
 }
 
 async function refreshAll() {
@@ -235,6 +239,32 @@ async function refreshAll() {
     renderAvailableTable();
     renderActiveTable();
     renderRedeemedTable();
+}
+
+function updateGiftcardCollapseUi(sectionId, wrapperId, toggleId) {
+    const section = document.getElementById(sectionId);
+    const wrapper = document.getElementById(wrapperId);
+    const toggle = document.getElementById(toggleId);
+    if (!section || !wrapper || !toggle) return;
+    const isCollapsed = section.classList.contains('giftcards-collapsed');
+    toggle.setAttribute('aria-expanded', String(!isCollapsed));
+    toggle.title = isCollapsed ? 'Show full list' : 'Hide list';
+    const icon = toggle.querySelector('.giftcards-toggle-icon');
+    if (icon) icon.textContent = isCollapsed ? '▼' : '▲';
+    const needsToggle = wrapper.scrollHeight > SECTION_COLLAPSE_PX + 4;
+    toggle.classList.toggle('d-none', !needsToggle);
+    if (!needsToggle) {
+        section.classList.remove('giftcards-collapsed');
+        toggle.setAttribute('aria-expanded', 'true');
+        if (icon) icon.textContent = '▲';
+    }
+}
+
+function toggleGiftcardCollapse(sectionId, wrapperId, toggleId) {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    section.classList.toggle('giftcards-collapsed');
+    updateGiftcardCollapseUi(sectionId, wrapperId, toggleId);
 }
 
 async function addBook() {
@@ -495,6 +525,9 @@ window.addEventListener('load', async () => {
     document.getElementById('addBookBtn')?.addEventListener('click', addBook);
     document.getElementById('activateCardBtn')?.addEventListener('click', activateCard);
     document.getElementById('lookupBtn')?.addEventListener('click', lookupCard);
+    document.getElementById('availableToggle')?.addEventListener('click', () => toggleGiftcardCollapse('availableSection', 'availableTableWrapper', 'availableToggle'));
+    document.getElementById('activeToggle')?.addEventListener('click', () => toggleGiftcardCollapse('activeSection', 'activeTableWrapper', 'activeToggle'));
+    document.getElementById('redeemedToggle')?.addEventListener('click', () => toggleGiftcardCollapse('redeemedSection', 'redeemedTableWrapper', 'redeemedToggle'));
     document.getElementById('lookupNumber')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') lookupCard();
     });
@@ -527,4 +560,9 @@ window.addEventListener('load', async () => {
             if (!isNaN(rate) && rate >= 0 && rate <= 1) GIFT_CARD_SURCHARGE_RATE = rate;
         });
     } catch (_) { }
+    window.addEventListener('resize', () => {
+        updateGiftcardCollapseUi('availableSection', 'availableTableWrapper', 'availableToggle');
+        updateGiftcardCollapseUi('activeSection', 'activeTableWrapper', 'activeToggle');
+        updateGiftcardCollapseUi('redeemedSection', 'redeemedTableWrapper', 'redeemedToggle');
+    });
 });
