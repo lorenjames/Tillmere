@@ -28,6 +28,17 @@
             min-height: 100vh;
         }
 
+        .customer-layout {
+            display: flex;
+            flex-direction: column;
+            min-height: 100%;
+            gap: 2rem;
+        }
+
+        .customer-cart-card {
+            align-self: stretch;
+        }
+
         .customer-card {
             border: none;
             background: var(--surface);
@@ -114,6 +125,10 @@
             box-sizing: border-box;
         }
 
+        .customer-carousel-anchor {
+            margin-top: auto;
+        }
+
         .customer-carousel-card h3 {
             font-size: 2rem;
             line-height: 1.25;
@@ -135,9 +150,9 @@
 </head>
 
 <body>
-    <div class="container-fluid customer-shell d-flex align-items-center py-4 px-3">
-        <div class="w-100">
-            <div class="customer-card customer-surface p-4 h-100 d-flex flex-column">
+    <div class="container-fluid customer-shell d-flex flex-column align-items-stretch py-4 px-3">
+        <div class="w-100 customer-layout">
+            <div id="customerCartCard" class="customer-card customer-cart-card customer-surface p-4 h-100 d-flex flex-column">
                 <div class="customer-header pb-3 mb-3">
                     <div class="d-flex justify-content-between align-items-start gap-3 flex-column flex-md-row">
                         <div>
@@ -195,9 +210,19 @@
                             <div class="fs-4">$<span id="customerTotalSummary">0.00</span></div>
                         </div>
                     </div>
+                    <div class="row text-center text-cerulean fw-semibold gy-2 mt-2">
+                        <div id="customerSplitTenderWrap" class="col-6 col-lg-4 d-none">
+                            <div id="customerSplitTenderLabel" class="text-muted small">Split Tender</div>
+                            <div class="fs-5">$<span id="customerSplitTenderAmount">0.00</span></div>
+                        </div>
+                        <div id="customerCardFeeWrap" class="col-6 col-lg-4 d-none">
+                            <div id="customerCardFeeLabel" class="text-muted small">Gift Card Fee</div>
+                            <div class="fs-5">$<span id="customerCardFee">0.00</span></div>
+                        </div>
+                    </div>
                 </footer>
             </div>
-            <section class="customer-carousel customer-carousel-section d-none" id="customerCarouselSection">
+            <section class="customer-carousel customer-carousel-section customer-carousel-anchor d-none" id="customerCarouselSection">
                 <div class="customer-carousel-card p-4 mt-3">
                     <div class="row gx-3 gy-4 align-items-center flex-column flex-lg-row">
                         <div class="col-lg-5">

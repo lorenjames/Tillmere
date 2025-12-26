@@ -88,6 +88,46 @@ function bookLabel(bookId) {
     return book.label || book.prefix || book.id || '';
 }
 
+function isGiftCardSaleItem(item) {
+    const name = String(item?.name || '').toLowerCase();
+    return name.includes('gift card') || name.includes('giftcard');
+}
+function getReceiptItemsSubtotal(receipt) {
+    return (Array.isArray(receipt?.items) ? receipt.items : []).reduce((sum, it) => {
+        const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+        const unit = toMoneyNumber(it.price || 0);
+        return sum + toMoneyNumber(unit * qty);
+    }, 0);
+}
+function getGiftCardSaleTotal(receipt) {
+    return (Array.isArray(receipt?.items) ? receipt.items : []).reduce((sum, it) => {
+        if (!isGiftCardSaleItem(it)) return sum;
+        const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+        const unit = toMoneyNumber(it.price || 0);
+        return sum + toMoneyNumber(unit * qty);
+    }, 0);
+}
+function getGiftCardFee(receipt, giftCardSaleTotal) {
+    const giftTotal = toMoneyNumber(giftCardSaleTotal || 0);
+    if (giftTotal <= 0) return 0;
+    const splitEnabled = !!receipt?.splitTenderEnabled;
+    const splitType = String(receipt?.splitTenderType || '');
+    const payment = String(receipt?.payment || '');
+    const cardTenderUsed = payment === 'Card' || (splitEnabled && splitType === 'Card');
+    if (!cardTenderUsed) return 0;
+    if (splitEnabled && payment !== 'Card') {
+        const splitAmount = toMoneyNumber(receipt?.splitTenderAmount || 0);
+        const subtotal = (receipt?.subtotal !== undefined && receipt?.subtotal !== null)
+            ? toMoneyNumber(receipt.subtotal)
+            : getReceiptItemsSubtotal(receipt);
+        const tax = toMoneyNumber(receipt?.tax || 0);
+        const baseTotal = toMoneyNumber(subtotal + tax);
+        const primaryAmount = Math.max(0, baseTotal - splitAmount);
+        if (primaryAmount + 0.009 >= giftTotal) return 0;
+    }
+    return toMoneyNumber(giftTotal * GIFT_CARD_SURCHARGE_RATE);
+}
+
 async function loadCashiers() {
     try {
         const list = await ipcRenderer.invoke('cashiers:load');
@@ -438,16 +478,8 @@ function buildReceiptHtml(receipt) {
     const primaryAmount = Math.max(0, toMoneyNumber(receipt.total || 0) - splitAmount);
     const giftNumber = String(receipt.giftCardNumber || '').trim();
     const giftBalance = toMoneyNumber(receipt.giftCardBalance || 0);
-    const giftCardSaleTotal = items.reduce((sum, it) => {
-        const name = String(it?.name || '').toLowerCase();
-        if (!name.includes('gift card') && !name.includes('giftcard')) return sum;
-        const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
-        const unit = toMoneyNumber(it.price || 0);
-        return sum + toMoneyNumber(unit * qty);
-    }, 0);
-    const isCardTender = String(receipt.payment || '') === 'Card'
-        || (splitEnabled && String(receipt.splitTenderType || '') === 'Card');
-    const cardFee = isCardTender ? toMoneyNumber(giftCardSaleTotal * GIFT_CARD_SURCHARGE_RATE) : 0;
+    const giftCardSaleTotal = getGiftCardSaleTotal(receipt);
+    const cardFee = getGiftCardFee(receipt, giftCardSaleTotal);
     const splitBlock = splitEnabled ? `
         <div class="d-flex justify-content-between"><div>${escapeHtml(receipt.payment || 'Tender 1')}</div><div>$${money(primaryAmount)}</div></div>
         <div class="d-flex justify-content-between"><div>${escapeHtml(receipt.splitTenderType || 'Tender 2')}</div><div>$${money(splitAmount)}</div></div>

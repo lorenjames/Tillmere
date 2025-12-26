@@ -2170,6 +2170,7 @@ function createCustomerCartWindow() {
             frame: false,
             show: false,
             backgroundColor: '#050607',
+            icon: path.join(__dirname, 'assets', 'CartAppIcon.png'),
             alwaysOnTop: isSecondary,
             autoHideMenuBar: true,
             fullscreenable: false,
@@ -2207,7 +2208,7 @@ function createWindow() {
         frame: false,
         show: true,
         transparent: false,
-        icon: path.join(__dirname, 'assets', 'MiddletonsAppIcon.png'),
+        icon: path.join(__dirname, 'assets', 'MiddletonsAppIconNEW.png'),
         webPreferences: { nodeIntegration: true, contextIsolation: false }
     });
     splashWindow.loadFile('splash.html');
@@ -2219,7 +2220,7 @@ function createWindow() {
         show: false,
         fullscreen: false,
         backgroundColor: '#f1efea',
-        icon: path.join(__dirname, 'assets', 'MiddletonsAppIcon.png'),
+        icon: path.join(__dirname, 'assets', 'MiddletonsAppIconNEW.png'),
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false,
@@ -2260,7 +2261,7 @@ function createSaleWindow(cartId) {
         show: true,
         fullscreen: false,
         backgroundColor: '#f1efea',
-        icon: path.join(__dirname, 'assets', 'MiddletonsAppIcon.png'),
+        icon: path.join(__dirname, 'assets', 'MiddletonsAppIconNEW.png'),
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false,

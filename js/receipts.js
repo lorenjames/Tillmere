@@ -186,6 +186,40 @@ function getGiftCardSaleTotal(r) {
     return sum + toMoneyNumber(unit * qty);
   }, 0);
 }
+function getReceiptItemsSubtotal(r) {
+  return (Array.isArray(r?.items) ? r.items : []).reduce((sum, it) => {
+    const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+    const unit = toMoneyNumber(it.price || 0);
+    return sum + toMoneyNumber(unit * qty);
+  }, 0);
+}
+function buildReturnQtyByKey(r) {
+  const map = {};
+  if (!r?.returned || !r.returnInfo || !Array.isArray(r.returnInfo.items)) return map;
+  r.returnInfo.items.forEach(it => {
+    const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+    const price = Number(it.price || 0).toFixed(2);
+    const key = [
+      String(it.name || '').trim().toLowerCase(),
+      price,
+      String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+    ].join('|');
+    map[key] = (map[key] || 0) + qty;
+  });
+  return map;
+}
+function getReturnTotal(r) {
+  if (!r?.returned || !r.returnInfo || !Array.isArray(r.returnInfo.items)) return 0;
+  let returnSubtotal = 0;
+  r.returnInfo.items.forEach(it => {
+    const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+    const price = Number(it.price || 0);
+    returnSubtotal += qty * price;
+  });
+  const taxRate = Number(r.taxRate || 0);
+  const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
+  return toMoneyNumber(returnSubtotal + returnTax);
+}
 function isCardTenderSelected(payment, splitEnabled, splitType) {
   const main = String(payment || '');
   const split = String(splitType || '');
@@ -196,7 +230,19 @@ function getCardFeeFromReceipt(r) {
   const splitEnabled = !!r.splitTenderEnabled;
   const splitType = String(r.splitTenderType || '');
   const giftCardSaleTotal = getGiftCardSaleTotal(r);
-  if (!isCardTenderSelected(r.payment, splitEnabled, splitType)) return 0;
+  const payment = String(r.payment || '');
+  const cardTenderUsed = isCardTenderSelected(payment, splitEnabled, splitType);
+  if (!cardTenderUsed || giftCardSaleTotal <= 0) return 0;
+  if (splitEnabled && payment !== 'Card') {
+    const splitAmount = toMoneyNumber(r.splitTenderAmount || 0);
+    const subtotal = (r?.subtotal !== undefined && r?.subtotal !== null)
+      ? toMoneyNumber(r.subtotal)
+      : getReceiptItemsSubtotal(r);
+    const tax = toMoneyNumber(r.tax || 0);
+    const baseTotal = toMoneyNumber(subtotal + tax);
+    const primaryAmount = Math.max(0, baseTotal - splitAmount);
+    if (primaryAmount + 0.009 >= giftCardSaleTotal) return 0;
+  }
   return toMoneyNumber(giftCardSaleTotal * GIFT_CARD_SURCHARGE_RATE);
 }
 // Derive the original (pre-discount) price for an item.
@@ -320,6 +366,7 @@ function applyFilters() {
   currentPage = 1;
   renderTable();
   renderVendorSubtotals();
+  renderGiftCardSummary();
 }
 
 // ---------- vendor subtotals ----------
@@ -386,6 +433,40 @@ function renderVendorSubtotals() {
   // Total of all vendors in current filter
   const total = codes.reduce((sum, c) => sum + Number(bucket[c] || 0), 0);
   if (totalEl) totalEl.textContent = `Total (Current Filter): $${money(total)}`;
+}
+function renderGiftCardSummary() {
+  const salesEl = document.getElementById('giftCardSalesTotal');
+  const redeemEl = document.getElementById('giftCardRedemptionTotal');
+  if (!salesEl || !redeemEl) return;
+  let giftSales = 0;
+  let giftRedeem = 0;
+  filtered.forEach(r => {
+    if (r.voided) return;
+    const returnQtyByKey = buildReturnQtyByKey(r);
+    (r.items || []).forEach(it => {
+      if (!isGiftCardSaleItem(it)) return;
+      const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+      const unit = Number(it.price || 0);
+      const key = [
+        String(it.name || '').trim().toLowerCase(),
+        unit.toFixed(2),
+        String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+      ].join('|');
+      const returnedQty = returnQtyByKey[key] || 0;
+      const keepQty = Math.max(0, qty - returnedQty);
+      if (keepQty <= 0) return;
+      giftSales += toMoneyNumber(unit * keepQty);
+    });
+
+    if (String(r.payment || '').trim() === 'Gift Card') {
+      const base = toMoneyNumber(r.giftCardAmount || 0) || toMoneyNumber(r.total || 0);
+      const netTotal = toMoneyNumber((r.total || 0) - getReturnTotal(r));
+      const applied = netTotal > 0 ? Math.min(base, netTotal) : 0;
+      giftRedeem += applied;
+    }
+  });
+  salesEl.textContent = `$${money(giftSales)}`;
+  redeemEl.textContent = `$${money(giftRedeem)}`;
 }
 
 // ---------- table with inline handlers ----------

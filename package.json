@@ -1,6 +1,6 @@
 {
     "name": "middletons-pos",
-    "version": "1.5.4",
+    "version": "1.5.5",
     "description": "POS system for Middleton's Antiques & Uniques",
     "author": "Loren Craig-Mohebali",
     "main": "main.js",
@@ -24,7 +24,7 @@
         ],
         "win": {
             "target": "nsis",
-            "icon": "assets/MiddletonsAppIcon.png"
+            "icon": "assets/MiddletonsAppIconNEW.png"
         },
         "nsis": {
             "oneClick": true,

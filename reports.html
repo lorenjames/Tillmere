@@ -140,6 +140,50 @@
             </div>
         </div>
 
+        <div class="card shadow-sm mt-3" id="giftCardSummaryCard">
+            <div class="card-body">
+                <h5 class="card-title mb-2">Gift Card Activity</h5>
+                <div class="row g-2 mb-2">
+                    <div class="col-12 col-md-4">
+                        <div class="border rounded p-2 bg-white">
+                            <div class="text-muted small">Gift Card Sales</div>
+                            <div class="fw-semibold" id="giftCardSalesTotal">$0.00</div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="border rounded p-2 bg-white">
+                            <div class="text-muted small">Fees Collected</div>
+                            <div class="fw-semibold" id="giftCardFeesTotal">$0.00</div>
+                            <div class="text-muted small" id="giftCardFeesNote"></div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-4">
+                        <div class="border rounded p-2 bg-white">
+                            <div class="text-muted small">Gift Card Redemptions</div>
+                            <div class="fw-semibold" id="giftCardRedemptionsTotal">$0.00</div>
+                            <div class="text-muted small" id="giftCardRedemptionsCount">0 redemptions</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Date/Time</th>
+                                <th>Receipt #</th>
+                                <th>Cashier</th>
+                                <th>Gift Card #</th>
+                                <th class="text-end">Redeemed ($)</th>
+                                <th class="text-end">Remaining Balance ($)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="giftCardRedemptionsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+
         <!-- Credit card fee section (5% of gross card sales) -->
         <div class="card shadow-sm mt-3">
             <div class="card-body">

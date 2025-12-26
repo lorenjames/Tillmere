@@ -32,7 +32,7 @@ function setupGiftCardModalDom() {
       <div id="giftCardActivateReminderModal"></div>
       <div id="giftCardReminderReceiptWrap"></div>
       <span id="giftCardReminderReceipt"></span>
-      <a id="giftCardReminderLink" href="giftcards.html"></a>
+      <button id="giftCardReminderActivateBtn"></button>
     </div>`;
 }
 
@@ -94,7 +94,7 @@ describe('gift card renderer flows', () => {
     expect(items[0].comment).toBe('Card #GC-0009');
   });
 
-  test('gift card reminder link includes activation params', () => {
+  test('gift card reminder button stores activation params', () => {
     const {
       queueGiftCardActivationReminder,
       showGiftCardActivationReminder
@@ -105,11 +105,10 @@ describe('gift card renderer flows', () => {
       amount: 25
     });
     showGiftCardActivationReminder();
-    const link = document.getElementById('giftCardReminderLink');
-    const url = new URL(link.href);
-    expect(url.searchParams.get('activateCard')).toBe('GC-1234');
-    expect(url.searchParams.get('amount')).toBe('25.00');
-    expect(url.searchParams.get('receipt')).toBe('MID-20250101-120000');
+    const btn = document.getElementById('giftCardReminderActivateBtn');
+    expect(btn.dataset.cardNumber).toBe('GC-1234');
+    expect(btn.dataset.amount).toBe('25.00');
+    expect(btn.dataset.receipt).toBe('MID-20250101-120000');
   });
 
   test('extractGiftCardSaleDetails reads card and amount', () => {

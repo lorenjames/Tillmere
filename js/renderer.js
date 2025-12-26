@@ -41,6 +41,7 @@ let __lastTotal = 0;
 let __lastCustomerCartState = null;
 let __giftCardBalance = null;
 let __giftCardReminderModal = null;
+let __giftCardActivateModal = null;
 let __giftCardSaleModal = null;
 let __pendingGiftCardReminder = null;
 let __suppressRefocusUntil = 0;
@@ -736,14 +737,11 @@ function showGiftCardActivationReminder() {
   if (receiptEl) receiptEl.textContent = receipt || '-';
   if (receiptWrap) receiptWrap.classList.toggle('d-none', !receipt);
   try {
-    const link = document.getElementById('giftCardReminderLink');
-    if (link) {
-      const params = new URLSearchParams();
-      if (cardNumber) params.set('activateCard', cardNumber);
-      if (Number.isFinite(amount) && amount > 0) params.set('amount', amount.toFixed(2));
-      if (receipt) params.set('receipt', receipt);
-      const qs = params.toString();
-      link.setAttribute('href', qs ? `giftcards.html?${qs}` : 'giftcards.html');
+    const activateBtn = document.getElementById('giftCardReminderActivateBtn');
+    if (activateBtn) {
+      activateBtn.dataset.cardNumber = cardNumber;
+      activateBtn.dataset.amount = Number.isFinite(amount) && amount > 0 ? amount.toFixed(2) : '';
+      activateBtn.dataset.receipt = receipt;
     }
   } catch (_) { }
   if (!__giftCardReminderModal) {
@@ -751,6 +749,68 @@ function showGiftCardActivationReminder() {
   }
   __pendingGiftCardReminder = null;
   try { __giftCardReminderModal.show(); } catch (_) { }
+}
+function setupGiftCardActivateModal() {
+  const modalEl = document.getElementById('activateGiftCardModal');
+  if (!modalEl || !window.bootstrap) return null;
+  if (!__giftCardActivateModal) __giftCardActivateModal = new bootstrap.Modal(modalEl);
+  return __giftCardActivateModal;
+}
+async function openGiftCardActivateModal(payload = {}) {
+  const number = String(payload.cardNumber || '').trim();
+  const amount = Number(payload.amount || 0);
+  const receipt = String(payload.receiptNumber || payload.receipt || '').trim();
+  const numberInput = document.getElementById('activateNumber');
+  const amountInput = document.getElementById('activateAmount');
+  const cashierSelect = document.getElementById('activateCashier');
+  const receiptInput = document.getElementById('activateReceipt');
+  const noteInput = document.getElementById('activateNote');
+  if (numberInput) numberInput.value = number || '';
+  if (amountInput) amountInput.value = Number.isFinite(amount) && amount > 0 ? amount.toFixed(2) : '';
+  if (receiptInput) receiptInput.value = receipt || '';
+  if (noteInput) noteInput.value = '';
+  try { await loadCashiersIntoSelect('activateCashier'); } catch (_) { }
+  const currentCashier = String(document.getElementById('cashierSelect')?.value || '').trim();
+  if (cashierSelect && currentCashier) cashierSelect.value = currentCashier;
+  const modal = setupGiftCardActivateModal();
+  try { modal?.show(); } catch (_) { }
+  try { (cashierSelect || amountInput)?.focus(); } catch (_) { }
+}
+async function activateGiftCardFromPos() {
+  const number = String(document.getElementById('activateNumber')?.value || '').trim();
+  const amount = String(document.getElementById('activateAmount')?.value || '').trim();
+  const cashier = String(document.getElementById('activateCashier')?.value || '').trim();
+  const receiptNumber = String(document.getElementById('activateReceipt')?.value || '').trim();
+  const note = String(document.getElementById('activateNote')?.value || '').trim();
+  if (!number) { showToast('Gift card number is required.', { type: 'error' }); return; }
+  if (!amount) { showToast('Gift card amount is required.', { type: 'error' }); return; }
+  if (!cashier) { showToast('Select a cashier.', { type: 'error' }); return; }
+  try {
+    const resp = await ipcRenderer.invoke('giftcards:sell', { number, amount, cashier, receiptNumber, note });
+    if (!resp || !resp.ok) {
+      showToast('Failed to activate gift card.', { type: 'error' });
+      return;
+    }
+    showToast('Gift card activated.', { type: 'success' });
+    try { __giftCardActivateModal?.hide(); } catch (_) { }
+    document.getElementById('activateNumber').value = '';
+    document.getElementById('activateAmount').value = '';
+    document.getElementById('activateReceipt').value = '';
+    document.getElementById('activateNote').value = '';
+  } catch (err) {
+    showToast(err?.message || 'Failed to activate gift card.', { type: 'error' });
+  }
+}
+async function handleGiftCardReminderActivate() {
+  const btn = document.getElementById('giftCardReminderActivateBtn');
+  if (!btn) return;
+  const payload = {
+    cardNumber: String(btn.dataset.cardNumber || '').trim(),
+    amount: toMoneyNumber(btn.dataset.amount || 0),
+    receiptNumber: String(btn.dataset.receipt || '').trim()
+  };
+  try { __giftCardReminderModal?.hide(); } catch (_) { }
+  await openGiftCardActivateModal(payload);
 }
 function giftCardBookLabel(bookId, books) {
   const list = Array.isArray(books) ? books : [];
@@ -781,6 +841,21 @@ function isCardTenderSelected(payment, splitEnabled, splitType) {
   const main = String(payment || '');
   const split = String(splitType || '');
   return main === 'Card' || (splitEnabled && split === 'Card');
+}
+function getGiftCardFee(giftCardSubtotal, subtotal, tax, payment, splitEnabled, splitType, splitAmount) {
+  const giftTotal = toMoneyNumber(giftCardSubtotal || 0);
+  if (giftTotal <= 0) return 0;
+  const main = String(payment || '');
+  const split = String(splitType || '');
+  const cardTenderUsed = main === 'Card' || (splitEnabled && split === 'Card');
+  if (!cardTenderUsed) return 0;
+  if (splitEnabled && main !== 'Card') {
+    const baseTotal = toMoneyNumber(toMoneyNumber(subtotal || 0) + toMoneyNumber(tax || 0));
+    const splitAmt = toMoneyNumber(splitAmount || 0);
+    const primaryAmount = Math.max(0, baseTotal - splitAmt);
+    if (primaryAmount + 0.009 >= giftTotal) return 0;
+  }
+  return toMoneyNumber(giftTotal * GIFT_CARD_SURCHARGE_RATE);
 }
 function clearFieldError(el) {
   try { el?.classList?.remove('is-invalid'); } catch (_) { }
@@ -1892,11 +1967,19 @@ function renderTable() {
   const paymentValue = String(paymentSelect?.value || (__carts.get(__activeCartId) || {}).payment || '');
   const splitEnabled = isSplitTenderEnabled();
   const splitTenderType = document.getElementById('splitTenderType')?.value || '';
+  const splitTenderAmountRaw = document.getElementById('splitTenderAmount')?.value || '';
+  const splitTenderAmountValue = toMoneyNumber(splitTenderAmountRaw);
   const taxableSubtotal = Math.max(0, subtotal - giftCardSubtotal);
   const tax = __taxExempt ? 0 : toMoneyNumber(taxableSubtotal * TAX_RATE);
-  const cardFee = isCardTenderSelected(paymentValue, splitEnabled, splitTenderType)
-    ? toMoneyNumber(giftCardSubtotal * GIFT_CARD_SURCHARGE_RATE)
-    : 0;
+  const cardFee = getGiftCardFee(
+    giftCardSubtotal,
+    subtotal,
+    tax,
+    paymentValue,
+    splitEnabled,
+    splitTenderType,
+    splitTenderAmountValue
+  );
   const total = toMoneyNumber(subtotal + tax + cardFee);
   const cashReceivedRaw = getCashReceivedRaw();
   const cashReceivedAmount = toMoneyNumber(cashReceivedRaw);
@@ -1907,7 +1990,6 @@ function renderTable() {
   const cartMeta = __carts.get(__activeCartId) || {};
   const cashierSelect = document.getElementById('cashierSelect');
   const cashierValue = String(cashierSelect?.value || cartMeta.cashier || '');
-  const splitTenderAmount = document.getElementById('splitTenderAmount')?.value || '';
   const payload = {
     cartId: String(__activeCartId || ''),
     cartTitle: String(cartMeta.title || ''),
@@ -1915,7 +1997,7 @@ function renderTable() {
     payment: paymentValue,
     splitTenderEnabled: isSplitTenderEnabled(),
     splitTenderType,
-    splitTenderAmount,
+    splitTenderAmount: splitTenderAmountRaw,
     items: customerItems,
     subtotal,
     tax,
@@ -2066,22 +2148,27 @@ async function printReceipt() {
     }
   }
   const cashTendered = (payment || '') === 'Cash' || (splitEnabled && splitType === 'Cash');
+  let cashReceivedAmount = 0;
+  let cashReceivedRaw = '';
+  let cashFieldEl = null;
   // If Cash is selected, require a cash tendered amount
   if (cashTendered && !isBackdated) {
-    const raw = splitEnabled && splitType === 'Cash'
+    cashFieldEl = splitEnabled && splitType === 'Cash' ? splitAmountEl : cashEl;
+    cashReceivedRaw = splitEnabled && splitType === 'Cash'
       ? String(splitAmountEl?.value ?? '').trim()
       : String(cashEl?.value ?? '').trim();
-    if (!raw) {
+    if (!cashReceivedRaw) {
       showToast('Enter the cash received from the customer.', { type: 'error' });
-      try { (splitEnabled && splitType === 'Cash' ? splitAmountEl : cashEl)?.focus(); } catch (_) { }
-      markFieldError(splitEnabled && splitType === 'Cash' ? splitAmountEl : cashEl);
+      try { cashFieldEl?.focus(); } catch (_) { }
+      markFieldError(cashFieldEl);
       return;
     }
-    const cashNum = toMoneyNumber(raw);
+    const cashNum = toMoneyNumber(cashReceivedRaw);
+    cashReceivedAmount = cashNum;
     if (isNaN(cashNum) || cashNum < 0) {
       showToast('Enter a valid non-negative cash amount.', { type: 'error' });
-      try { (splitEnabled && splitType === 'Cash' ? splitAmountEl : cashEl)?.focus(); } catch (_) { }
-      markFieldError(splitEnabled && splitType === 'Cash' ? splitAmountEl : cashEl, () => {
+      try { cashFieldEl?.focus(); } catch (_) { }
+      markFieldError(cashFieldEl, () => {
         const rawVal = splitEnabled && splitType === 'Cash'
           ? String(splitAmountEl?.value ?? '').trim()
           : String(cashEl?.value ?? '').trim();
@@ -2166,6 +2253,15 @@ async function printReceipt() {
       showToast('Enter the second tender amount.', { type: 'error' });
       try { splitAmountEl?.focus(); } catch (_) { }
       markFieldError(splitAmountEl);
+      return;
+    }
+  }
+  if (cashTendered && !isBackdated) {
+    const cashDue = getCashDue(totalDue);
+    if (cashReceivedAmount + 0.009 < cashDue) {
+      showToast('Received amount doesn\'t cover the cart total.', { type: 'error' });
+      try { cashFieldEl?.focus(); } catch (_) { }
+      markFieldError(cashFieldEl);
       return;
     }
   }
@@ -2268,10 +2364,16 @@ async function printReceipt() {
     if (rowsEl) rowsEl.appendChild(tr);
   });
   const taxableSubtotal = Math.max(0, subtotal - giftCardSubtotal);
-  const cardFee = isCardTenderSelected(payment, splitEnabled, splitType)
-    ? toMoneyNumber(giftCardSubtotal * GIFT_CARD_SURCHARGE_RATE)
-    : 0;
   const tax = __taxExempt ? 0 : toMoneyNumber(taxableSubtotal * TAX_RATE);
+  const cardFee = getGiftCardFee(
+    giftCardSubtotal,
+    subtotal,
+    tax,
+    payment,
+    splitEnabled,
+    splitType,
+    splitAmount
+  );
   const total = toMoneyNumber(subtotal + tax + cardFee);
   document.getElementById('receiptSubtotal').textContent = money(subtotal);
   document.getElementById('receiptTax').textContent = money(tax);
@@ -3239,6 +3341,14 @@ window.addEventListener('load', async () => {
     const giftCardConfirmBtn = document.getElementById('giftCardSaleConfirmBtn');
     if (giftCardConfirmBtn) giftCardConfirmBtn.addEventListener('click', confirmGiftCardSaleItem);
   } catch (_) { }
+  try {
+    const giftCardReminderActivateBtn = document.getElementById('giftCardReminderActivateBtn');
+    if (giftCardReminderActivateBtn) giftCardReminderActivateBtn.addEventListener('click', () => { handleGiftCardReminderActivate(); });
+  } catch (_) { }
+  try {
+    const activateCardBtn = document.getElementById('activateCardBtn');
+    if (activateCardBtn) activateCardBtn.addEventListener('click', activateGiftCardFromPos);
+  } catch (_) { }
   // Cancel Sale: clears and closes current tab
   try {
     const cancelBtn = document.getElementById('cancelSaleBtn');
@@ -3299,15 +3409,18 @@ window.addEventListener('load', async () => {
     itemVendorEl.addEventListener('change', () => { normalizeVendorInput(itemVendorEl); applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); });
     itemVendorEl.addEventListener('blur', () => { normalizeVendorInput(itemVendorEl); applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); });
     itemVendorEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Tab' || e.key === 'Enter') {
-        // If a vendor option is highlighted in the datalist, commit it before leaving the field
-        try { applyFirstVendorOption(itemVendorEl); } catch (_) { }
-        // Synchronously normalize to known vendor code
-        normalizeVendorLocal(itemVendorEl);
-        // Also kick off async normalization as a fallback (no need to wait)
-        try { normalizeVendorInput(itemVendorEl); } catch (_) { }
-        try { applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
-      }
+      const isTab = e.key === 'Tab';
+      const isEnter = e.key === 'Enter';
+      if (!isTab && !isEnter) return;
+      const hasInput = String(itemVendorEl.value || '').trim() !== '';
+      if (isTab && !hasInput) return;
+      // If a vendor option is highlighted in the datalist, commit it before leaving the field
+      try { applyFirstVendorOption(itemVendorEl); } catch (_) { }
+      // Synchronously normalize to known vendor code
+      normalizeVendorLocal(itemVendorEl);
+      // Also kick off async normalization as a fallback (no need to wait)
+      try { normalizeVendorInput(itemVendorEl); } catch (_) { }
+      try { applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
     });
   }
 
@@ -3330,11 +3443,14 @@ window.addEventListener('load', async () => {
     editVendorEl.addEventListener('change', () => { normalizeVendorInput(editVendorEl); applyVendorPromoToEdit({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); });
     editVendorEl.addEventListener('blur', () => { normalizeVendorInput(editVendorEl); applyVendorPromoToEdit({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); });
     editVendorEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Tab' || e.key === 'Enter') {
-        try { applyFirstVendorOption(editVendorEl); } catch (_) { }
-        normalizeEditVendorLocal(editVendorEl);
-        try { applyVendorPromoToEdit({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
-      }
+      const isTab = e.key === 'Tab';
+      const isEnter = e.key === 'Enter';
+      if (!isTab && !isEnter) return;
+      const hasInput = String(editVendorEl.value || '').trim() !== '';
+      if (isTab && !hasInput) return;
+      try { applyFirstVendorOption(editVendorEl); } catch (_) { }
+      normalizeEditVendorLocal(editVendorEl);
+      try { applyVendorPromoToEdit({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
     });
   }
 

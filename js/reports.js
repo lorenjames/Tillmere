@@ -120,6 +120,42 @@ const normalizeTender = (t) => {
     t = String(t || '').trim();
     return TENDERS.includes(t) ? t : 'Other';
 };
+const isGiftCardSaleItem = it => {
+    const name = String(it?.name || '').toLowerCase();
+    return name.includes('gift card') || name.includes('giftcard');
+};
+const isCardTenderSelected = (payment, splitEnabled, splitType) => {
+    const main = String(payment || '');
+    const split = String(splitType || '');
+    return main === 'Card' || (splitEnabled && split === 'Card');
+};
+const getReceiptItemsSubtotal = r => {
+    return (Array.isArray(r?.items) ? r.items : []).reduce((sum, it) => {
+        const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+        const unit = toMoneyNumber(it.price || 0);
+        return sum + toMoneyNumber(unit * qty);
+    }, 0);
+};
+const getGiftCardFeeForReceipt = (r, giftCardSaleTotal) => {
+    const giftTotal = toMoneyNumber(giftCardSaleTotal || 0);
+    if (giftTotal <= 0) return 0;
+    const splitEnabled = !!r?.splitTenderEnabled;
+    const splitType = String(r?.splitTenderType || '');
+    const payment = String(r?.payment || '');
+    const cardTenderUsed = payment === 'Card' || (splitEnabled && splitType === 'Card');
+    if (!cardTenderUsed) return 0;
+    if (splitEnabled && payment !== 'Card') {
+        const splitAmount = toMoneyNumber(r?.splitTenderAmount || 0);
+        const subtotal = (r?.subtotal !== undefined && r?.subtotal !== null)
+            ? toMoneyNumber(r.subtotal)
+            : getReceiptItemsSubtotal(r);
+        const tax = toMoneyNumber(r?.tax || 0);
+        const baseTotal = toMoneyNumber(subtotal + tax);
+        const primaryAmount = Math.max(0, baseTotal - splitAmount);
+        if (primaryAmount + 0.009 >= giftTotal) return 0;
+    }
+    return toMoneyNumber(giftTotal * GIFT_CARD_SURCHARGE_RATE);
+};
 
 let __managerMode = false;
 let taxExemptRows = [];
@@ -127,6 +163,33 @@ const toMoneyNumber = n => {
     const num = Number(n);
     return Number.isFinite(num) ? Math.round(num * 100) / 100 : 0;
 };
+function buildReturnQtyByKey(r) {
+    const map = {};
+    if (!r?.returned || !r.returnInfo || !Array.isArray(r.returnInfo.items)) return map;
+    r.returnInfo.items.forEach(it => {
+        const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+        const price = Number(it.price || 0).toFixed(2);
+        const key = [
+            String(it.name || '').trim().toLowerCase(),
+            price,
+            String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+        ].join('|');
+        map[key] = (map[key] || 0) + qty;
+    });
+    return map;
+}
+function getReturnTotal(r) {
+    if (!r?.returned || !r.returnInfo || !Array.isArray(r.returnInfo.items)) return 0;
+    let returnSubtotal = 0;
+    r.returnInfo.items.forEach(it => {
+        const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+        const price = Number(it.price || 0);
+        returnSubtotal += qty * price;
+    });
+    const taxRate = Number(r.taxRate || 0);
+    const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
+    return toMoneyNumber(returnSubtotal + returnTax);
+}
 
 function readManagerModeStateFromStorage() {
     try {
@@ -222,7 +285,7 @@ function runReport() {
     const from = fromVal ? new Date(fromVal + 'T00:00:00') : null;
     const to = toVal ? new Date(toVal + 'T23:59:59') : null;
 
-    const bucket = new Map(); // key -> { code,name, cash,card,check,gift,other,gross,count }
+    const bucket = new Map(); // key -> { code,name, cash,card,cardFeeBase,check,gift,other,gross,count }
 
     receipts.forEach(r => {
         if (r.voided) return;
@@ -231,19 +294,7 @@ function runReport() {
         if (to && when && when > to) return;
 
         // map of item key -> returned qty for this receipt
-        const returnQtyByKey = {};
-        if (r.returned && r.returnInfo && Array.isArray(r.returnInfo.items)) {
-            r.returnInfo.items.forEach(it => {
-                const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
-                const price = Number(it.price || 0).toFixed(2);
-                const key = [
-                    String(it.name || '').trim().toLowerCase(),
-                    price,
-                    String(it.vendorCode || it.vendor || '').trim().toLowerCase()
-                ].join('|');
-                returnQtyByKey[key] = (returnQtyByKey[key] || 0) + qty;
-            });
-        }
+            const returnQtyByKey = buildReturnQtyByKey(r);
 
         const tender = normalizeTender(r.payment);
         (r.items || []).forEach(it => {
@@ -271,7 +322,7 @@ function runReport() {
             if (!rec) {
                 rec = {
                     code: code || '', name,
-                    cash: 0, card: 0, check: 0, gift: 0, other: 0,
+                    cash: 0, card: 0, cardFeeBase: 0, check: 0, gift: 0, other: 0,
                     gross: 0, count: 0
                 };
             }
@@ -288,10 +339,14 @@ function runReport() {
             if (keepQty <= 0) return;
 
             const amount = unit * keepQty;
+            const isGiftSale = isGiftCardSaleItem(it);
             rec.gross += amount;
             rec.count += keepQty;
             if (tender === 'Cash') rec.cash += amount;
-            else if (tender === 'Card') rec.card += amount;
+            else if (tender === 'Card') {
+                rec.card += amount;
+                if (!isGiftSale) rec.cardFeeBase += amount;
+            }
             else if (tender === 'Check') rec.check += amount;
             else if (tender === 'Gift Card') rec.gift += amount;
             else rec.other += amount;
@@ -310,11 +365,12 @@ function runReport() {
     tbody.innerHTML = '';
     const frag = document.createDocumentFragment();
 
-    let totCash = 0, totCard = 0, totCheck = 0, totGift = 0, totOther = 0, grandGross = 0, grandCount = 0;
+    let totCash = 0, totCard = 0, totCardFeeBase = 0, totCheck = 0, totGift = 0, totOther = 0, grandGross = 0, grandCount = 0;
 
     rows.forEach(r => {
         totCash += r.cash;
         totCard += r.card;
+        totCardFeeBase += r.cardFeeBase || 0;
         totCheck += r.check;
         totGift += r.gift;
         totOther += r.other;
@@ -322,6 +378,7 @@ function runReport() {
         grandCount += r.count;
 
         const tr = document.createElement('tr');
+        tr.dataset.cardFeeBase = String(r.cardFeeBase || 0);
         tr.innerHTML = `
       <td>${esc(r.code || '')}</td>
       <td>${esc(r.name || '')}</td>
@@ -352,14 +409,14 @@ function runReport() {
         const feeFrag = document.createDocumentFragment();
         let feeTot = 0;
         // show only vendors with card > 0 for a tidy report
-        rows.filter(r => r.card > 0).forEach(r => {
-            const fee = Number(r.card) * 0.05;
+        rows.filter(r => r.cardFeeBase > 0).forEach(r => {
+            const fee = Number(r.cardFeeBase) * 0.05;
             feeTot += fee;
             const tr = document.createElement('tr');
             tr.innerHTML = `
               <td>${esc(r.code || '')}</td>
               <td>${esc(r.name || '')}</td>
-              <td class="text-end">$${money(r.card)}</td>
+              <td class="text-end">$${money(r.cardFeeBase)}</td>
               <td class="text-end">$${money(fee)}</td>
             `;
             feeFrag.appendChild(tr);
@@ -367,12 +424,101 @@ function runReport() {
         feeTbody.appendChild(feeFrag);
         const feeTotCardEl = document.getElementById('feeTotCard');
         const feeTotAmountEl = document.getElementById('feeTotAmount');
-        if (feeTotCardEl) feeTotCardEl.textContent = `$${money(totCard)}`;
+        if (feeTotCardEl) feeTotCardEl.textContent = `$${money(totCardFeeBase)}`;
         if (feeTotAmountEl) feeTotAmountEl.textContent = `$${money(feeTot)}`;
     }
 
+    renderGiftCardSummary({ from, to });
+
     // Build the detailed per-vendor section
     try { runDetailedReport(); } catch (e) { console.error('[reports] detailed failed:', e); }
+}
+
+function renderGiftCardSummary({ from, to }) {
+    const salesEl = document.getElementById('giftCardSalesTotal');
+    const feesEl = document.getElementById('giftCardFeesTotal');
+    const feesNoteEl = document.getElementById('giftCardFeesNote');
+    const redemptionsEl = document.getElementById('giftCardRedemptionsTotal');
+    const countEl = document.getElementById('giftCardRedemptionsCount');
+    const body = document.getElementById('giftCardRedemptionsBody');
+    if (!salesEl || !feesEl || !redemptionsEl || !countEl || !body) return;
+
+    let salesTotal = 0;
+    let feesTotal = 0;
+    let redeemedTotal = 0;
+    const rows = [];
+
+    receipts.forEach(r => {
+        if (r.voided) return;
+        const when = r.datetime ? new Date(r.datetime) : null;
+        if (from && when && when < from) return;
+        if (to && when && when > to) return;
+
+        const returnQtyByKey = buildReturnQtyByKey(r);
+        let giftSaleTotal = 0;
+        (r.items || []).forEach(it => {
+            if (!isGiftCardSaleItem(it)) return;
+            const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
+            const unit = Number(it.price || 0);
+            const key = [
+                String(it.name || '').trim().toLowerCase(),
+                unit.toFixed(2),
+                String(it.vendorCode || it.vendor || '').trim().toLowerCase()
+            ].join('|');
+            const returnedQty = returnQtyByKey[key] || 0;
+            const keepQty = Math.max(0, qty - returnedQty);
+            if (keepQty <= 0) return;
+            giftSaleTotal += toMoneyNumber(unit * keepQty);
+        });
+        if (giftSaleTotal > 0) {
+            salesTotal += giftSaleTotal;
+            feesTotal += getGiftCardFeeForReceipt(r, giftSaleTotal);
+        }
+
+        if (String(r.payment || '').trim() === 'Gift Card') {
+            const base = toMoneyNumber(r.giftCardAmount || 0) || toMoneyNumber(r.total || 0);
+            const netTotal = toMoneyNumber((r.total || 0) - getReturnTotal(r));
+            const applied = netTotal > 0 ? Math.min(base, netTotal) : 0;
+            if (applied > 0) {
+                redeemedTotal += applied;
+                rows.push({
+                    when: r.displayDate || (r.datetime ? new Date(r.datetime).toLocaleString() : ''),
+                    number: r.number || r.id || '',
+                    cashier: r.cashier || '',
+                    cardNumber: r.giftCardNumber || '',
+                    amount: applied,
+                    balance: toMoneyNumber(r.giftCardBalance || 0)
+                });
+            }
+        }
+    });
+
+    salesEl.textContent = `$${money(salesTotal)}`;
+    feesEl.textContent = `$${money(feesTotal)}`;
+    if (feesNoteEl) feesNoteEl.textContent = `Card fee: ${formatRatePct(GIFT_CARD_SURCHARGE_RATE)}% on gift card sales`;
+    redemptionsEl.textContent = `$${money(redeemedTotal)}`;
+    countEl.textContent = `${rows.length} redemption${rows.length === 1 ? '' : 's'}`;
+
+    body.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${esc(r.when)}</td>
+          <td>${esc(r.number)}</td>
+          <td>${esc(r.cashier)}</td>
+          <td>${esc(r.cardNumber)}</td>
+          <td class="text-end">$${money(r.amount)}</td>
+          <td class="text-end">$${money(r.balance)}</td>
+        `;
+        frag.appendChild(tr);
+    });
+    if (!rows.length) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="6" class="text-muted">No gift card redemptions for the selected period.</td>';
+        frag.appendChild(tr);
+    }
+    body.appendChild(frag);
 }
 
 
@@ -419,7 +565,7 @@ function runDetailedReport() {
 
             let g = groups.get(key);
             if (!g) {
-                g = { code: code || '', name, cash: 0, card: 0, check: 0, gift: 0, other: 0, gross: 0, count: 0, items: [] };
+                g = { code: code || '', name, cash: 0, card: 0, cardFeeBase: 0, check: 0, gift: 0, other: 0, gross: 0, count: 0, items: [] };
             }
 
             const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
@@ -446,10 +592,14 @@ function runDetailedReport() {
             const keepQty = Math.max(0, qty - returnedQty);
             if (keepQty <= 0) return;
             const amount = unit * keepQty;
+            const isGiftSale = isGiftCardSaleItem(it);
             g.gross += amount;
             g.count += keepQty;
             if (tender === 'Cash') g.cash += amount;
-            else if (tender === 'Card') g.card += amount;
+            else if (tender === 'Card') {
+                g.card += amount;
+                if (!isGiftSale) g.cardFeeBase += amount;
+            }
             else if (tender === 'Check') g.check += amount;
             else if (tender === 'Gift Card') g.gift += amount;
             else g.other += amount;
@@ -471,7 +621,7 @@ function runDetailedReport() {
     const frag = document.createDocumentFragment();
 
     list.forEach(g => {
-        const fee = Number(g.card) * 0.05;
+        const fee = Number(g.cardFeeBase || 0) * 0.05;
         const rowsHtml = g.items
             .slice()
             .sort((a, b) => (a.datetime?.getTime?.() || 0) - (b.datetime?.getTime?.() || 0))
@@ -617,9 +767,7 @@ function runDetailedReport() {
           const returnTax = r.taxExempt ? 0 : toMoneyNumber(returnSubtotal * taxRate);
           const returnTotal = toMoneyNumber(returnSubtotal + returnTax);
           const netTotal = toMoneyNumber((r.total || 0) - returnTotal);
-          const cardFee = isCardTenderSelected(r.payment, !!r.splitTenderEnabled, r.splitTenderType)
-              ? toMoneyNumber(getGiftCardSaleTotal(r) * GIFT_CARD_SURCHARGE_RATE)
-              : 0;
+          const cardFee = getGiftCardFeeForReceipt(r, getGiftCardSaleTotal(r));
           const cardFeeLine = cardFee > 0
               ? `<div style="display:flex; justify-content:space-between;"><div class="label">Card Fee (${formatRatePct(GIFT_CARD_SURCHARGE_RATE)}%)</div><div><strong>$${money(cardFee)}</strong></div></div>`
               : '';
@@ -796,13 +944,17 @@ function printDetailedReport() {
                     key = name || '(Unassigned)';
                 }
                 let g = groups.get(key);
-                if (!g) g = { code: code || '', name, cash: 0, card: 0, check: 0, gift: 0, other: 0, gross: 0, count: 0, items: [] };
+                if (!g) g = { code: code || '', name, cash: 0, card: 0, cardFeeBase: 0, check: 0, gift: 0, other: 0, gross: 0, count: 0, items: [] };
                 const qty = Math.max(1, parseInt(it.quantity || it.qty || 1, 10));
                 const unit = Number(it.price || 0);
                 const amount = unit * qty;
                 g.gross += amount; g.count += qty;
+                const isGiftSale = isGiftCardSaleItem(it);
                 if (tender === 'Cash') g.cash += amount;
-                else if (tender === 'Card') g.card += amount;
+                else if (tender === 'Card') {
+                    g.card += amount;
+                    if (!isGiftSale) g.cardFeeBase += amount;
+                }
                 else if (tender === 'Check') g.check += amount;
                 else if (tender === 'Gift Card') g.gift += amount;
                 else g.other += amount;
@@ -846,14 +998,15 @@ function printDetailedReport() {
         const agg = list.reduce((a, b) => ({
             cash: a.cash + b.cash,
             card: a.card + b.card,
+            cardFeeBase: a.cardFeeBase + b.cardFeeBase,
             check: a.check + b.check,
             gift: a.gift + b.gift,
             other: a.other + b.other,
             gross: a.gross + b.gross,
             count: a.count + b.count
-        }), { cash: 0, card: 0, check: 0, gift: 0, other: 0, gross: 0, count: 0 });
+        }), { cash: 0, card: 0, cardFeeBase: 0, check: 0, gift: 0, other: 0, gross: 0, count: 0 });
         const period = (fromVal || toVal) ? `${fromVal || '-'} to ${toVal || '-'}` : 'All Dates';
-        const aggFee = Number(agg.card) * 0.05;
+        const aggFee = Number(agg.cardFeeBase) * 0.05;
         const cover = `
         <div class="sheet">
           <div class="hdr">
@@ -901,7 +1054,7 @@ function printDetailedReport() {
 
         // Vendor pages
         const vendorSheets = list.map(g => {
-            const fee = Number(g.card) * 0.05;
+            const fee = Number(g.cardFeeBase || 0) * 0.05;
             const rowsHtml = g.items.length ? g.items.map(it => `
               <tr>
                 <td>${it.datetime ? esc(new Date(it.datetime).toLocaleString()) : ''}</td>
@@ -1276,7 +1429,18 @@ function printReport() {
         const tbody = document.getElementById('reportBody');
         const rows = [...tbody.querySelectorAll('tr')].map(tr => {
             const t = [...tr.querySelectorAll('td')].map(td => td.textContent.trim());
-            return { code: t[0] || '', name: t[1] || '', cash: t[2] || '', card: t[3] || '', check: t[4] || '', gift: t[5] || '', other: t[6] || '', gross: t[7] || '', count: t[8] || '' };
+            return {
+                code: t[0] || '',
+                name: t[1] || '',
+                cash: t[2] || '',
+                card: t[3] || '',
+                check: t[4] || '',
+                gift: t[5] || '',
+                other: t[6] || '',
+                gross: t[7] || '',
+                count: t[8] || '',
+                cardFeeBase: Number(tr.dataset.cardFeeBase || 0)
+            };
         });
 
         const fromVal = document.getElementById('fromDate').value;
@@ -1336,7 +1500,7 @@ function printReport() {
         // Build card fee rows (5% of card). Parse numbers from strings that may include $ and commas.
         const num = (s) => Number(String(s || '').replace(/[^\d.\-]/g, '')) || 0;
         const feeRows = rows
-            .map(r => ({ code: r.code, name: r.name, card: num(r.card) }))
+            .map(r => ({ code: r.code, name: r.name, card: r.cardFeeBase || num(r.card) }))
             .filter(r => r.card > 0)
             .map(r => ({ ...r, fee: r.card * 0.05 }));
         const feeTotCard = feeRows.reduce((a, b) => a + b.card, 0);

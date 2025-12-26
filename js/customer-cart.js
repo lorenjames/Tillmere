@@ -11,7 +11,13 @@ const state = {
   changeDueWrapEl: null,
   changeDueEl: null,
   cashReceivedWrapEl: null,
-  cashReceivedEl: null
+  cashReceivedEl: null,
+  splitTenderWrapEl: null,
+  splitTenderLabelEl: null,
+  splitTenderAmountEl: null,
+  cardFeeWrapEl: null,
+  cardFeeLabelEl: null,
+  cardFeeEl: null
 };
 
 const carouselState = {
@@ -19,6 +25,10 @@ const carouselState = {
   currentIndex: 0,
   timer: null,
   intervalMs: 10000
+};
+
+const layoutState = {
+  cartCardEl: null
 };
 
 const carouselElements = {
@@ -33,7 +43,7 @@ const DEFAULT_CAROUSEL_SLIDES = [
   {
     title: 'Welcome to Middleton\'s',
     caption: 'Thank you for shopping small & local!',
-    image: './assets/NEW_MiddletonsColor.PNG'
+    image: './assets/MiddletonsWindow2.jpg'
   },
   {
     title: 'Follow us on Facebook',
@@ -142,12 +152,43 @@ function rebuildCarouselIndicators() {
   });
 }
 
+function getCarouselMinHeight() {
+  const section = carouselElements.section;
+  if (!section) return 0;
+  const styles = window.getComputedStyle(section);
+  const minHeight = parseFloat(styles.minHeight);
+  if (Number.isFinite(minHeight)) return minHeight;
+  return section.getBoundingClientRect().height;
+}
+
+function updateCarouselLayout() {
+  const section = carouselElements.section;
+  if (!section) return;
+  if (!carouselState.slides.length) {
+    section.classList.add('d-none');
+    return;
+  }
+  const cartCard = layoutState.cartCardEl;
+  if (!cartCard) {
+    section.classList.remove('d-none');
+    return;
+  }
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const cartRect = cartCard.getBoundingClientRect();
+  const carouselMinHeight = getCarouselMinHeight();
+  const buffer = 48;
+  const shouldHide = cartRect.height + carouselMinHeight + buffer > viewportHeight;
+  section.classList.toggle('d-none', shouldHide);
+}
+
 function renderCarouselSlide() {
   if (!carouselElements.section) return;
   const slides = carouselState.slides;
   const hasSlides = slides.length > 0;
-  carouselElements.section.classList.toggle('d-none', !hasSlides);
-  if (!hasSlides) return;
+  if (!hasSlides) {
+    carouselElements.section.classList.add('d-none');
+    return;
+  }
   const slide = slides[carouselState.currentIndex] || slides[0];
   carouselState.currentIndex = slides.indexOf(slide) >= 0 ? slides.indexOf(slide) : 0;
   if (carouselElements.title) carouselElements.title.textContent = slide.title || '';
@@ -161,6 +202,7 @@ function renderCarouselSlide() {
     }
   }
   rebuildCarouselIndicators();
+  updateCarouselLayout();
 }
 
 function setCarouselSlides(slides) {
@@ -234,6 +276,8 @@ function renderCart(payload) {
   const cashReceivedText = formatMoney(payload?.cashReceived);
   const splitEnabled = !!payload?.splitTenderEnabled;
   const splitType = String(payload?.splitTenderType || '');
+  const splitAmount = safeNumber(payload?.splitTenderAmount);
+  const cardFee = safeNumber(payload?.cardFee);
   const isCashPayment = paymentValue.trim().toLowerCase() === 'cash'
     || (splitEnabled && splitType.trim().toLowerCase() === 'cash');
   const metaPieces = [];
@@ -249,12 +293,33 @@ function renderCart(payload) {
     state.cashReceivedEl.textContent = cashReceivedText;
     state.cashReceivedWrapEl.classList.toggle('d-none', !isCashPayment);
   }
+  if (state.splitTenderLabelEl) {
+    const cleanedType = splitType.trim();
+    state.splitTenderLabelEl.textContent = cleanedType ? `Split Tender (${cleanedType})` : 'Split Tender';
+  }
+  if (state.splitTenderAmountEl) {
+    state.splitTenderAmountEl.textContent = formatMoney(splitAmount);
+  }
+  if (state.splitTenderWrapEl) {
+    const showSplit = splitEnabled && (splitAmount > 0 || splitType.trim());
+    state.splitTenderWrapEl.classList.toggle('d-none', !showSplit);
+  }
+  if (state.cardFeeLabelEl) {
+    state.cardFeeLabelEl.textContent = 'Gift Card Fee';
+  }
+  if (state.cardFeeEl) {
+    state.cardFeeEl.textContent = formatMoney(cardFee);
+  }
+  if (state.cardFeeWrapEl) {
+    state.cardFeeWrapEl.classList.toggle('d-none', !(cardFee > 0));
+  }
   const carouselSlides = Array.isArray(payload?.customerAnnouncements)
     ? payload.customerAnnouncements
     : Array.isArray(payload?.carouselSlides)
       ? payload.carouselSlides
       : null;
   if (carouselSlides) setCarouselSlides(carouselSlides);
+  updateCarouselLayout();
 }
 function handleCartUpdate(_evt, payload) {
   renderCart(payload);
@@ -272,8 +337,16 @@ function initCustomerCartView() {
   state.changeDueEl = document.getElementById('customerChangeDue');
   state.cashReceivedWrapEl = document.getElementById('customerCashReceivedWrap');
   state.cashReceivedEl = document.getElementById('customerCashReceived');
+  state.splitTenderWrapEl = document.getElementById('customerSplitTenderWrap');
+  state.splitTenderLabelEl = document.getElementById('customerSplitTenderLabel');
+  state.splitTenderAmountEl = document.getElementById('customerSplitTenderAmount');
+  state.cardFeeWrapEl = document.getElementById('customerCardFeeWrap');
+  state.cardFeeLabelEl = document.getElementById('customerCardFeeLabel');
+  state.cardFeeEl = document.getElementById('customerCardFee');
+  layoutState.cartCardEl = document.getElementById('customerCartCard');
   initCarouselElements();
   renderCart(null);
+  window.addEventListener('resize', updateCarouselLayout);
   if (ipcRenderer && typeof ipcRenderer.on === 'function') {
     ipcRenderer.on('customer-cart:update', handleCartUpdate);
     ipcRenderer.on('customer-carousel:update', handleCarouselSlidesUpdate);
