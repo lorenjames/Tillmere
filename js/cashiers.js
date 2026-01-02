@@ -1,18 +1,34 @@
 // cashiers.js
-const { ipcRenderer } = require('electron');
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+    ? window.MiddletonsApiClient
+    : null;
+const invoke = (...args) => {
+    if (!api || typeof api.invoke !== 'function') {
+        return Promise.reject(new Error('API client unavailable.'));
+    }
+    return api.invoke(...args);
+};
 
 function wireCloseAppLink() {
     const closeAppLink = document.getElementById('closeAppLink');
+    if (!api?.hasIpc) {
+        try { if (closeAppLink) closeAppLink.style.display = 'none'; } catch (_) { }
+    }
     if (closeAppLink) {
         closeAppLink.addEventListener('click', () => {
-            try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+            if (!api?.hasIpc) return;
+            try { invoke('app:quit'); } catch (_) { }
         });
     }
     const userGuideLink = document.getElementById('userGuideLink');
+    if (!api?.hasIpc) {
+        try { if (userGuideLink) userGuideLink.style.display = 'none'; } catch (_) { }
+    }
     if (userGuideLink) {
         userGuideLink.addEventListener('click', (event) => {
             event.preventDefault();
-            try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+            if (!api?.hasIpc) return;
+            try { invoke('app:openUserGuide'); } catch (_) { }
         });
     }
 }
@@ -72,13 +88,13 @@ function focusElement(selectorOrElement) {
 
 async function refreshDeveloperModeState() {
     try {
-        const settings = await ipcRenderer.invoke('settings:load');
+        const settings = await invoke('settings:load');
         __developerMode = !!settings?.developerMode;
     } catch (_) { }
 }
 
-async function load() { const list = await ipcRenderer.invoke('cashiers:load'); cache = Array.isArray(list) ? list : []; cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
-async function save() { cache = await ipcRenderer.invoke('cashiers:save', cache); cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
+async function load() { const list = await invoke('cashiers:load'); cache = Array.isArray(list) ? list : []; cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
+async function save() { cache = await invoke('cashiers:save', cache); cache.sort((a, b) => (a.name || '').localeCompare(b.name || '')); }
 
 async function render() {
     await load();
@@ -195,7 +211,7 @@ window.applyPinModal = async function () {
     if (!/^[0-9]{4,8}$/.test(pin)) { showToast('PIN must be 4-8 digits.', { type: 'error' }); return; }
     if (row.pinSet && !currentPin) { showToast('Enter current PIN.', { type: 'error' }); return; }
     try {
-        await ipcRenderer.invoke('cashiers:setPin', { name, pin, currentPin });
+        await invoke('cashiers:setPin', { name, pin, currentPin });
         showToast('PIN updated.', { type: 'success' });
         __pinModalIndex = -1;
         try {
@@ -223,7 +239,7 @@ window.resetCashierPin = async function (i) {
     }
     if (!confirm(`Reset PIN for "${row.name}"? This will require them to set a new PIN.`)) return;
     try {
-        await ipcRenderer.invoke('cashiers:resetPin', { name: row.name });
+        await invoke('cashiers:resetPin', { name: row.name });
         showToast('PIN cleared; cashier must set a new one.', { type: 'success' });
         await render();
     } catch (e) {
@@ -242,7 +258,7 @@ window.deleteCashier = async function (i) {
 // (admin auth removed - rollback)
 
 try {
-    ipcRenderer.on('settings:changed', (_evt, payload) => {
+    api?.on?.('settings:changed', (_evt, payload) => {
         if (typeof payload?.developerMode === 'boolean') {
             const next = !!payload.developerMode;
             if (next !== __developerMode) {

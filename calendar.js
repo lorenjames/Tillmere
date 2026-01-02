@@ -1,5 +1,17 @@
-const { ipcRenderer } = require('electron');
-const { generateMonthGrid, resolveDayInfo } = require('./calendar-utils');
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+  ? window.MiddletonsApiClient
+  : null;
+const invoke = (...args) => {
+  if (!api || typeof api.invoke !== 'function') {
+    return Promise.reject(new Error('API client unavailable.'));
+  }
+  return api.invoke(...args);
+};
+const calendarUtils = (typeof window !== 'undefined' && window.CalendarUtils)
+  ? window.CalendarUtils
+  : (() => { try { return require('./calendar-utils'); } catch (_) { return {}; } })();
+const generateMonthGrid = calendarUtils.generateMonthGrid || (() => []);
+const resolveDayInfo = calendarUtils.resolveDayInfo || (() => ({ type: 'unknown', label: 'Hours TBD' }));
 
 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const accentColor = '#6f3f1b';
@@ -94,17 +106,41 @@ function renderCalendar(month, year) {
 
 function handlePayload(payload = {}) {
   schedulePayload = payload || {};
-  if (Number.isFinite(payload.month)) currentMonth = payload.month;
-  if (Number.isFinite(payload.year)) currentYear = payload.year;
   if (domReady) {
     populateControls();
     renderCalendar(currentMonth, currentYear);
   }
 }
 
-ipcRenderer.on('calendar:data', (_event, payload) => {
-  handlePayload(payload);
-});
+function applyQueryParams() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const monthParam = Number(params.get('month'));
+    const yearParam = Number(params.get('year'));
+    if (Number.isFinite(monthParam)) currentMonth = Math.max(0, Math.min(11, monthParam));
+    if (Number.isFinite(yearParam)) currentYear = Math.max(2000, Math.min(2100, yearParam));
+  } catch (_) { }
+}
+
+async function loadSchedulePayload() {
+  try {
+    const raw = sessionStorage.getItem('calendarPayload');
+    if (raw) {
+      sessionStorage.removeItem('calendarPayload');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        handlePayload(parsed);
+        return;
+      }
+    }
+  } catch (_) { }
+  try {
+    const payload = await invoke('schedule:load');
+    handlePayload(payload || {});
+  } catch (_) {
+    handlePayload({});
+  }
+}
 
 function updateFromControls() {
   currentMonth = Number(monthSelect.value);
@@ -112,7 +148,7 @@ function updateFromControls() {
   renderCalendar(currentMonth, currentYear);
 }
 
-function initControls() {
+async function initControls() {
   monthSelect = document.getElementById('monthSelect');
   yearSelect = document.getElementById('yearSelect');
   updateButton = document.getElementById('updateCalendarBtn');
@@ -121,11 +157,19 @@ function initControls() {
   titleElement = document.getElementById('calendarTitle');
   updateButton?.addEventListener('click', updateFromControls);
   printButton?.addEventListener('click', () => {
-    ipcRenderer.invoke('calendar:print').catch(err => console.error('Calendar print failed', err));
+    if (api?.hasIpc) {
+      invoke('calendar:print').catch(err => console.error('Calendar print failed', err));
+    } else {
+      try { window.print(); } catch (_) { }
+    }
   });
   domReady = true;
+  applyQueryParams();
+  await loadSchedulePayload();
   populateControls();
   renderCalendar(currentMonth, currentYear);
 }
 
-window.addEventListener('DOMContentLoaded', initControls);
+window.addEventListener('DOMContentLoaded', () => {
+  initControls().catch(err => console.error('Calendar init failed', err));
+});

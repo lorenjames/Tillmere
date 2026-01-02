@@ -1,18 +1,34 @@
 // vendors.js
-const { ipcRenderer } = require('electron');
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+    ? window.MiddletonsApiClient
+    : null;
+const invoke = (...args) => {
+    if (!api || typeof api.invoke !== 'function') {
+        return Promise.reject(new Error('API client unavailable.'));
+    }
+    return api.invoke(...args);
+};
 
 function wireCloseAppLink() {
     const closeAppLink = document.getElementById('closeAppLink');
+    if (!api?.hasIpc) {
+        try { if (closeAppLink) closeAppLink.style.display = 'none'; } catch (_) { }
+    }
     if (closeAppLink) {
         closeAppLink.addEventListener('click', () => {
-            try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+            if (!api?.hasIpc) return;
+            try { invoke('app:quit'); } catch (_) { }
         });
     }
     const userGuideLink = document.getElementById('userGuideLink');
+    if (!api?.hasIpc) {
+        try { if (userGuideLink) userGuideLink.style.display = 'none'; } catch (_) { }
+    }
     if (userGuideLink) {
         userGuideLink.addEventListener('click', (event) => {
             event.preventDefault();
-            try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+            if (!api?.hasIpc) return;
+            try { invoke('app:openUserGuide'); } catch (_) { }
         });
     }
 }
@@ -104,13 +120,48 @@ function updateSortButton() {
     btn.textContent = label ? `Sort: ${label}` : 'Sort';
 }
 async function loadFromDisk() {
-    const list = await ipcRenderer.invoke('vendors:load');
+    const list = await invoke('vendors:load');
     cache = Array.isArray(list) ? list.slice() : [];
     sortCache();
 }
 async function saveToDisk() {
-    cache = await ipcRenderer.invoke('vendors:save', cache);
+    cache = await invoke('vendors:save', cache);
+    cache = Array.isArray(cache) ? cache.slice() : [];
     sortCache();
+}
+async function createVendorRecord(vendor) {
+    if (api?.hasIpc) {
+        await loadFromDisk();
+        cache.push(vendor);
+        await saveToDisk();
+        return;
+    }
+    await invoke('vendors:create', vendor);
+    await loadFromDisk();
+}
+async function updateVendorRecord(previousCode, vendor) {
+    if (api?.hasIpc) {
+        await loadFromDisk();
+        const idx = cache.findIndex(v => String(v?.code || '').toLowerCase() === String(previousCode || '').toLowerCase());
+        if (idx < 0) throw new Error('Vendor not found.');
+        cache[idx] = vendor;
+        await saveToDisk();
+        return;
+    }
+    await invoke('vendors:update', previousCode, vendor);
+    await loadFromDisk();
+}
+async function deleteVendorRecord(code) {
+    if (api?.hasIpc) {
+        await loadFromDisk();
+        const idx = cache.findIndex(v => String(v?.code || '').toLowerCase() === String(code || '').toLowerCase());
+        if (idx < 0) return;
+        cache.splice(idx, 1);
+        await saveToDisk();
+        return;
+    }
+    await invoke('vendors:delete', code);
+    await loadFromDisk();
 }
 async function renderTable(options = {}) {
     const { reload = true } = options;
@@ -150,8 +201,7 @@ window.addVendor = async function () {
     if (!code) { showToast('Vendor code is required.', { type: 'error' }); focusElement('#newVendorCode'); return; }
     await loadFromDisk();
     if (cache.some(v => (v.code || '').toLowerCase() === code.toLowerCase())) { showToast('Vendor code must be unique.', { type: 'error' }); focusElement('#newVendorCode'); return; }
-    cache.push({ name, phone, code, email });
-    await saveToDisk();
+    await createVendorRecord({ name, phone, code, email });
     nameEl.value = '';
     phoneEl.value = '';
     codeEl.value = '';
@@ -184,6 +234,7 @@ window.saveVendorEdit = async function () {
     await loadFromDisk();
     const i = __vendorEditIndex;
     if (!cache[i]) return;
+    const previousCode = String(cache[i].code || '').trim();
     const code = String(document.getElementById('edit_vendor_code')?.value || '').trim();
     const name = String(document.getElementById('edit_vendor_name')?.value || '').trim();
     const phone = String(document.getElementById('edit_vendor_phone')?.value || '').trim();
@@ -192,8 +243,7 @@ window.saveVendorEdit = async function () {
     if (!code) { showToast('Vendor code is required.', { type: 'error' }); focusElement('#edit_vendor_code'); return; }
     const lower = code.toLowerCase();
     if (cache.some((v, idx) => idx !== i && (v.code || '').toLowerCase() === lower)) { showToast('Vendor code must be unique.', { type: 'error' }); focusElement('#edit_vendor_code'); return; }
-    cache[i] = { name, phone, code, email };
-    await saveToDisk();
+    await updateVendorRecord(previousCode, { name, phone, code, email });
     try {
         const el = document.getElementById('vendorEditModal');
         if (el && window.bootstrap && window.bootstrap.Modal) {
@@ -211,8 +261,8 @@ window.deleteVendor = async function (i) {
     await loadFromDisk();
     if (!cache[i]) return;
     if (!confirmWithFocus(`Delete vendor "${cache[i].name}"?`)) return;
-    cache.splice(i, 1);
-    await saveToDisk();
+    const code = cache[i].code || '';
+    await deleteVendorRecord(code);
     renderTable();
 };
 window.setVendorSort = function (field) {

@@ -1,18 +1,44 @@
-const { ipcRenderer } = require('electron');
-const { generateMonthGrid, resolveDayInfo } = require('./calendar-utils');
+(function () {
+if (typeof window !== 'undefined') {
+  if (window.__scheduleScriptLoaded) return;
+  window.__scheduleScriptLoaded = true;
+}
+
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+  ? window.MiddletonsApiClient
+  : null;
+const invoke = (...args) => {
+  if (!api || typeof api.invoke !== 'function') {
+    return Promise.reject(new Error('API client unavailable.'));
+  }
+  return api.invoke(...args);
+};
+const calendarUtils = (typeof window !== 'undefined' && window.CalendarUtils)
+  ? window.CalendarUtils
+  : (() => { try { return require('./calendar-utils'); } catch (_) { return {}; } })();
+const generateMonthGrid = calendarUtils.generateMonthGrid || (() => []);
+const resolveDayInfo = calendarUtils.resolveDayInfo || (() => ({ type: 'unknown', label: 'Hours TBD' }));
 
 function wireCloseAppLink() {
   const closeAppLink = document.getElementById('closeAppLink');
+  if (!api?.hasIpc) {
+    try { if (closeAppLink) closeAppLink.style.display = 'none'; } catch (_) { }
+  }
   if (closeAppLink) {
     closeAppLink.addEventListener('click', () => {
-      try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:quit'); } catch (_) { }
     });
   }
   const userGuideLink = document.getElementById('userGuideLink');
+  if (!api?.hasIpc) {
+    try { if (userGuideLink) userGuideLink.style.display = 'none'; } catch (_) { }
+  }
   if (userGuideLink) {
     userGuideLink.addEventListener('click', (event) => {
       event.preventDefault();
-      try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:openUserGuide'); } catch (_) { }
     });
   }
 }
@@ -97,7 +123,7 @@ async function initSchedule() {
   cashiers = await loadCashiers();
   refreshCashierAlert();
   try {
-    scheduleState = await ipcRenderer.invoke('schedule:load');
+    scheduleState = await invoke('schedule:load');
   } catch (error) {
     console.error('Failed to load schedule data', error);
     scheduleState = createFallbackSchedule();
@@ -108,7 +134,7 @@ async function initSchedule() {
 
 async function loadCashiers() {
   try {
-    const list = await ipcRenderer.invoke('cashiers:load');
+    const list = await invoke('cashiers:load');
     return (Array.isArray(list) ? list : [])
       .map(c => String(c?.name || '').trim())
       .filter(Boolean)
@@ -328,10 +354,23 @@ function openCalendarWindow() {
     storeHours: scheduleState.storeHours,
     baseHours: scheduleState.baseHours
   };
-  ipcRenderer.invoke('calendar:open', payload).catch(err => {
+  if (api?.hasIpc) {
+    invoke('calendar:open', payload).catch(err => {
+      console.error('Cannot open calendar window', err);
+      showToast('Unable to open calendar window.', { type: 'error' });
+    });
+    return;
+  }
+  try {
+    const params = new URLSearchParams();
+    if (Number.isFinite(payload.month)) params.set('month', String(payload.month));
+    if (Number.isFinite(payload.year)) params.set('year', String(payload.year));
+    try { sessionStorage.setItem('calendarPayload', JSON.stringify(payload)); } catch (_) { }
+    window.open(`calendar.html${params.toString() ? `?${params}` : ''}`, '_blank', 'noopener');
+  } catch (err) {
     console.error('Cannot open calendar window', err);
     showToast('Unable to open calendar window.', { type: 'error' });
-  });
+  }
 }
 
 function buildPrintableCalendarHtml(headerText, tableHtml) {
@@ -463,7 +502,7 @@ function handleShiftChange(event) {
 
 async function persistSchedule(patch) {
   try {
-    const saved = await ipcRenderer.invoke('schedule:save', patch);
+    const saved = await invoke('schedule:save', patch);
     scheduleState = saved;
     renderWeek();
     return saved;
@@ -701,3 +740,5 @@ try {
     };
   }
 } catch (_) {}
+
+})();

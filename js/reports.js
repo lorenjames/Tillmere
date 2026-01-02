@@ -1,24 +1,70 @@
 // reports.js
-const ipcRenderer = (window.require && window.require('electron') && window.require('electron').ipcRenderer) || window.ipcRenderer;
-if (!ipcRenderer) {
-    alert('Electron ipcRenderer not available. Ensure nodeIntegration:true or a preload exposing ipcRenderer.');
-}
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+    ? window.MiddletonsApiClient
+    : null;
+const invoke = (...args) => {
+    if (!api || typeof api.invoke !== 'function') {
+        return Promise.reject(new Error('API client unavailable.'));
+    }
+    return api.invoke(...args);
+};
+const hasIpc = !!api?.hasIpc;
 console.log('[reports] script loaded');
 window.addEventListener('error', e => console.error('[reports] error:', e.message));
 
+function showToast(message, opts = {}) {
+    try {
+        const hostId = 'toast-host';
+        let host = document.getElementById(hostId);
+        if (!host) {
+            host = document.createElement('div');
+            host.id = hostId;
+            host.style.position = 'fixed';
+            host.style.zIndex = '5000';
+            host.style.right = '16px';
+            host.style.bottom = '16px';
+            host.style.display = 'flex';
+            host.style.flexDirection = 'column';
+            host.style.gap = '8px';
+            host.style.pointerEvents = 'none';
+            document.body.appendChild(host);
+        }
+        const el = document.createElement('div');
+        const tone = (opts.type === 'error') ? '#dc3545' : (opts.type === 'success') ? '#198754' : '#0d6efd';
+        el.textContent = String(message || '');
+        el.style.pointerEvents = 'none';
+        el.style.color = '#fff';
+        el.style.background = tone;
+        el.style.borderRadius = '8px';
+        el.style.padding = '10px 12px';
+        el.style.boxShadow = '0 6px 18px rgba(0,0,0,.18)';
+        el.style.fontSize = '14px';
+        host.appendChild(el);
+        const ms = Math.max(1000, Number(opts.duration || 2500));
+        setTimeout(() => { try { el.remove(); } catch (_) { } }, ms);
+    } catch (_) { }
+}
+
 function wireCloseAppLink() {
-    if (!ipcRenderer) return;
     const closeAppLink = document.getElementById('closeAppLink');
+    if (!hasIpc) {
+        try { if (closeAppLink) closeAppLink.style.display = 'none'; } catch (_) { }
+    }
     if (closeAppLink) {
         closeAppLink.addEventListener('click', () => {
-            try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+            if (!hasIpc) return;
+            try { invoke('app:quit'); } catch (_) { }
         });
     }
     const userGuideLink = document.getElementById('userGuideLink');
+    if (!hasIpc) {
+        try { if (userGuideLink) userGuideLink.style.display = 'none'; } catch (_) { }
+    }
     if (userGuideLink) {
         userGuideLink.addEventListener('click', (event) => {
             event.preventDefault();
-            try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+            if (!hasIpc) return;
+            try { invoke('app:openUserGuide'); } catch (_) { }
         });
     }
 }
@@ -248,19 +294,13 @@ function getReceiptEffectiveDate(r) {
 
 /** RENAMED: avoid conflict with Bootstrap's global `window.bootstrap` */
 async function initReports() {
-    let bundle;
-    try {
-        // one round-trip for speed
-        bundle = await ipcRenderer.invoke('state:bootstrap');
-    } catch {
-        // fallback if state:bootstrap not present
-        const v = await ipcRenderer.invoke('vendors:load');
-        const r = await ipcRenderer.invoke('receipts:load');
-        bundle = { vendors: v, cashiers: [], receipts: r };
-    }
+    const [v, r] = await Promise.all([
+        invoke('vendors:load'),
+        invoke('receipts:load')
+    ]);
 
-    vendors = Array.isArray(bundle.vendors) ? bundle.vendors : [];
-    receipts = Array.isArray(bundle.receipts) ? bundle.receipts : [];
+    vendors = Array.isArray(v) ? v : [];
+    receipts = Array.isArray(r) ? r : [];
 
     vendorByCode = new Map(
         vendors
@@ -680,7 +720,7 @@ function runDetailedReport() {
             const id = el.getAttribute('data-id');
             if (!id) return;
             try {
-                const r = await ipcRenderer.invoke('receipts:get', id);
+                const r = await invoke('receipts:get', id);
                 if (!r) { alert(`Receipt not found for id: ${id}`); return; }
                 openReceiptWindowFromReports(r);
             } catch (err) {
@@ -1634,7 +1674,7 @@ window.addEventListener('DOMContentLoaded', () => {
     };
     // Initial settings fetch
     try {
-        ipcRenderer.invoke('settings:load').then(s => {
+        invoke('settings:load').then(s => {
             try { setDevVisibility(!!s?.developerMode); } catch (_) { }
             try {
                 branding = {
@@ -1651,7 +1691,7 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch (_) { }
     // Live updates
     try {
-        ipcRenderer.on('settings:changed', (_evt, payload) => {
+        api?.on?.('settings:changed', (_evt, payload) => {
             try { setDevVisibility(!!payload?.developerMode); } catch (_) { }
             try {
                 if (payload) {
@@ -1707,9 +1747,25 @@ window.addEventListener('DOMContentLoaded', () => {
     if (bkpBtn) {
         const onClickBackup = async () => {
             try {
-                const res = await ipcRenderer.invoke('data:export');
-                if (res?.ok) alert(`Backup saved.\n\nPath: ${res.path}\nVendors: ${res.counts.vendors}\nCashiers: ${res.counts.cashiers}\nReceipts: ${res.counts.receipts}`);
-                else if (!res?.canceled) alert('Backup failed: ' + (res?.error || 'Unknown error'));
+                if (hasIpc) {
+                    const res = await invoke('data:export');
+                    if (res?.ok) alert(`Backup saved.\n\nPath: ${res.path}\nVendors: ${res.counts.vendors}\nCashiers: ${res.counts.cashiers}\nReceipts: ${res.counts.receipts}`);
+                    else if (!res?.canceled) alert('Backup failed: ' + (res?.error || 'Unknown error'));
+                    return;
+                }
+                const data = await invoke('data:export');
+                const stamp = new Date().toISOString().slice(0, 10);
+                const filename = `middletons-backup-${stamp}.json`;
+                const blob = new Blob([JSON.stringify(data || {}, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(url);
+                showToast('Backup downloaded.', { type: 'success' });
             } catch (e) {
                 console.error(e); alert('Backup failed: ' + (e?.message || e));
             }
@@ -1720,14 +1776,33 @@ window.addEventListener('DOMContentLoaded', () => {
         const onClickRestore = async () => {
             if (!confirm('Importing a backup will overwrite current data. Continue?')) return;
             try {
-                const res = await ipcRenderer.invoke('data:import');
-                if (res?.ok) {
-                    alert(`Import complete.\nVendors: ${res.counts.vendors}\nCashiers: ${res.counts.cashiers}\nReceipts: ${res.counts.receipts}`);
-                    // Refresh in-memory data and rerun report
-                    await initReports();
-                } else if (!res?.canceled) {
-                    alert('Import failed: ' + (res?.error || 'Unknown error'));
+                if (hasIpc) {
+                    const res = await invoke('data:import');
+                    if (res?.ok) {
+                        alert(`Import complete.\nVendors: ${res.counts.vendors}\nCashiers: ${res.counts.cashiers}\nReceipts: ${res.counts.receipts}`);
+                        await initReports();
+                    } else if (!res?.canceled) {
+                        alert('Import failed: ' + (res?.error || 'Unknown error'));
+                    }
+                    return;
                 }
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json,application/json';
+                input.addEventListener('change', async () => {
+                    const file = input.files && input.files[0];
+                    if (!file) return;
+                    const text = await file.text();
+                    const payload = JSON.parse(text);
+                    const res = await invoke('data:import', payload);
+                    if (res?.ok) {
+                        showToast('Import complete.', { type: 'success' });
+                        await initReports();
+                    } else {
+                        alert('Import failed: ' + (res?.error || 'Unknown error'));
+                    }
+                }, { once: true });
+                input.click();
             } catch (e) {
                 console.error(e); alert('Import failed: ' + (e?.message || e));
             }

@@ -26,6 +26,11 @@ Planned tidy-up (optional):
 - Build Windows installer: `npm run build:win`
   - Output: `dist/` (installer exe and unpacked build)
 
+## Environment Variables
+
+- `MIDDLETONS_API_BASE`: Base URL for the web API (defaults to the current browser origin when running in web mode).
+- `MIDDLETONS_DATA_DIR`: Data directory used by the web server for JSON storage fallback (defaults to `./data`).
+
 ## Data Locations
 
 - Primary user data directory: `%APPDATA%/middletons-pos/`

@@ -42,4 +42,16 @@ function resolveDayInfo(scheduleData = {}, date = new Date()) {
   return { type: 'unknown', label: 'Hours TBD' };
 }
 
-module.exports = { generateMonthGrid, resolveDayInfo };
+const calendarUtils = { generateMonthGrid, resolveDayInfo };
+
+try {
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = calendarUtils;
+  }
+} catch (_) {}
+
+try {
+  if (typeof window !== 'undefined') {
+    window.CalendarUtils = calendarUtils;
+  }
+} catch (_) {}

@@ -1,18 +1,34 @@
 // giftcards.js
-const { ipcRenderer } = require('electron');
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+    ? window.MiddletonsApiClient
+    : null;
+const invoke = (...args) => {
+    if (!api || typeof api.invoke !== 'function') {
+        return Promise.reject(new Error('API client unavailable.'));
+    }
+    return api.invoke(...args);
+};
 
 function wireCloseAppLink() {
   const closeAppLink = document.getElementById('closeAppLink');
+  if (!api?.hasIpc) {
+    try { if (closeAppLink) closeAppLink.style.display = 'none'; } catch (_) { }
+  }
   if (closeAppLink) {
     closeAppLink.addEventListener('click', () => {
-      try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:quit'); } catch (_) { }
     });
   }
   const userGuideLink = document.getElementById('userGuideLink');
+  if (!api?.hasIpc) {
+    try { if (userGuideLink) userGuideLink.style.display = 'none'; } catch (_) { }
+  }
   if (userGuideLink) {
     userGuideLink.addEventListener('click', (event) => {
       event.preventDefault();
-      try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:openUserGuide'); } catch (_) { }
     });
   }
 }
@@ -130,7 +146,7 @@ function getGiftCardFee(receipt, giftCardSaleTotal) {
 
 async function loadCashiers() {
     try {
-        const list = await ipcRenderer.invoke('cashiers:load');
+        const list = await invoke('cashiers:load');
         const cashiers = Array.isArray(list) ? list : [];
         ['activateCashier'].forEach(id => {
             const sel = document.getElementById(id);
@@ -147,7 +163,7 @@ async function loadCashiers() {
 }
 
 async function loadData() {
-    const data = await ipcRenderer.invoke('giftcards:load');
+    const data = await invoke('giftcards:load');
     cache = data && typeof data === 'object' ? data : { books: [], cards: [], transactions: [] };
 }
 
@@ -318,7 +334,7 @@ async function addBook() {
         return;
     }
     try {
-        const resp = await ipcRenderer.invoke('giftcards:addBook', {
+        const resp = await invoke('giftcards:addBook', {
             label,
             prefix,
             start,
@@ -377,7 +393,7 @@ async function activateCard() {
     if (!amount) { showToast('Gift card amount is required.', { type: 'error' }); return; }
     if (!cashier) { showToast('Select a cashier.', { type: 'error' }); return; }
     try {
-        const resp = await ipcRenderer.invoke('giftcards:sell', { number, amount, cashier, receiptNumber, note });
+        const resp = await invoke('giftcards:sell', { number, amount, cashier, receiptNumber, note });
         if (!resp || !resp.ok) {
             showToast('Failed to activate gift card.', { type: 'error' });
             return;
@@ -406,7 +422,7 @@ async function lookupCard() {
         return;
     }
     try {
-        const resp = await ipcRenderer.invoke('giftcards:lookup', { number });
+        const resp = await invoke('giftcards:lookup', { number });
         if (!resp || !resp.card) {
             resultEl.textContent = 'Gift card not found.';
             historyEl.innerHTML = '';
@@ -539,7 +555,7 @@ async function openReceiptModal(receiptId) {
     }
     try { modal?.show(); } catch (_) { }
     try {
-        const receipt = await ipcRenderer.invoke('receipts:get', receiptId);
+        const receipt = await invoke('receipts:get', receiptId);
         if (bodyEl) bodyEl.innerHTML = buildReceiptHtml(receipt);
     } catch (err) {
         if (bodyEl) bodyEl.textContent = err?.message || 'Failed to load receipt.';
@@ -548,7 +564,7 @@ async function openReceiptModal(receiptId) {
 
 window.addEventListener('load', async () => {
     try {
-        const s = await ipcRenderer.invoke('settings:load');
+        const s = await invoke('settings:load');
         const rate = Number(s?.giftCardSurchargeRate);
         if (!isNaN(rate) && rate >= 0 && rate <= 1) GIFT_CARD_SURCHARGE_RATE = rate;
     } catch (_) { }
@@ -587,7 +603,7 @@ window.addEventListener('load', async () => {
         }
     } catch (_) { }
     try {
-        ipcRenderer.on('settings:changed', (_evt, payload) => {
+        api?.on?.('settings:changed', (_evt, payload) => {
             const rate = Number(payload?.giftCardSurchargeRate);
             if (!isNaN(rate) && rate >= 0 && rate <= 1) GIFT_CARD_SURCHARGE_RATE = rate;
         });

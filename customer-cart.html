@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:;">
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self';">
     <title>Middletons Customer View</title>
     <link href="./css/bootstrap.css" rel="stylesheet" />
     <style>
@@ -244,6 +244,7 @@
         </div>
     </div>
 
+    <script src="js/api-client.js"></script>
     <script src="js/customer-cart.js"></script>
 </body>
 

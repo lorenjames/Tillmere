@@ -1,18 +1,34 @@
 // settings.js
-const { ipcRenderer } = require('electron');
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+  ? window.MiddletonsApiClient
+  : null;
+const invoke = (...args) => {
+  if (!api || typeof api.invoke !== 'function') {
+    return Promise.reject(new Error('API client unavailable.'));
+  }
+  return api.invoke(...args);
+};
 
 function wireCloseAppLink() {
   const closeAppLink = document.getElementById('closeAppLink');
+  if (!api?.hasIpc) {
+    try { if (closeAppLink) closeAppLink.style.display = 'none'; } catch (_) { }
+  }
   if (closeAppLink) {
     closeAppLink.addEventListener('click', () => {
-      try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:quit'); } catch (_) { }
     });
   }
   const userGuideLink = document.getElementById('userGuideLink');
+  if (!api?.hasIpc) {
+    try { if (userGuideLink) userGuideLink.style.display = 'none'; } catch (_) { }
+  }
   if (userGuideLink) {
     userGuideLink.addEventListener('click', (event) => {
       event.preventDefault();
-      try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:openUserGuide'); } catch (_) { }
     });
   }
 }
@@ -109,7 +125,7 @@ function setAppConfigEncryptionStatusLabel(state) {
 }
 async function refreshAppConfigStatus() {
   try {
-    const status = await ipcRenderer.invoke('appConfig:status');
+    const status = await invoke('appConfig:status');
     setAppConfigEncryptionStatusLabel(status);
   } catch (_) {
     setAppConfigEncryptionStatusLabel(null);
@@ -219,7 +235,7 @@ function disableDeveloperModeDueToTimeout() {
   setDeveloperMode(false);
   showToast('Developer Mode timed out.', { type: 'info' });
   try {
-    ipcRenderer.invoke('settings:disableDev').catch(() => {});
+    invoke('settings:disableDev').catch(() => {});
   } catch (_) {}
 }
 function readField(id) {
@@ -283,7 +299,7 @@ async function changePasswords() {
     return;
   }
   try {
-    const resp = await ipcRenderer.invoke('appConfig:changePasswords', payload);
+    const resp = await invoke('appConfig:changePasswords', payload);
     if (resp?.ok) {
       showToast('Password(s) updated.', { type: 'success' });
       clearPasswordInputs();
@@ -398,7 +414,7 @@ async function enableDeveloperMode() {
   }
   try {
     const desiredExpires = Date.now() + MODE_TIMEOUT_MS;
-    const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode: true, password, expiresAt: desiredExpires });
+    const saved = await invoke('settings:saveDev', { developerMode: true, password, expiresAt: desiredExpires });
     const devSaved = toBool(saved?.developerMode);
     const expiresAt = Number(saved?.developerModeExpiresAt || desiredExpires);
     setDeveloperMode(devSaved, { expiresAt });
@@ -414,7 +430,7 @@ async function enableDeveloperMode() {
 
 async function disableDeveloperMode() {
   try {
-    const saved = await ipcRenderer.invoke('settings:saveDev', { developerMode: false });
+    const saved = await invoke('settings:saveDev', { developerMode: false });
     const devSaved = toBool(saved?.developerMode);
     setDeveloperMode(devSaved, { expiresAt: Number(saved?.developerModeExpiresAt || 0) });
     showToast('Developer Mode: Off', { type: 'success' });
@@ -527,7 +543,7 @@ async function toggleManagerMode() {
     return;
   }
   try {
-    await ipcRenderer.invoke('settings:enableManagerMode', { password });
+    await invoke('settings:enableManagerMode', { password });
     setManagerMode(true);
     showToast('Manager Mode enabled.', { type: 'success' });
   } catch (e) {
@@ -621,7 +637,7 @@ async function saveDenominationTargets() {
   }
   const targets = normalizeDenominationTargets(readDenominationTargetInputs());
   try {
-    const saved = await ipcRenderer.invoke('settings:saveDenominationTargets', { denominationTargets: targets });
+    const saved = await invoke('settings:saveDenominationTargets', { denominationTargets: targets });
     renderDenominationTargetInputs(saved?.drawerDenominationTargets || saved?.denominationTargets || targets);
     showToast('Denomination targets saved.', { type: 'success' });
   } catch (e) {
@@ -724,7 +740,7 @@ function startTaxOrgEdit(idx) {
 
 async function persistTaxExemptOrgs(message = 'Tax exempt organizations saved.') {
   try {
-    const saved = await ipcRenderer.invoke('settings:saveTaxExemptOrgs', { taxExemptOrgs: __taxExemptOrgs });
+    const saved = await invoke('settings:saveTaxExemptOrgs', { taxExemptOrgs: __taxExemptOrgs });
     __taxExemptOrgs = normalizeTaxExemptOrgs(saved?.taxExemptOrgs || __taxExemptOrgs);
     renderTaxOrgTable();
     resetTaxOrgForm();
@@ -942,7 +958,7 @@ function populatePromoVendorSelect(target) {
 }
 async function loadVendorsForPromos() {
   try {
-    const list = await ipcRenderer.invoke('vendors:load');
+    const list = await invoke('vendors:load');
     __vendorList = Array.isArray(list) ? list : [];
     populatePromoVendorSelect(document.getElementById('promoVendorSelect'));
     populatePromoVendorSelect(document.getElementById('editPromoVendorSelect'));
@@ -1023,7 +1039,7 @@ function openVendorPromoModal() {
 }
 async function persistVendorPromos(message = 'Vendor promotions saved.') {
   try {
-    const saved = await ipcRenderer.invoke('settings:saveVendorPromotions', { vendorPromotions: __vendorPromotions });
+    const saved = await invoke('settings:saveVendorPromotions', { vendorPromotions: __vendorPromotions });
     __vendorPromotions = normalizeVendorPromotions(saved?.vendorPromotions || __vendorPromotions);
     renderVendorPromoSummary();
     renderVendorPromoInlineTable();
@@ -1189,7 +1205,7 @@ function openVendorPromoDeleteModal(idx) {
 
 async function loadSettings() {
   try {
-    const s = await ipcRenderer.invoke('settings:load');
+    const s = await invoke('settings:load');
     const rate = Number(s?.taxRate ?? 0.0725);
     document.getElementById('taxRatePct').value = toPct(rate);
     const giftRate = Number(s?.giftCardSurchargeRate ?? 0.03);
@@ -1200,7 +1216,7 @@ async function loadSettings() {
     const devActive = dev && devExpires && devExpires > Date.now();
     setDeveloperMode(devActive, { expiresAt: devActive ? devExpires : 0 });
     if (!devActive && dev) {
-      try { ipcRenderer.invoke('settings:disableDev'); } catch (_) {}
+      try { invoke('settings:disableDev'); } catch (_) {}
     }
     const sp = Boolean(s?.silentPrint);
     const spEl = document.getElementById('silentPrint');
@@ -1208,6 +1224,9 @@ async function loadSettings() {
     const gs = Boolean(s?.greyscalePrint);
     const gsEl = document.getElementById('greyscalePrint');
     if (gsEl) gsEl.checked = gs;
+    const displayEnabled = (s?.customerDisplayEnabled === undefined) ? true : toBool(s.customerDisplayEnabled);
+    const displayToggle = document.getElementById('customerDisplayEnabled');
+    if (displayToggle) displayToggle.checked = displayEnabled;
     // Branding fields
     try {
       const navBrand = document.querySelector('.navbar-brand');
@@ -1239,30 +1258,45 @@ async function loadSettings() {
       }
     } catch (_) { }
 
-    // Populate printers
-    try {
-      const printers = await ipcRenderer.invoke('print:listPrinters');
-      const sel = document.getElementById('printerSelect');
-      if (sel) {
-        const savedName = String(s?.printerName || '');
-        // reset options (keep first default option)
-        sel.innerHTML = '';
-        const defOpt = document.createElement('option');
-        defOpt.value = '';
-        defOpt.textContent = 'System Default';
-        sel.appendChild(defOpt);
-        (printers || []).forEach(p => {
-          const name = String(p?.name || '').trim();
-          if (!name) return;
-          const label = String(p?.displayName || name);
-          const opt = document.createElement('option');
-          opt.value = name;
-          opt.textContent = label + (p?.isDefault ? ' (Default)' : '');
-          sel.appendChild(opt);
-        });
-        sel.value = savedName || '';
-      }
-    } catch (_) { /* ignore */ }
+    // Populate printers (Electron provides printer list; web keeps default option)
+    if (api?.hasIpc) {
+      try {
+        const printers = await invoke('print:listPrinters');
+        const sel = document.getElementById('printerSelect');
+        if (sel) {
+          const savedName = String(s?.printerName || '');
+          // reset options (keep first default option)
+          sel.innerHTML = '';
+          const defOpt = document.createElement('option');
+          defOpt.value = '';
+          defOpt.textContent = 'System Default';
+          sel.appendChild(defOpt);
+          (printers || []).forEach(p => {
+            const name = String(p?.name || '').trim();
+            if (!name) return;
+            const label = String(p?.displayName || name);
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = label + (p?.isDefault ? ' (Default)' : '');
+            sel.appendChild(opt);
+          });
+          sel.value = savedName || '';
+        }
+      } catch (_) { /* ignore */ }
+    } else {
+      try {
+        const sel = document.getElementById('printerSelect');
+        if (sel) {
+          const savedName = String(s?.printerName || '');
+          sel.innerHTML = '';
+          const defOpt = document.createElement('option');
+          defOpt.value = '';
+          defOpt.textContent = 'System Default';
+          sel.appendChild(defOpt);
+          sel.value = savedName || '';
+        }
+      } catch (_) { }
+    }
 
     // Discount reasons
     writeDiscountReasonsToTextarea(s?.discountReasons || []);
@@ -1283,7 +1317,7 @@ async function saveTaxSettings() {
   try {
     const pct = document.getElementById('taxRatePct').value;
     const rate = clampRate(fromPct(pct));
-    const saved = await ipcRenderer.invoke('settings:saveTax', { taxRate: rate });
+    const saved = await invoke('settings:saveTax', { taxRate: rate });
     showToast('Saved. Tax rate: ' + toPct(saved.taxRate) + '%', { type: 'success' });
   } catch (e) { showToast('Failed to save tax rate: ' + (e?.message || e), { type: 'error' }); }
 }
@@ -1296,7 +1330,7 @@ async function saveGiftCardSurchargeSettings() {
     }
     const pct = document.getElementById('giftCardSurchargePct')?.value || '';
     const rate = clampRate(fromPct(pct));
-    const saved = await ipcRenderer.invoke('settings:saveGiftCardSurcharge', { giftCardSurchargeRate: rate });
+    const saved = await invoke('settings:saveGiftCardSurcharge', { giftCardSurchargeRate: rate });
     showToast('Saved. Gift card surcharge: ' + toPct(saved.giftCardSurchargeRate) + '%', { type: 'success' });
   } catch (e) { showToast('Failed to save gift card surcharge: ' + (e?.message || e), { type: 'error' }); }
 }
@@ -1310,12 +1344,33 @@ async function savePrintSettings() {
     const silentPrint = !!document.getElementById('silentPrint')?.checked;
     const printerName = String(document.getElementById('printerSelect')?.value || '');
     const greyscalePrint = !!document.getElementById('greyscalePrint')?.checked;
-    const saved = await ipcRenderer.invoke('settings:saveSilent', { silentPrint, printerName, greyscalePrint });
+    const saved = await invoke('settings:saveSilent', { silentPrint, printerName, greyscalePrint });
     showToast(
       `Saved. Silent Print: ${saved.silentPrint ? 'On' : 'Off'} | Greyscale: ${saved.greyscalePrint ? 'On' : 'Off'}`,
       { type: 'success' }
     );
   } catch (e) { showToast('Failed to save printing settings: ' + (e?.message || e), { type: 'error' }); }
+}
+
+async function saveCustomerDisplaySettings(enabled) {
+  try {
+    const saved = await invoke('settings:saveCustomerDisplay', { customerDisplayEnabled: !!enabled });
+    const on = saved?.customerDisplayEnabled === undefined ? true : toBool(saved.customerDisplayEnabled);
+    const toggle = document.getElementById('customerDisplayEnabled');
+    if (toggle) toggle.checked = on;
+    showToast(`Customer Display: ${on ? 'On' : 'Off'}`, { type: 'success' });
+  } catch (e) {
+    showToast('Failed to save customer display setting: ' + (e?.message || e), { type: 'error' });
+  }
+}
+
+async function refreshCustomerDisplay() {
+  try {
+    await invoke('customer-cart:refresh');
+    showToast('Customer display refreshed.', { type: 'success' });
+  } catch (e) {
+    showToast('Failed to refresh customer display: ' + (e?.message || e), { type: 'error' });
+  }
 }
 
 async function saveBrandingSettings() {
@@ -1324,17 +1379,14 @@ async function saveBrandingSettings() {
     const bizAddress = document.getElementById('bizAddress')?.value || '';
     const bizPhone = document.getElementById('bizPhone')?.value || '';
     const logoInput = document.getElementById('logoInput');
-    let logoFilePath = '';
-    try {
-      const file = logoInput && logoInput.files && logoInput.files[0];
-      if (file && file.path) logoFilePath = String(file.path || '');
-    } catch (_) { }
-    const saved = await ipcRenderer.invoke('settings:saveBranding', {
-      bizName,
-      bizAddress,
-      bizPhone,
-      logoFilePath
-    });
+    const payload = { bizName, bizAddress, bizPhone };
+    if (api?.hasIpc) {
+      try {
+        const file = logoInput && logoInput.files && logoInput.files[0];
+        if (file && file.path) payload.logoFilePath = String(file.path || '');
+      } catch (_) { }
+    }
+    const saved = await invoke('settings:saveBranding', payload);
     showToast('Branding saved.', { type: 'success' });
     try {
       const navBrand = document.querySelector('.navbar-brand');
@@ -1366,7 +1418,7 @@ async function saveDiscountReasons() {
       return;
     }
     const reasons = readDiscountReasonsFromTextarea();
-    const saved = await ipcRenderer.invoke('settings:saveDiscountReasons', { discountReasons: reasons });
+    const saved = await invoke('settings:saveDiscountReasons', { discountReasons: reasons });
     writeDiscountReasonsToTextarea(saved?.discountReasons || reasons);
     showToast('Saved discount reasons.', { type: 'success' });
   } catch (e) { showToast('Failed to save discount reasons: ' + (e?.message || e), { type: 'error' }); }
@@ -1391,16 +1443,25 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('changePasswordsBtn')?.addEventListener('click', openPasswordsModal);
   document.getElementById('passwordsSaveBtn')?.addEventListener('click', changePasswords);
   document.getElementById('saveDenomTargetsBtn')?.addEventListener('click', saveDenominationTargets);
-  try {
-    ipcRenderer.invoke('app:getVersion').then(v => {
-      const el = document.getElementById('appVersion');
-      if (el) el.textContent = 'v' + (v || '');
-    }).catch(() => {});
-  } catch (_) {}
+  document.getElementById('customerDisplayEnabled')?.addEventListener('change', (event) => {
+    saveCustomerDisplaySettings(event?.target?.checked);
+  });
+  document.getElementById('refreshCustomerDisplayBtn')?.addEventListener('click', refreshCustomerDisplay);
+  if (api) {
+    try {
+      invoke('app:getVersion').then(v => {
+        const el = document.getElementById('appVersion');
+        if (el) el.textContent = 'v' + (v || '');
+      }).catch(() => {});
+    } catch (_) {}
+  } else {
+    const el = document.getElementById('appVersion');
+    if (el) el.textContent = 'web';
+  }
   loadVendorsForPromos();
   try { ensurePromoEditModal(); } catch (_) { }
     try {
-      ipcRenderer.on('settings:changed', (_evt, payload) => {
+      api?.on?.('settings:changed', (_evt, payload) => {
         if (payload?.drawerDenominationTargets || payload?.denominationTargets) {
           renderDenominationTargetInputs(payload.drawerDenominationTargets || payload.denominationTargets || {});
         }
@@ -1412,6 +1473,10 @@ window.addEventListener('DOMContentLoaded', () => {
         if (Object.prototype.hasOwnProperty.call(payload || {}, 'giftCardSurchargeRate')) {
           const giftRateEl = document.getElementById('giftCardSurchargePct');
           if (giftRateEl) giftRateEl.value = toPct(payload.giftCardSurchargeRate || 0);
+        }
+        if (Object.prototype.hasOwnProperty.call(payload || {}, 'customerDisplayEnabled')) {
+          const displayToggle = document.getElementById('customerDisplayEnabled');
+          if (displayToggle) displayToggle.checked = toBool(payload.customerDisplayEnabled);
         }
       });
     } catch (_) {}
@@ -1426,7 +1491,7 @@ window.addEventListener('storage', (event) => {
 });
 
 try {
-  ipcRenderer.on('app:prepareQuit', () => {
+  api?.on?.('app:prepareQuit', () => {
     if (__managerMode) {
       persistManagerMode(false);
       __managerMode = false;
@@ -1435,7 +1500,7 @@ try {
     if (__developerMode) {
       __developerMode = false;
       __developerModeExpiresAt = 0;
-      try { ipcRenderer.invoke('settings:disableDev').catch(() => {}); } catch (_) {}
+      try { invoke('settings:disableDev').catch(() => {}); } catch (_) {}
     }
   });
 } catch (_) {}

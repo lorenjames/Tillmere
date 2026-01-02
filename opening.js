@@ -1,21 +1,35 @@
 // opening.js
 // Cash drawer opening/closing flow for single register
-let ipcRenderer = null;
-try { ({ ipcRenderer } = require('electron')); } catch (_) { ipcRenderer = null; }
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+  ? window.MiddletonsApiClient
+  : null;
+const invoke = (...args) => {
+  if (!api || typeof api.invoke !== 'function') {
+    return Promise.reject(new Error('API client unavailable.'));
+  }
+  return api.invoke(...args);
+};
 
 function wireCloseAppLink() {
-  if (!ipcRenderer) return;
   const closeAppLink = document.getElementById('closeAppLink');
+  if (!api?.hasIpc) {
+    try { if (closeAppLink) closeAppLink.style.display = 'none'; } catch (_) { }
+  }
   if (closeAppLink) {
     closeAppLink.addEventListener('click', () => {
-      try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:quit'); } catch (_) { }
     });
   }
   const userGuideLink = document.getElementById('userGuideLink');
+  if (!api?.hasIpc) {
+    try { if (userGuideLink) userGuideLink.style.display = 'none'; } catch (_) { }
+  }
   if (userGuideLink) {
     userGuideLink.addEventListener('click', (event) => {
       event.preventDefault();
-      try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:openUserGuide'); } catch (_) { }
     });
   }
 }
@@ -84,9 +98,9 @@ function ensurePlaceholder(selectEl) {
 // ---- Cashiers ----
 async function loadCashiersIntoSelect(target) {
   const sel = typeof target === 'string' ? document.getElementById(target) : target;
-  if (!sel || !ipcRenderer) return;
+  if (!sel || !api || typeof api.invoke !== 'function') return;
   const prev = sel.value || '';
-  let list = await ipcRenderer.invoke('cashiers:load');
+  let list = await invoke('cashiers:load');
   if (!Array.isArray(list)) list = [];
   // Deduplicate by name (case-insensitive)
   const seen = new Set();
@@ -393,9 +407,9 @@ function updateDepositTargetCard(state) {
   updateClosingTargetHint();
 }
 async function loadDailyDrawerTotal() {
-  if (!ipcRenderer) return;
+  if (!api || typeof api.invoke !== 'function') return;
   try {
-    const settings = await ipcRenderer.invoke('settings:load');
+    const settings = await invoke('settings:load');
     const denomTargets = normalizeClosingDenominationTargets(settings?.drawerDenominationTargets || settings?.denominationTargets || {});
     __closingDenominationTargets = denomTargets;
     const computedTarget = computeClosingDenominationTotal(denomTargets);
@@ -483,7 +497,7 @@ function openSubmitTotalsModal() {
   }
 }
 async function printDepositReport() {
-  if (!ipcRenderer) return;
+  if (!api || typeof api.invoke !== 'function') return;
   const closing = __drawerState?.closing;
   const counts = closing?.counts || {};
   if (!closing || Object.keys(counts).length === 0) {
@@ -493,7 +507,7 @@ async function printDepositReport() {
   const date = String(__drawerState?.date || todayYmd()).trim() || todayYmd();
   let receipts = [];
   try {
-    receipts = await ipcRenderer.invoke('receipts:load');
+    receipts = await invoke('receipts:load');
   } catch (err) {
     console.error(err);
     showToast('Failed to load receipts for the deposit report.', { type: 'error' });
@@ -773,14 +787,14 @@ function renderDrawerStatusUI(state) {
 
 async function refreshDrawerState() {
   try {
-    if (!ipcRenderer) {
+    if (!api || typeof api.invoke !== 'function') {
       const statusEl = document.getElementById('drawerStatusText');
-      if (statusEl) statusEl.textContent = 'Electron IPC unavailable';
+      if (statusEl) statusEl.textContent = 'API client unavailable';
       const metaEl = document.getElementById('drawerMetaText');
-      if (metaEl) metaEl.textContent = 'Reload the app with Electron to use drawer features.';
+      if (metaEl) metaEl.textContent = 'Reload the page after configuring the API base.';
       return;
     }
-    __drawerState = await ipcRenderer.invoke('drawer:get');
+    __drawerState = await invoke('drawer:get');
     renderDrawerStatusUI(__drawerState);
     const statusEl = document.getElementById('drawerStatusText');
     if (statusEl && statusEl.textContent.trim().toLowerCase() === 'loading...') statusEl.textContent = 'Not started';
@@ -821,7 +835,7 @@ function deriveFloatCountsFromClosing(closingCounts = {}, depositCounts = {}) {
 async function prefillOpeningFromLastClosing() {
   try {
     const today = todayYmd();
-    const rows = await ipcRenderer.invoke('drawer:list', { startDate: '', endDate: today });
+    const rows = await invoke('drawer:list', { startDate: '', endDate: today });
     if (!Array.isArray(rows)) { __openingPrefillCounts = null; return; }
     const prev = rows.find(r => r.date < today && r.closing && r.closing.counts);
     if (prev?.closing?.counts) {
@@ -889,7 +903,7 @@ async function openDrawerClosingModal() {
 
 async function finalizeOpeningSubmit(payload, pinEl) {
   try {
-    await ipcRenderer.invoke('drawer:saveOpening', payload);
+    await invoke('drawer:saveOpening', payload);
     if (pinEl) pinEl.value = '';
     const el = document.getElementById('drawerOpenModal');
     if (window.bootstrap && el) window.bootstrap.Modal.getOrCreateInstance(el).hide();
@@ -978,7 +992,7 @@ async function submitDrawerClosing() {
   const depositNumberEl = document.getElementById('depositModalNumber');
   const depositNumber = String(depositNumberEl?.value || '').trim();
   try {
-    await ipcRenderer.invoke('drawer:saveClosing', {
+    await invoke('drawer:saveClosing', {
       cashier,
       pin,
       counts,
@@ -1010,7 +1024,7 @@ async function submitDrawerClosing() {
 }
 
 async function submitDailyTotals() {
-  if (!ipcRenderer) return;
+  if (!api || typeof api.invoke !== 'function') return;
   const closing = __drawerState?.closing;
   if (!closing) {
     showToast('Submit closing counts before finalizing daily totals.', { type: 'error' });
@@ -1022,7 +1036,7 @@ async function submitDailyTotals() {
   }
   const modal = ensureSubmitModal();
   try {
-    await ipcRenderer.invoke('drawer:approve', {
+    await invoke('drawer:approve', {
       date: __drawerState?.date || todayYmd(),
       by: closing.cashier || 'Cashier'
     });
@@ -1128,7 +1142,7 @@ function renderHistoryTable(rows) {
 }
 
 async function openHistoryDepositReport(date) {
-  if (!ipcRenderer) return;
+  if (!api || typeof api.invoke !== 'function') return;
   if (!__managerMode) {
     showToast('Enable Manager Mode to view drawer reports.', { type: 'error' });
     return;
@@ -1151,7 +1165,7 @@ async function openHistoryDepositReport(date) {
   }
   let receipts = [];
   try {
-    receipts = await ipcRenderer.invoke('receipts:load');
+    receipts = await invoke('receipts:load');
   } catch (err) {
     console.error(err);
     showToast('Failed to load receipts for the deposit report.', { type: 'error' });
@@ -1183,7 +1197,7 @@ async function loadDrawerHistory() {
   const start = document.getElementById('historyStart')?.value || '';
   const end = document.getElementById('historyEnd')?.value || '';
   try {
-    const rows = await ipcRenderer.invoke('drawer:list', { startDate: start, endDate: end });
+    const rows = await invoke('drawer:list', { startDate: start, endDate: end });
     renderHistoryTable(Array.isArray(rows) ? rows : []);
   } catch (e) {
     console.error(e);
@@ -1204,8 +1218,8 @@ window.addEventListener('load', async () => {
   syncManagerModeFromStorage();
   try { document.getElementById('historyFilterBtn')?.addEventListener('click', loadDrawerHistory); } catch (_) { }
   try {
-    if (ipcRenderer && ipcRenderer.on) {
-      ipcRenderer.on('settings:changed', (_evt, payload) => {
+    if (api?.hasIpc && typeof api.on === 'function') {
+      api.on('settings:changed', (_evt, payload) => {
         let targetUpdated = false;
         if (payload?.drawerDenominationTargets || payload?.denominationTargets) {
           __closingDenominationTargets = normalizeClosingDenominationTargets(payload.drawerDenominationTargets || payload.denominationTargets || {});
@@ -1245,8 +1259,8 @@ window.addEventListener('storage', (event) => {
 });
 
 try {
-  if (ipcRenderer && ipcRenderer.on) {
-    ipcRenderer.on('app:prepareQuit', () => {
+  if (api?.hasIpc && typeof api.on === 'function') {
+    api.on('app:prepareQuit', () => {
       try {
         localStorage.removeItem('managerModeEnabled');
         localStorage.removeItem('managerModeExpiresAt');

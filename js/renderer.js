@@ -1,18 +1,37 @@
 // renderer.js
-const { ipcRenderer } = require('electron');
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+  ? window.MiddletonsApiClient
+  : null;
+const invoke = (...args) => {
+  if (!api || typeof api.invoke !== 'function') {
+    return Promise.reject(new Error('API client unavailable.'));
+  }
+  return api.invoke(...args);
+};
+const send = (...args) => {
+  try { if (api && typeof api.send === 'function') api.send(...args); } catch (_) { }
+};
 
 function wireCloseAppLink() {
   const closeAppLink = document.getElementById('closeAppLink');
+  if (!api?.hasIpc) {
+    try { if (closeAppLink) closeAppLink.style.display = 'none'; } catch (_) { }
+  }
   if (closeAppLink) {
     closeAppLink.addEventListener('click', () => {
-      try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:quit'); } catch (_) { }
     });
   }
   const userGuideLink = document.getElementById('userGuideLink');
+  if (!api?.hasIpc) {
+    try { if (userGuideLink) userGuideLink.style.display = 'none'; } catch (_) { }
+  }
   if (userGuideLink) {
     userGuideLink.addEventListener('click', (event) => {
       event.preventDefault();
-      try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:openUserGuide'); } catch (_) { }
     });
   }
 }
@@ -241,8 +260,7 @@ function __snapshotFromUI() {
 function __applyStateToUI(state) {
   try {
     items = (Array.isArray(state?.items) ? state.items.map(it => ({ ...it })) : []);
-    renderTable();
-  } catch (_) { items = []; renderTable(); }
+  } catch (_) { items = []; }
   try { const el = document.getElementById('cashierSelect'); if (el) el.value = state?.cashier || ''; } catch (_) { }
   try { const el = document.getElementById('paymentSelect'); if (el) el.value = state?.payment || ''; } catch (_) { }
   try { toggleCashFields(); } catch (_) { }
@@ -287,6 +305,7 @@ function __applyStateToUI(state) {
     if (typeEl && reasonEl) syncDiscountReasonDisabledState(typeEl, reasonEl);
     try { applyVendorPromoToEntry({ onlyWhenEmptyOrAuto: true, clearWhenMissingVendor: true }); } catch (_) { }
   } catch (_) { }
+  try { renderTable(); } catch (_) { }
 }
 function __renderTabs() {
   try {
@@ -786,7 +805,7 @@ async function activateGiftCardFromPos() {
   if (!amount) { showToast('Gift card amount is required.', { type: 'error' }); return; }
   if (!cashier) { showToast('Select a cashier.', { type: 'error' }); return; }
   try {
-    const resp = await ipcRenderer.invoke('giftcards:sell', { number, amount, cashier, receiptNumber, note });
+    const resp = await invoke('giftcards:sell', { number, amount, cashier, receiptNumber, note });
     if (!resp || !resp.ok) {
       showToast('Failed to activate gift card.', { type: 'error' });
       return;
@@ -820,7 +839,7 @@ function giftCardBookLabel(bookId, books) {
 }
 async function fetchGiftCardsData() {
   try {
-    const data = await ipcRenderer.invoke('giftcards:load');
+    const data = await invoke('giftcards:load');
     if (data && typeof data === 'object') return data;
   } catch (_) { }
   return { books: [], cards: [], transactions: [] };
@@ -1383,7 +1402,7 @@ function installNavigationGuards() {
             if (!ok) {
               e.preventDefault();
               try { __isQuitting = false; } catch (_) { }
-              try { ipcRenderer && ipcRenderer.send && ipcRenderer.send('app:cancelQuit'); } catch (_) { }
+              try { if (api?.hasIpc) send('app:cancelQuit'); } catch (_) { }
               return;
             }
           }
@@ -1402,8 +1421,8 @@ function installNavigationGuards() {
 }
 
 // ---------- Data ----------
-async function fetchVendors() { return (await ipcRenderer.invoke('vendors:load')) || []; }
-async function fetchCashiers() { return (await ipcRenderer.invoke('cashiers:load')) || []; }
+async function fetchVendors() { return (await invoke('vendors:load')) || []; }
+async function fetchCashiers() { return (await invoke('cashiers:load')) || []; }
 async function ensureGiftCardVendor() {
   const list = await fetchVendors();
   const vendors = Array.isArray(list) ? list : [];
@@ -1418,8 +1437,18 @@ async function ensureGiftCardVendor() {
     phone: '',
     email: ''
   });
-  const saved = await ipcRenderer.invoke('vendors:save', vendors);
-  __vendorsCache = Array.isArray(saved) ? saved : vendors;
+  try {
+    await invoke('vendors:create', {
+      name: GIFT_CARD_VENDOR_NAME,
+      code: GIFT_CARD_VENDOR_CODE,
+      phone: '',
+      email: ''
+    });
+  } catch (err) {
+    if (err?.status !== 409) throw err;
+  }
+  const refreshed = await fetchVendors();
+  __vendorsCache = Array.isArray(refreshed) ? refreshed : vendors;
   try { setVendorDatalistOptions(__vendorsCache); } catch (_) { }
   return findVendorStrict(__vendorsCache, GIFT_CARD_VENDOR_CODE) || null;
 }
@@ -2025,8 +2054,8 @@ function renderTable() {
 function dispatchCustomerCartState(payload) {
   if (!payload) return;
   try {
-    if (ipcRenderer && typeof ipcRenderer.send === 'function') {
-      ipcRenderer.send('cart:state', payload);
+    if (typeof send === 'function') {
+      send('cart:state', payload);
     }
   } catch (_) {
     // Silence failures when IPC is unavailable (tests, background tasks)
@@ -2382,7 +2411,7 @@ async function printReceipt() {
   let giftCardBalance = 0;
   if ((payment || '') === 'Gift Card') {
     try {
-      const resp = await ipcRenderer.invoke('giftcards:redeem', {
+      const resp = await invoke('giftcards:redeem', {
         number: giftCardNumber,
         amount: giftCardAmount,
         cashier,
@@ -2466,7 +2495,7 @@ async function printReceipt() {
         discountReason
       };
     });
-    await ipcRenderer.invoke('receipts:add', {
+    await invoke('receipts:add', {
       datetime: new Date(saleDate.getTime()).toISOString(),
       backdated: !!usedBackdate,
       displayDate: usedBackdate ? (saleDate.toLocaleDateString() + ' - back dated') : saleDate.toLocaleString(),
@@ -2842,7 +2871,9 @@ async function completePrintWithHtml(html, opts = {}) {
           .replace(/window\.close\(\);?/g, '');
       } catch (_) { }
       // Ask main process to print silently to default/specified printer
-      printed = await ipcRenderer.invoke('print:silent', content);
+      if (api?.hasIpc) {
+        printed = await invoke('print:silent', content);
+      }
     } catch (e) {
       console.error('Silent print failed, will fall back to preview:', e);
     } finally {
@@ -3006,7 +3037,7 @@ async function refreshGiftCardBalanceHint() {
     return;
   }
   try {
-    const resp = await ipcRenderer.invoke('giftcards:lookup', { number });
+    const resp = await invoke('giftcards:lookup', { number });
     if (!resp || !resp.card) {
       hintEl.textContent = 'Gift card not found.';
       __giftCardBalance = null;
@@ -3210,7 +3241,7 @@ function setupPosReturnModal() {
       busy = true;
       try { if (confirmBtn) confirmBtn.disabled = true; } catch (_) { }
       try {
-        const resp = await ipcRenderer.invoke('receipts:return', { id, reason, user, userObj: cashierObj });
+        const resp = await invoke('receipts:return', { id, reason, user, userObj: cashierObj });
         if (!resp) {
           handleError('Unable to return the receipt. Ensure the ID is correct and the receipt is not already voided/returned.');
           return;
@@ -3262,7 +3293,7 @@ window.addEventListener('load', async () => {
     __writeWindowSessionId(__sessionId);
   } catch (_) { __sessionId = `S-${Date.now()}-${Math.floor(Math.random() * 100000)}`; }
   try {
-    const s = await ipcRenderer.invoke('settings:load');
+    const s = await invoke('settings:load');
     const tr = Number(s?.taxRate);
     if (!isNaN(tr) && tr >= 0 && tr <= 1) TAX_RATE = tr;
     const gcRate = Number(s?.giftCardSurchargeRate);
@@ -3388,7 +3419,7 @@ window.addEventListener('load', async () => {
 
   // Mark quitting so beforeunload can prompt appropriately
   try {
-    ipcRenderer.on('app:prepareQuit', () => {
+    api?.on?.('app:prepareQuit', () => {
       try { __isQuitting = true; } catch (_) { }
     });
   } catch (_) { }
@@ -3685,7 +3716,7 @@ window.addEventListener('load', async () => {
 
 // live tax updates
 try {
-  ipcRenderer.on('settings:changed', (_evt, payload) => {
+  api?.on?.('settings:changed', (_evt, payload) => {
     const tr = Number(payload?.taxRate);
     if (!isNaN(tr) && tr >= 0 && tr <= 1) { TAX_RATE = tr; renderTable(); updateTaxRateLabel(); }
     const gcRate = Number(payload?.giftCardSurchargeRate);

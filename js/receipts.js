@@ -1,18 +1,35 @@
 // receipts.js
-const { ipcRenderer } = require('electron');
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+  ? window.MiddletonsApiClient
+  : null;
+const invoke = (...args) => {
+  if (!api || typeof api.invoke !== 'function') {
+    return Promise.reject(new Error('API client unavailable.'));
+  }
+  return api.invoke(...args);
+};
+const canEditReceipts = !!api;
 
 function wireCloseAppLink() {
   const closeAppLink = document.getElementById('closeAppLink');
+  if (!api?.hasIpc) {
+    try { if (closeAppLink) closeAppLink.style.display = 'none'; } catch (_) { }
+  }
   if (closeAppLink) {
     closeAppLink.addEventListener('click', () => {
-      try { ipcRenderer.invoke('app:quit'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:quit'); } catch (_) { }
     });
   }
   const userGuideLink = document.getElementById('userGuideLink');
+  if (!api?.hasIpc) {
+    try { if (userGuideLink) userGuideLink.style.display = 'none'; } catch (_) { }
+  }
   if (userGuideLink) {
     userGuideLink.addEventListener('click', (event) => {
       event.preventDefault();
-      try { ipcRenderer.invoke('app:openUserGuide'); } catch (_) { }
+      if (!api?.hasIpc) return;
+      try { invoke('app:openUserGuide'); } catch (_) { }
     });
   }
 }
@@ -307,7 +324,7 @@ function toDateInputValue(d) {
 // ---------- load & filters ----------
 // Load all receipts from disk (via main process) and keep them sorted.
 async function loadAll() {
-  const list = await ipcRenderer.invoke('receipts:load');
+  const list = await invoke('receipts:load');
   all = Array.isArray(list) ? list : [];
   all.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
 }
@@ -521,11 +538,13 @@ function renderTable() {
     const returnBadge = r.returned
       ? `<div class="text-success small">RETURNED${r.returnInfo?.reason ? `: ${esc(r.returnInfo.reason)}` : ''}${r.returnInfo?.user ? ` by ${esc(r.returnInfo.user)}` : ''}${r.returnInfo?.when ? ` on ${new Date(r.returnInfo.when).toLocaleString()}` : ''}</div>`
       : '';
-    const returnButton = r.returned
-      ? `<button type="button" class="btn btn-outline-success" onclick="window.__onReceiptAction(event,'return','${rawId}')">Edit Return</button>`
-      : r.voided
-        ? `<button type="button" class="btn btn-outline-secondary" disabled>Return</button>`
-        : `<button type="button" class="btn btn-outline-success" onclick="window.__onReceiptAction(event,'return','${rawId}')">Return</button>`;
+    const returnButton = !canEditReceipts
+      ? ''
+      : r.returned
+        ? `<button type="button" class="btn btn-outline-success" onclick="window.__onReceiptAction(event,'return','${rawId}')">Edit Return</button>`
+        : r.voided
+          ? `<button type="button" class="btn btn-outline-secondary" disabled>Return</button>`
+          : `<button type="button" class="btn btn-outline-success" onclick="window.__onReceiptAction(event,'return','${rawId}')">Return</button>`;
     const splitInfo = getSplitTenderInfo(r);
     const splitExtra = splitInfo?.isCashSplit
       ? ` · Cash Received $${money(splitInfo.cashReceived)}${splitInfo.changeDue > 0 ? ` · Change $${money(splitInfo.changeDue)}` : ''}`
@@ -561,9 +580,11 @@ function renderTable() {
             <button type="button" class="btn btn-outline-primary" onclick="window.__onReceiptAction(event,'view','${rawId}')">View</button>
             <button type="button" class="btn btn-outline-primary" onclick="window.__onReceiptAction(event,'print','${rawId}')">Print</button>
             ${returnButton}
-            ${r.voided
-        ? `<button type="button" class="btn btn-outline-dark" disabled>Voided</button>`
-        : `<button type="button" class="btn btn-outline-danger" onclick="window.__onReceiptAction(event,'void','${rawId}')">Void</button>`}
+              ${!canEditReceipts
+          ? ''
+          : r.voided
+            ? `<button type="button" class="btn btn-outline-dark" disabled>Voided</button>`
+            : `<button type="button" class="btn btn-outline-danger" onclick="window.__onReceiptAction(event,'void','${rawId}')">Void</button>`}
           </div>
         </td>
       </tr>`;
@@ -577,7 +598,7 @@ async function openReceiptWindowCompact(r, opts = {}) {
   const autoPrint = !!opts.autoPrint;
   const vendors = (Array.isArray(window.__vendorsCache) && window.__vendorsCache.length)
     ? window.__vendorsCache
-    : await ipcRenderer.invoke('vendors:load');
+    : await invoke('vendors:load');
   try { if (!window.__vendorsCache || !window.__vendorsCache.length) window.__vendorsCache = vendors; } catch (_) { }
   const norm = s => String(s || '').trim().toLowerCase();
   const resolveCode = (item) => {
@@ -892,7 +913,7 @@ let __returnEntireChk = null;
 // Load the cashier list from disk (main process) with a safe fallback.
 async function getCashiersList() {
   // Actual json objects from disk
-  let list = await ipcRenderer.invoke('cashiers:load');
+  let list = await invoke('cashiers:load');
   if (!Array.isArray(list)) list = [];
   if (list.length === 0) list = [{ name: 'Manager' }];
   return list;
@@ -1011,7 +1032,7 @@ async function loadReturnReceipt(receiptId) {
   if (list) list.innerHTML = receiptId ? '<div class="text-muted small">Loading receipt…</div>' : '';
   try {
     if (!receiptId) return null;
-    const r = await ipcRenderer.invoke('receipts:get', receiptId);
+    const r = await invoke('receipts:get', receiptId);
     if (!r) {
       if (summary) summary.textContent = 'Receipt not found.';
       if (list) list.innerHTML = '<div class="text-muted small">Receipt not found.</div>';
@@ -1332,14 +1353,14 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
     if (!id) return;
 
     if (action === 'view') {
-      const r = await ipcRenderer.invoke('receipts:get', id);
+      const r = await invoke('receipts:get', id);
       if (!r) { showToast(`Receipt not found for id: ${id}`, { type: 'error' }); return; }
       await openReceiptWindow(r, { autoPrint: false });
       return;
     }
 
     if (action === 'print') {
-      const r = await ipcRenderer.invoke('receipts:get', id);
+      const r = await invoke('receipts:get', id);
       if (!r) { showToast(`Receipt not found for id: ${id}`, { type: 'error' }); return; }
       const w = await openReceiptWindow(r, { autoPrint: true });
       try { w.focus(); } catch (_) { }
@@ -1356,26 +1377,28 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
         btn.disabled = true;
         const prev = btn.textContent;
         btn.textContent = 'Voiding…';
-        try {
-          const resp = await ipcRenderer.invoke('receipts:void', { id, reason, user, userObj: cashier });
-          if (!resp) {
-            showToast(`Unable to void receipt. ID sent: ${id}. Tip: click "Reindex IDs" and try again.`, { type: 'error', duration: 4000 });
+          try {
+            const resp = await invoke('receipts:void', { id, reason, user, userObj: cashier });
+            if (!resp) {
+              showToast(`Unable to void receipt. ID sent: ${id}.`, { type: 'error', duration: 4000 });
+              btn.disabled = false; btn.textContent = prev;
+              return;
+            }
+            await loadAll();
+            applyFilters();
+            showToast('Receipt voided.', { type: 'success' });
+          } catch (err) {
+            showToast('Error voiding receipt: ' + (err?.message || err), { type: 'error' });
             btn.disabled = false; btn.textContent = prev;
-            return;
           }
-          await loadAll();
-          applyFilters();
-        } catch (err) {
-          showToast('Error voiding receipt: ' + (err?.message || err), { type: 'error' });
-          btn.disabled = false; btn.textContent = prev;
+        } else {
+          const resp = await invoke('receipts:void', { id, reason, user, userObj: cashier });
+          if (!resp) { showToast(`Unable to void receipt. ID sent: ${id}.`, { type: 'error' }); return; }
+          await loadAll(); applyFilters();
+          showToast('Receipt voided.', { type: 'success' });
         }
-      } else {
-        const resp = await ipcRenderer.invoke('receipts:void', { id, reason, user, userObj: cashier });
-        if (!resp) { showToast(`Unable to void receipt. ID sent: ${id}.`, { type: 'error' }); return; }
-        await loadAll(); applyFilters();
+        return;
       }
-      return;
-    }
 
     if (action === 'return') {
       const btn = e.currentTarget || e.target;
@@ -1395,15 +1418,16 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
         if (typeof window.__onReturnTestHook === 'function') {
           try { window.__onReturnTestHook(payload); } catch (_) { }
         }
-        const resp = await ipcRenderer.invoke('receipts:return', payload);
-        if (!resp) {
-          showToast(`Unable to return receipt. ID sent: ${receiptId}`, { type: 'error' });
-          return false;
-        }
-        await loadAll();
-        applyFilters();
-        return true;
-      };
+        const resp = await invoke('receipts:return', payload);
+          if (!resp) {
+            showToast(`Unable to return receipt. ID sent: ${receiptId}`, { type: 'error' });
+            return false;
+          }
+          await loadAll();
+          applyFilters();
+          showToast('Return recorded.', { type: 'success' });
+          return true;
+        };
 
       if (btn && btn.tagName === 'BUTTON') {
         btn.disabled = true;
@@ -1436,7 +1460,7 @@ window.__onReceiptAction = async function __onReceiptAction(e, action, id) {
 // ---------- init ----------
 // When the Receipts page loads, hydrate data, hook filters, and react to settings.
 window.addEventListener('load', async () => {
-  try { window.__vendorsCache = await ipcRenderer.invoke('vendors:load'); } catch (_) { window.__vendorsCache = []; }
+  try { window.__vendorsCache = await invoke('vendors:load'); } catch (_) { window.__vendorsCache = []; }
   await loadAll();
   await populateCashiersFilter();
   // Lightweight debounce to coalesce rapid UI changes into one render
@@ -1457,7 +1481,7 @@ window.addEventListener('load', async () => {
       const q = document.getElementById('q');
       if (q) q.value = receiptParam;
       applyFilters();
-      const r = await ipcRenderer.invoke('receipts:get', receiptParam);
+      const r = await invoke('receipts:get', receiptParam);
       if (r) {
         await openReceiptWindow(r, { autoPrint: false });
       } else {
@@ -1477,16 +1501,8 @@ window.addEventListener('load', async () => {
   document.getElementById('paymentFilter')?.addEventListener('change', scheduleApplyFilters);
   document.getElementById('fromDate')?.addEventListener('change', scheduleApplyFilters);
   document.getElementById('toDate')?.addEventListener('change', scheduleApplyFilters);
-  $('#reindexBtn').addEventListener('click', async () => {
-    const res = await ipcRenderer.invoke('receipts:reindex');
-    alert(res.changed ? `Reindexed ${res.count} receipts.` : 'No changes needed.');
-    await loadAll(); applyFilters();
-  });
-
-  // Hide/show Reindex button based on Developer Mode
   try {
-    const s = await ipcRenderer.invoke('settings:load');
-    const dev = !!s?.developerMode;
+    const s = await invoke('settings:load');
     const rate = Number(s?.giftCardSurchargeRate);
     if (!isNaN(rate) && rate >= 0 && rate <= 1) GIFT_CARD_SURCHARGE_RATE = rate;
     branding = {
@@ -1497,15 +1513,10 @@ window.addEventListener('load', async () => {
     };
     __greyscalePrint = !!s?.greyscalePrint;
     applyBrandingToReceiptsPage();
-    const btn = document.getElementById('reindexBtn');
-    if (btn) btn.style.display = dev ? '' : 'none';
   } catch (_) { }
 
   try {
-    ipcRenderer.on('settings:changed', (_evt, payload) => {
-      const dev = !!payload?.developerMode;
-      const btn = document.getElementById('reindexBtn');
-      if (btn) btn.style.display = dev ? '' : 'none';
+    api?.on?.('settings:changed', (_evt, payload) => {
       const rate = Number(payload?.giftCardSurchargeRate);
       if (!isNaN(rate) && rate >= 0 && rate <= 1) GIFT_CARD_SURCHARGE_RATE = rate;
       try {
@@ -1600,19 +1611,6 @@ window.addEventListener('load', async () => {
   });
 
   // Debug button if present
-  const dbg = document.getElementById('debugBtn');
-  if (dbg) {
-    dbg.addEventListener('click', async () => {
-      const info = await ipcRenderer.invoke('debug:info');
-      alert(
-        `Receipts path:\n${info.receiptsPath}\n\n` +
-        `Count: ${info.count}\n\n` +
-        `Sample IDs:\n` +
-        info.sampleIds.map(x => `id=${x.id} | number=${x.number}`).join('\n')
-      );
-    });
-  }
-
   // Initialize the modal-based void prompt
   setupVoidModal();
   setupReturnModal();
@@ -1624,7 +1622,7 @@ async function openReceiptWindow(r, opts = {}) {
   const autoPrint = !!opts.autoPrint;
   const vendors = (Array.isArray(window.__vendorsCache) && window.__vendorsCache.length)
     ? window.__vendorsCache
-    : await ipcRenderer.invoke('vendors:load');
+    : await invoke('vendors:load');
   try { if (!window.__vendorsCache || !window.__vendorsCache.length) window.__vendorsCache = vendors; } catch (_) { }
   const norm = s => String(s || '').trim().toLowerCase();
   const resolveCode = (item) => {

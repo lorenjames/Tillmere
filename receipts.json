@@ -33,7 +33,7 @@
       "reason": "Broken",
       "user": "system",
       "userObj": null,
-      "when": "2025-12-26T17:02:52.216Z",
+      "when": "2026-01-02T03:28:39.426Z",
       "items": [
         {
           "name": "Chair",
@@ -3061,6 +3061,396 @@
       "user": "me",
       "userObj": null,
       "when": "2025-12-26T17:02:52.195Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767320008412-311",
+    "id": "MID-1767320008412-311",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T02:13:28.435Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767320266400-861",
+    "id": "MID-1767320266400-861",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T02:17:46.437Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767320543739-57",
+    "id": "MID-1767320543739-57",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T02:22:23.769Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767320604878-810",
+    "id": "MID-1767320604878-810",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T02:23:24.906Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767321841301-485",
+    "id": "MID-1767321841301-485",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T02:44:01.323Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767323112169-300",
+    "id": "MID-1767323112169-300",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T03:05:12.203Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767323294550-488",
+    "id": "MID-1767323294550-488",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T03:08:14.574Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767323544337-687",
+    "id": "MID-1767323544337-687",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T03:12:24.362Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767323637348-155",
+    "id": "MID-1767323637348-155",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T03:13:57.374Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767323657564-274",
+    "id": "MID-1767323657564-274",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T03:14:17.598Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767324214238-256",
+    "id": "MID-1767324214238-256",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T03:23:34.266Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767324442789-176",
+    "id": "MID-1767324442789-176",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T03:27:22.822Z"
+    },
+    "total": 20
+  },
+  {
+    "number": "R-1",
+    "items": [
+      {
+        "name": "Chair",
+        "price": 50
+      }
+    ],
+    "datetime": "2025-01-02T00:00:00Z",
+    "id": "R-1"
+  },
+  {
+    "number": "MID-1767324519331-810",
+    "id": "MID-1767324519331-810",
+    "items": [
+      {
+        "name": "Lamp",
+        "price": 10
+      }
+    ],
+    "datetime": "2025-01-01T00:00:00Z",
+    "voided": true,
+    "voidInfo": {
+      "reason": "Test",
+      "user": "me",
+      "userObj": null,
+      "when": "2026-01-02T03:28:39.362Z"
     },
     "total": 20
   },

@@ -1,4 +1,12 @@
-const { ipcRenderer } = require('electron');
+const api = (typeof window !== 'undefined' && window.MiddletonsApiClient)
+  ? window.MiddletonsApiClient
+  : null;
+const invoke = (...args) => {
+  if (!api || typeof api.invoke !== 'function') {
+    return Promise.reject(new Error('API client unavailable.'));
+  }
+  return api.invoke(...args);
+};
 
 const state = {
   bodyEl: null,
@@ -38,6 +46,12 @@ const carouselElements = {
   image: null,
   indicators: null
 };
+let __pollTimer = null;
+let __lastPollSignature = '';
+let __eventSource = null;
+let __sseConnected = false;
+let __sseFallbackTimer = null;
+const POLL_INTERVAL_MS = 1000;
 
 const DEFAULT_CAROUSEL_SLIDES = [
   {
@@ -325,6 +339,100 @@ function handleCartUpdate(_evt, payload) {
   renderCart(payload);
 }
 
+function getApiBase() {
+  if (typeof window !== 'undefined' && window.MIDDLETONS_API_BASE) {
+    return String(window.MIDDLETONS_API_BASE).trim();
+  }
+  if (typeof window !== 'undefined' && window.location) {
+    const protocol = String(window.location.protocol || '').toLowerCase();
+    if (protocol === 'http:' || protocol === 'https:') {
+      return String(window.location.origin || '').trim();
+    }
+  }
+  return '';
+}
+
+function normalizeBase(base) {
+  return String(base || '').replace(/\/+$/, '');
+}
+
+async function pollCustomerCart() {
+  try {
+    const payload = await invoke('customer-cart:request');
+    const sig = JSON.stringify(payload || null);
+    if (sig !== __lastPollSignature) {
+      __lastPollSignature = sig;
+      renderCart(payload);
+    }
+  } catch (_) { }
+}
+
+function stopCustomerCartStream() {
+  if (__eventSource) {
+    try { __eventSource.close(); } catch (_) { }
+    __eventSource = null;
+  }
+  __sseConnected = false;
+  if (__sseFallbackTimer) {
+    clearTimeout(__sseFallbackTimer);
+    __sseFallbackTimer = null;
+  }
+}
+
+function startCustomerCartStream() {
+  if (__eventSource || typeof EventSource !== 'function') return false;
+  const base = normalizeBase(getApiBase());
+  if (!base) return false;
+  try {
+    const url = `${base}/api/customer-cart/stream`;
+    __eventSource = new EventSource(url);
+    if (__sseFallbackTimer) clearTimeout(__sseFallbackTimer);
+    __sseFallbackTimer = setTimeout(() => {
+      if (!__sseConnected) {
+        startCustomerCartPolling();
+      }
+    }, 2500);
+    __eventSource.addEventListener('cart', (event) => {
+      try {
+        const payload = event?.data ? JSON.parse(event.data) : null;
+        renderCart(payload);
+      } catch (_) { }
+    });
+    __eventSource.addEventListener('refresh', () => {
+      try { window.location.reload(); } catch (_) { }
+    });
+    __eventSource.onerror = () => {
+      if (__sseConnected) {
+        __sseConnected = false;
+      }
+      if (!__pollTimer) {
+        startCustomerCartPolling();
+      }
+    };
+    __eventSource.onopen = () => {
+      __sseConnected = true;
+      if (__sseFallbackTimer) {
+        clearTimeout(__sseFallbackTimer);
+        __sseFallbackTimer = null;
+      }
+      if (__pollTimer) {
+        clearInterval(__pollTimer);
+        __pollTimer = null;
+      }
+    };
+    return true;
+  } catch (_) {
+    stopCustomerCartStream();
+    return false;
+  }
+}
+
+function startCustomerCartPolling() {
+  if (__pollTimer || __sseConnected) return;
+  __pollTimer = setInterval(pollCustomerCart, POLL_INTERVAL_MS);
+  pollCustomerCart();
+}
+
 function initCustomerCartView() {
   state.bodyEl = document.getElementById('customerCartBody');
   state.titleEl = document.getElementById('customerCartTitle');
@@ -347,15 +455,16 @@ function initCustomerCartView() {
   initCarouselElements();
   renderCart(null);
   window.addEventListener('resize', updateCarouselLayout);
-  if (ipcRenderer && typeof ipcRenderer.on === 'function') {
-    ipcRenderer.on('customer-cart:update', handleCartUpdate);
-    ipcRenderer.on('customer-carousel:update', handleCarouselSlidesUpdate);
+  if (api?.hasIpc && typeof api.on === 'function') {
+    api.on('customer-cart:update', handleCartUpdate);
+    api.on('customer-carousel:update', handleCarouselSlidesUpdate);
+  } else {
+    const started = startCustomerCartStream();
+    if (!started) startCustomerCartPolling();
   }
-  if (ipcRenderer && typeof ipcRenderer.invoke === 'function') {
-    ipcRenderer.invoke('customer-cart:request')
-      .then((initial) => { if (initial) renderCart(initial); })
-      .catch(() => { });
-  }
+  invoke('customer-cart:request')
+    .then((initial) => { if (initial) renderCart(initial); })
+    .catch(() => { });
 }
 
 document.addEventListener('DOMContentLoaded', initCustomerCartView);

@@ -1,0 +1,22 @@
+[
+  {
+    "date": "2026-01-01",
+    "denominations": [
+      100,
+      50,
+      20,
+      10,
+      5,
+      1,
+      0.25,
+      0.1,
+      0.05,
+      0.01
+    ],
+    "opening": null,
+    "closing": null,
+    "approved": null,
+    "status": "none",
+    "variance": 0
+  }
+]

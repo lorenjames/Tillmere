@@ -1,0 +1,51 @@
+{
+  "storeHours": {
+    "start": "10:00",
+    "end": "18:00"
+  },
+  "baseShifts": [
+    {
+      "name": "Morning Shift",
+      "start": "10:00",
+      "end": "14:00"
+    },
+    {
+      "name": "Afternoon Shift",
+      "start": "14:00",
+      "end": "18:00"
+    }
+  ],
+  "specialHours": [],
+  "baseHours": {
+    "0": {
+      "start": "13:00",
+      "end": "16:00"
+    },
+    "3": {
+      "start": "11:00",
+      "end": "17:30"
+    },
+    "4": {
+      "start": "11:00",
+      "end": "17:30"
+    },
+    "5": {
+      "start": "11:00",
+      "end": "17:30"
+    },
+    "6": {
+      "start": "10:00",
+      "end": "16:00"
+    }
+  },
+  "assignments": {
+    "2025-12-31": {
+      "Morning Shift": "Loren",
+      "Afternoon Shift": "Gene"
+    },
+    "2026-01-01": {
+      "Morning Shift": "Loren",
+      "Afternoon Shift": "Vicki"
+    }
+  }
+}

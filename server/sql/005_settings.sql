@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS settings (
+  id INT NOT NULL PRIMARY KEY,
+  data JSON NOT NULL,
+  updatedAt DATETIME
+);

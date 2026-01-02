@@ -495,18 +495,19 @@ function normalizeTaxExemptOrgs(list) {
     return cleaned.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 function readSettings() {
-    const def = {
-        taxRate: 0.0725,
-        giftCardSurchargeRate: 0.03,
-        developerMode: false,
-        backupDir: '',
-        silentPrint: true,
-        printerName: '',
-        greyscalePrint: false,
-        // Branding defaults (match existing hard-coded UI)
-        bizName: "Middleton's Antiques & Uniques",
-        bizAddress: '1615 S 17th St, Lincoln, NE 68502',
-        bizPhone: '531-500-0135',
+      const def = {
+          taxRate: 0.0725,
+          giftCardSurchargeRate: 0.03,
+          developerMode: false,
+          backupDir: '',
+          silentPrint: true,
+          printerName: '',
+          greyscalePrint: false,
+          customerDisplayEnabled: true,
+          // Branding defaults (match existing hard-coded UI)
+          bizName: "Middleton's Antiques & Uniques",
+          bizAddress: '1615 S 17th St, Lincoln, NE 68502',
+          bizPhone: '531-500-0135',
         logoPath: '',
         dailyDrawerTotal: 0,
         drawerDenominationTargets: defaultDenominationTargets(),
@@ -643,14 +644,15 @@ function ensureDataFiles() {
     if (!fs.existsSync(CASHIER_FILE)) writeJson(CASHIER_FILE, []);
     if (!fs.existsSync(RECEIPTS_FILE)) writeJson(RECEIPTS_FILE, []);
     if (!fs.existsSync(GIFT_CARDS_FILE)) writeJson(GIFT_CARDS_FILE, { books: [], cards: [], transactions: [] });
-    if (!fs.existsSync(SETTINGS_FILE)) {
-        writeJson(SETTINGS_FILE, {
-            taxRate: 0.0725,
-            giftCardSurchargeRate: 0.03,
-            dailyDrawerTotal: 0,
-            drawerDenominationTargets: defaultDenominationTargets()
-        });
-    }
+      if (!fs.existsSync(SETTINGS_FILE)) {
+          writeJson(SETTINGS_FILE, {
+              taxRate: 0.0725,
+              giftCardSurchargeRate: 0.03,
+              customerDisplayEnabled: true,
+              dailyDrawerTotal: 0,
+              drawerDenominationTargets: defaultDenominationTargets()
+          });
+      }
     if (!fs.existsSync(DRAWER_FILE)) writeJson(DRAWER_FILE, []);
 }
 
@@ -1853,6 +1855,42 @@ ipcMain.handle('settings:disableDev', () => {
     return saved;
 });
 
+ipcMain.handle('settings:saveCustomerDisplay', (_evt, incoming) => {
+    const enabled = incoming?.customerDisplayEnabled !== false;
+    const saved = saveSettings({ customerDisplayEnabled: !!enabled });
+    try {
+        if (enabled) {
+            createCustomerCartWindow();
+        } else if (customerWindow && typeof customerWindow.isDestroyed === 'function' && !customerWindow.isDestroyed()) {
+            customerWindow.close();
+            customerWindow = null;
+        }
+    } catch (_) { }
+    try {
+        const { BrowserWindow } = require('electron');
+        BrowserWindow.getAllWindows().forEach(w => {
+            try { w.webContents.send('settings:changed', saved); } catch (_) { }
+        });
+    } catch (_) { }
+    return saved;
+});
+
+ipcMain.handle('customer-cart:refresh', () => {
+    try {
+        if (!customerWindow || (typeof customerWindow.isDestroyed === 'function' && customerWindow.isDestroyed())) {
+            const settings = readSettings();
+            if (settings?.customerDisplayEnabled !== false) {
+                createCustomerCartWindow();
+            }
+        } else {
+            customerWindow.reload();
+        }
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: String(e?.message || e) };
+    }
+});
+
 // Manager Mode: simple password check (UI-only gate on settings page)
 ipcMain.handle('settings:enableManagerMode', (_evt, incoming) => {
     const config = readAppConfig();
@@ -2249,7 +2287,12 @@ function createWindow() {
             customerWindow = null;
         }
     });
-    createCustomerCartWindow();
+    try {
+        const settings = readSettings();
+        if (settings?.customerDisplayEnabled !== false) {
+            createCustomerCartWindow();
+        }
+    } catch (_) { }
     logActivity('app:event', { event: 'window:main-created' });
 }
 
