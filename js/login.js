@@ -37,3 +37,11 @@ async function submitLogin(event) {
 if (form) {
   form.addEventListener('submit', submitLogin);
 }
+
+fetch('/api/auth/me', { credentials: 'include' })
+  .then(resp => {
+    if (resp.ok) {
+      window.location.href = 'index.html';
+    }
+  })
+  .catch(() => {});

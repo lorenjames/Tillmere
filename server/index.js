@@ -53,6 +53,7 @@ const app = express();
 const port = Number(process.env.PORT) || 3001;
 let latestCustomerCartState = null;
 const customerCartClients = new Set();
+app.set('trust proxy', 1);
 
 const SESSION_SECRET = String(process.env.SESSION_SECRET || '').trim();
 if (!SESSION_SECRET) {
@@ -135,7 +136,8 @@ app.use(session({
     cookie: {
         httpOnly: true,
         sameSite: 'lax',
-        maxAge: 4 * 60 * 60 * 1000
+        maxAge: 4 * 60 * 60 * 1000,
+        secure: String(process.env.NODE_ENV || '').toLowerCase() === 'production'
     }
 }));
 
@@ -324,7 +326,7 @@ app.get('/api/vendors', async (_req, res) => {
         res.status(500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/vendors', async (req, res) => {
+app.post('/api/vendors', requireRole('manager'), async (req, res) => {
     try {
         const vendor = await createVendor(req.body);
         res.json(vendor);
@@ -332,7 +334,7 @@ app.post('/api/vendors', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.put('/api/vendors/:code', async (req, res) => {
+app.put('/api/vendors/:code', requireRole('manager'), async (req, res) => {
     try {
         const vendor = await updateVendor(req.params.code, req.body);
         res.json(vendor);
@@ -340,7 +342,7 @@ app.put('/api/vendors/:code', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.delete('/api/vendors/:code', async (req, res) => {
+app.delete('/api/vendors/:code', requireRole('manager'), async (req, res) => {
     try {
         await deleteVendor(req.params.code);
         res.json({ ok: true });
@@ -357,7 +359,7 @@ app.get('/api/cashiers', async (_req, res) => {
         res.status(500).json({ error: error?.message || String(error) });
     }
 });
-app.put('/api/cashiers', async (req, res) => {
+app.put('/api/cashiers', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveCashiers(req.body);
         res.json(Array.isArray(saved) ? saved : []);
@@ -606,7 +608,7 @@ app.get('/api/schedule', (_req, res) => {
         res.status(500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/schedule', (req, res) => {
+app.post('/api/schedule', requireRole('manager'), (req, res) => {
     try {
         const saved = saveSchedule(req.body || {});
         res.json(saved);
@@ -640,7 +642,7 @@ app.post('/api/drawer/closing', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/drawer/approve', async (req, res) => {
+app.post('/api/drawer/approve', requireRole('manager'), async (req, res) => {
     try {
         const saved = await approveDrawer(req.body || {});
         res.json(saved);

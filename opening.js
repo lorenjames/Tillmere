@@ -1031,6 +1031,10 @@ async function submitDailyTotals() {
     showToast('Submit closing counts before finalizing daily totals.', { type: 'error' });
     return;
   }
+  if (!__managerMode) {
+    showToast('Manager access required to submit daily totals.', { type: 'error' });
+    return;
+  }
   if (__drawerState?.approved) {
     showToast('Daily totals already submitted.', { type: 'info' });
     return;
