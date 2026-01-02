@@ -8,7 +8,7 @@
     <link href="./css/brickwall.css" rel="stylesheet">
     <!-- Preload wallpaper to avoid visible reloads on navigation -->
     <link rel="preload" as="image" href="./assets/brickwall.jpg">
-  <script defer src="./node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <style>
     /* Safety: prevent stray Bootstrap backdrops from blocking input focus */
     .modal-backdrop, .offcanvas-backdrop { pointer-events: none !important; }
@@ -463,6 +463,7 @@
     </div>
   </div>
 
+  <script>window.MIDDLETONS_API_BASE = 'https://middletons.tillmere.com';</script>
   <script src="js/api-client.js"></script>
   <script src="js/logout.js"></script>
   <script src="js/settings.js"></script>
