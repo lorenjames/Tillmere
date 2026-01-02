@@ -40,6 +40,7 @@ if (document.readyState === 'loading') {
 
 const DRAWER_DENOMS = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
 const MODE_TIMEOUT_MS = 20 * 60 * 1000;
+const ROLE_ORDER = { cashier: 1, manager: 2, admin: 3 };
 
 function denomLabel(value) {
   const denom = Number(value || 0);
@@ -63,6 +64,20 @@ function formatMoneyDisplay(value) {
   return num.toFixed(2);
 }
 
+function escapeHtml(value) {
+  const str = String(value || '');
+  return str.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#39;';
+      default: return char;
+    }
+  });
+}
+
 function computeDenominationTargetTotal(counts = {}) {
   const normalized = normalizeDenominationTargets(counts);
   return DRAWER_DENOMS.reduce((sum, denom) => sum + denom * (Number(normalized[String(denom)] || 0)), 0);
@@ -78,6 +93,8 @@ const ACTIVITY_EVENTS = ['click', 'keydown', 'mousemove', 'touchstart'];
 
 let __managerMode = false;
 let __developerMode = false;
+let __authUser = null;
+let __authRole = 'cashier';
 let __passwordsModal = null;
 let __activityListenerAttached = false;
 let __taxExemptOrgs = [];
@@ -98,6 +115,13 @@ function toBool(val) {
     return v === 'true' || v === '1' || v === 'yes' || v === 'on' || v === 'enabled';
   }
   return Boolean(val);
+}
+function normalizeRole(role) {
+  const key = String(role || '').trim().toLowerCase();
+  return ROLE_ORDER[key] ? key : 'cashier';
+}
+function roleRank(role) {
+  return ROLE_ORDER[normalizeRole(role)];
 }
 function setAppConfigEncryptionStatusLabel(state) {
   try {
@@ -129,6 +153,53 @@ async function refreshAppConfigStatus() {
     setAppConfigEncryptionStatusLabel(status);
   } catch (_) {
     setAppConfigEncryptionStatusLabel(null);
+  }
+}
+
+function updateAccessBadge() {
+  const badge = document.getElementById('accessRoleBadge');
+  if (!badge) return;
+  const label = __authRole ? __authRole.toUpperCase() : 'UNKNOWN';
+  badge.textContent = label;
+  badge.className = __authRole === 'admin'
+    ? 'badge bg-danger'
+    : __authRole === 'manager'
+      ? 'badge bg-success'
+      : 'badge bg-secondary';
+}
+
+function applyRoleAccess() {
+  const isManager = roleRank(__authRole) >= roleRank('manager');
+  const isAdmin = roleRank(__authRole) >= roleRank('admin');
+  __managerMode = isManager;
+  __developerMode = isAdmin;
+  try {
+    document.querySelectorAll('[data-requires-manager]').forEach(el => {
+      el.style.display = isManager ? '' : 'none';
+    });
+  } catch (_) { }
+  try {
+    document.querySelectorAll('[data-requires-developer]').forEach(el => {
+      el.style.display = isAdmin ? '' : 'none';
+    });
+  } catch (_) { }
+  try {
+    document.querySelectorAll('[data-requires-admin]').forEach(el => {
+      el.style.display = isAdmin ? '' : 'none';
+    });
+  } catch (_) { }
+}
+
+async function loadAuthUser() {
+  try {
+    const user = await invoke('auth:me');
+    __authUser = user || null;
+    __authRole = normalizeRole(user?.role);
+    updateAccessBadge();
+    applyRoleAccess();
+    return user;
+  } catch (_) {
+    return null;
   }
 }
 let __managerModeTimer = null;
@@ -371,123 +442,28 @@ async function requestDevPassword() {
 }
 
 function setDeveloperMode(enabled, opts = {}) {
-  __developerMode = !!enabled;
-  __developerModeExpiresAt = __developerMode ? (Number(opts.expiresAt || 0) || Date.now() + MODE_TIMEOUT_MS) : 0;
-  syncDevModeControl(__developerMode);
+  __developerMode = roleRank(__authRole) >= roleRank('admin');
+  __developerModeExpiresAt = __developerMode ? Date.now() + MODE_TIMEOUT_MS : 0;
+  syncDevModeControl(false);
   setBrandingVisibility(__developerMode);
-  try {
-    document.querySelectorAll('[data-requires-developer]').forEach(el => {
-      el.style.display = __developerMode ? '' : 'none';
-    });
-  } catch (_) { }
-  try {
-    const btn = document.getElementById('devModeBtn');
-    if (btn) {
-      btn.textContent = __developerMode ? 'Disable Developer Mode' : 'Enable Developer Mode';
-      btn.classList.toggle('btn-outline-danger', __developerMode);
-      btn.classList.toggle('btn-primary', !__developerMode);
-    }
-  } catch (_) { }
-  try {
-    const badge = document.getElementById('devModeStatus');
-    if (badge) {
-      badge.textContent = __developerMode ? 'Enabled' : 'Disabled';
-      badge.className = __developerMode ? 'badge bg-success' : 'badge bg-secondary';
-    }
-  } catch (_) { }
-
-  if (__developerMode) {
-    ensureActivityListeners();
-    refreshDeveloperActivity();
-  } else {
-    __developerModeExpiresAt = 0;
-    scheduleDeveloperModeTimeout();
-  }
+  applyRoleAccess();
 }
 
 async function enableDeveloperMode() {
-  const password = await requestDevPassword();
-  if (!password) {
-    setDeveloperMode(false);
-    showToast('Developer Mode not enabled (no password entered).', { type: 'error' });
-    return;
-  }
-  try {
-    const desiredExpires = Date.now() + MODE_TIMEOUT_MS;
-    const saved = await invoke('settings:saveDev', { developerMode: true, password, expiresAt: desiredExpires });
-    const devSaved = toBool(saved?.developerMode);
-    const expiresAt = Number(saved?.developerModeExpiresAt || desiredExpires);
-    setDeveloperMode(devSaved, { expiresAt });
-    showToast(`Developer Mode: ${devSaved ? 'On' : 'Off'}`, { type: devSaved ? 'success' : 'error' });
-  } catch (e) {
-    setDeveloperMode(false);
-    const msg = (e && (e.code === 'INVALID_DEV_PASSWORD' || String(e.message || '').toLowerCase().includes('invalid developer password')))
-      ? 'Invalid developer password.'
-      : 'Failed to enable Developer Mode: ' + (e?.message || e);
-    showToast(msg, { type: 'error' });
-  }
+  showToast('Developer access is now controlled by user roles.', { type: 'info' });
 }
 
 async function disableDeveloperMode() {
-  try {
-    const saved = await invoke('settings:saveDev', { developerMode: false });
-    const devSaved = toBool(saved?.developerMode);
-    setDeveloperMode(devSaved, { expiresAt: Number(saved?.developerModeExpiresAt || 0) });
-    showToast('Developer Mode: Off', { type: 'success' });
-  } catch (e) {
-    const msg = 'Failed to disable Developer Mode: ' + (e?.message || e);
-    showToast(msg, { type: 'error' });
-  }
+  showToast('Developer access is now controlled by user roles.', { type: 'info' });
 }
 
 async function toggleDeveloperMode() {
-  if (__developerMode) {
-    await disableDeveloperMode();
-  } else {
-    await enableDeveloperMode();
-  }
+  showToast('Developer access is now controlled by user roles.', { type: 'info' });
 }
 
 function setManagerMode(enabled, opts = {}) {
-  __managerMode = !!enabled;
-  try {
-    document.querySelectorAll('[data-requires-manager]').forEach(el => {
-      el.style.display = __managerMode ? '' : 'none';
-    });
-  } catch (_) { }
-  try {
-    const manageBtn = document.getElementById('openVendorPromosBtn');
-    if (manageBtn) {
-      manageBtn.style.display = __managerMode ? '' : 'none';
-      manageBtn.disabled = !__managerMode;
-    }
-  } catch (_) { }
-  try {
-    const btn = document.getElementById('managerModeBtn');
-    if (btn) {
-      btn.textContent = __managerMode ? 'Disable Manager Mode' : 'Enable Manager Mode';
-      btn.classList.toggle('btn-outline-danger', __managerMode);
-      btn.classList.toggle('btn-primary', !__managerMode);
-    }
-  } catch (_) { }
-  try {
-    const badge = document.getElementById('managerModeStatus');
-    if (badge) {
-      badge.textContent = __managerMode ? 'Enabled' : 'Locked';
-      badge.className = __managerMode ? 'badge bg-success' : 'badge bg-secondary';
-    }
-  } catch (_) { }
-  if (__managerMode) {
-    ensureActivityListeners();
-    refreshManagerActivity();
-  } else {
-    __managerModeExpiresAt = 0;
-    persistManagerMode(false);
-    scheduleManagerModeTimer();
-    try { __promoModal?.hide(); } catch (_) { }
-    try { __promoEditModal?.hide(); } catch (_) { }
-    try { __promoDeleteModal?.hide(); } catch (_) { }
-  }
+  __managerMode = roleRank(__authRole) >= roleRank('manager');
+  applyRoleAccess();
 }
 
 function getPersistedManagerMode() {
@@ -532,27 +508,7 @@ async function requestManagerPassword() {
 }
 
 async function toggleManagerMode() {
-  if (__managerMode) {
-    setManagerMode(false);
-    showToast('Manager Mode disabled.', { type: 'success' });
-    return;
-  }
-  const password = await requestManagerPassword();
-  if (!password) {
-    showToast('Manager Mode not enabled (no password entered).', { type: 'error' });
-    return;
-  }
-  try {
-    await invoke('settings:enableManagerMode', { password });
-    setManagerMode(true);
-    showToast('Manager Mode enabled.', { type: 'success' });
-  } catch (e) {
-    setManagerMode(false);
-    const msg = (e && (e.code === 'INVALID_MANAGER_PASSWORD' || String(e.message || '').toLowerCase().includes('invalid manager password')))
-      ? 'Invalid manager password.'
-      : 'Failed to enable Manager Mode: ' + (e?.message || e);
-    showToast(msg, { type: 'error' });
-  }
+  showToast('Manager access is now controlled by user roles.', { type: 'info' });
 }
 
 function showToast(message, opts = {}) {
@@ -1211,13 +1167,7 @@ async function loadSettings() {
     const giftRate = Number(s?.giftCardSurchargeRate ?? 0.03);
     const giftRateEl = document.getElementById('giftCardSurchargePct');
     if (giftRateEl) giftRateEl.value = toPct(giftRate);
-    const dev = toBool(s?.developerMode);
-    const devExpires = Math.max(0, Number(s?.developerModeExpiresAt || 0));
-    const devActive = dev && devExpires && devExpires > Date.now();
-    setDeveloperMode(devActive, { expiresAt: devActive ? devExpires : 0 });
-    if (!devActive && dev) {
-      try { invoke('settings:disableDev'); } catch (_) {}
-    }
+    setDeveloperMode(false);
     const sp = Boolean(s?.silentPrint);
     const spEl = document.getElementById('silentPrint');
     if (spEl) spEl.checked = sp;
@@ -1424,14 +1374,133 @@ async function saveDiscountReasons() {
   } catch (e) { showToast('Failed to save discount reasons: ' + (e?.message || e), { type: 'error' }); }
 }
 
+async function authFetch(url, options = {}) {
+  const resp = await fetch(url, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    ...options
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) {
+    const message = data?.error || resp.statusText || 'Request failed';
+    throw new Error(message);
+  }
+  return data;
+}
+
+function showUserAdminError(message) {
+  const el = document.getElementById('userAdminError');
+  if (!el) return;
+  el.textContent = message;
+  el.style.display = message ? '' : 'none';
+}
+
+function renderUsersTable(users = []) {
+  const body = document.getElementById('usersTableBody');
+  if (!body) return;
+  body.innerHTML = '';
+  users.forEach(user => {
+    const tr = document.createElement('tr');
+    tr.dataset.userId = String(user.id);
+    tr.innerHTML = `
+      <td>${escapeHtml(user.username)}</td>
+      <td><input class="form-control form-control-sm" value="${escapeHtml(user.displayName || '')}" data-field="displayName" /></td>
+      <td>
+        <select class="form-select form-select-sm" data-field="role">
+          <option value="cashier">Cashier</option>
+          <option value="manager">Manager</option>
+          <option value="admin">Admin</option>
+        </select>
+      </td>
+      <td class="text-end">
+        <button class="btn btn-sm btn-outline-primary me-1" data-action="save">Save</button>
+        <button class="btn btn-sm btn-outline-secondary" data-action="reset">Reset Password</button>
+      </td>
+    `;
+    const roleSelect = tr.querySelector('[data-field="role"]');
+    if (roleSelect) roleSelect.value = String(user.role || 'cashier');
+    body.appendChild(tr);
+  });
+  body.querySelectorAll('[data-action="save"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('tr');
+      if (!row) return;
+      const id = row.dataset.userId;
+      const displayName = row.querySelector('[data-field="displayName"]')?.value || '';
+      const role = row.querySelector('[data-field="role"]')?.value || 'cashier';
+      try {
+        await authFetch(`/api/admin/users/${encodeURIComponent(id)}`, {
+          method: 'PUT',
+          body: JSON.stringify({ displayName, role })
+        });
+        showToast('User updated.', { type: 'success' });
+      } catch (err) {
+        showToast(err?.message || 'Failed to update user.', { type: 'error' });
+      }
+    });
+  });
+  body.querySelectorAll('[data-action="reset"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const row = btn.closest('tr');
+      if (!row) return;
+      const id = row.dataset.userId;
+      const username = row.querySelector('td')?.textContent || 'user';
+      const next = window.prompt(`Enter a new password for ${username}:`);
+      if (!next) return;
+      try {
+        await authFetch(`/api/admin/users/${encodeURIComponent(id)}/password`, {
+          method: 'POST',
+          body: JSON.stringify({ password: next })
+        });
+        showToast('Password reset.', { type: 'success' });
+      } catch (err) {
+        showToast(err?.message || 'Failed to reset password.', { type: 'error' });
+      }
+    });
+  });
+}
+
+async function loadUsers() {
+  if (roleRank(__authRole) < roleRank('admin')) return;
+  try {
+    const users = await authFetch('/api/admin/users');
+    renderUsersTable(Array.isArray(users) ? users : []);
+  } catch (err) {
+    showUserAdminError(err?.message || 'Failed to load users.');
+  }
+}
+
+async function handleCreateUser(event) {
+  event.preventDefault();
+  showUserAdminError('');
+  const username = document.getElementById('newUserUsername')?.value || '';
+  const displayName = document.getElementById('newUserDisplayName')?.value || '';
+  const role = document.getElementById('newUserRole')?.value || 'cashier';
+  const password = document.getElementById('newUserPassword')?.value || '';
+  if (!username || !password) {
+    showUserAdminError('Username and password are required.');
+    return;
+  }
+  try {
+    await authFetch('/api/admin/users', {
+      method: 'POST',
+      body: JSON.stringify({ username, displayName, role, password })
+    });
+    document.getElementById('newUserUsername').value = '';
+    document.getElementById('newUserDisplayName').value = '';
+    document.getElementById('newUserPassword').value = '';
+    showToast('User created.', { type: 'success' });
+    await loadUsers();
+  } catch (err) {
+    showUserAdminError(err?.message || 'Failed to create user.');
+  }
+}
+
 window.addEventListener('DOMContentLoaded', () => {
   ensureActivityListeners();
-  const managerState = readManagerModeState();
-  setManagerMode(managerState.enabled, { expiresAt: managerState.expiresAt });
-  setDeveloperMode(false);
+  loadAuthUser().then(loadUsers);
   document.getElementById('saveBtn')?.addEventListener('click', saveTaxSettings);
   document.getElementById('saveGiftCardSurchargeBtn')?.addEventListener('click', saveGiftCardSurchargeSettings);
-  document.getElementById('devModeBtn')?.addEventListener('click', toggleDeveloperMode);
   document.getElementById('savePrintBtn')?.addEventListener('click', savePrintSettings);
   document.getElementById('saveBrandingBtn')?.addEventListener('click', saveBrandingSettings);
   document.getElementById('saveDiscountReasonsBtn')?.addEventListener('click', saveDiscountReasons);
@@ -1439,14 +1508,16 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('cancelTaxOrgEditBtn')?.addEventListener('click', resetTaxOrgForm);
   document.getElementById('openVendorPromosBtn')?.addEventListener('click', openVendorPromoModal);
   document.getElementById('saveVendorPromoBtn')?.addEventListener('click', addOrUpdateVendorPromo);
-  document.getElementById('managerModeBtn')?.addEventListener('click', toggleManagerMode);
-  document.getElementById('changePasswordsBtn')?.addEventListener('click', openPasswordsModal);
-  document.getElementById('passwordsSaveBtn')?.addEventListener('click', changePasswords);
   document.getElementById('saveDenomTargetsBtn')?.addEventListener('click', saveDenominationTargets);
   document.getElementById('customerDisplayEnabled')?.addEventListener('change', (event) => {
     saveCustomerDisplaySettings(event?.target?.checked);
   });
   document.getElementById('refreshCustomerDisplayBtn')?.addEventListener('click', refreshCustomerDisplay);
+  document.getElementById('logoutBtn')?.addEventListener('click', async () => {
+    try { await invoke('auth:logout'); } catch (_) { }
+    window.location.href = 'login.html';
+  });
+  document.getElementById('createUserForm')?.addEventListener('submit', handleCreateUser);
   if (api) {
     try {
       invoke('app:getVersion').then(v => {
@@ -1482,28 +1553,6 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch (_) {}
 });
 window.addEventListener('load', () => { loadSettings(); refreshAppConfigStatus(); });
-
-window.addEventListener('storage', (event) => {
-  if (event.key === 'managerModeEnabled' || event.key === 'managerModeExpiresAt') {
-    const state = readManagerModeState();
-    setManagerMode(state.enabled, { expiresAt: state.expiresAt });
-  }
-});
-
-try {
-  api?.on?.('app:prepareQuit', () => {
-    if (__managerMode) {
-      persistManagerMode(false);
-      __managerMode = false;
-      __managerModeExpiresAt = 0;
-    }
-    if (__developerMode) {
-      __developerMode = false;
-      __developerModeExpiresAt = 0;
-      try { invoke('settings:disableDev').catch(() => {}); } catch (_) {}
-    }
-  });
-} catch (_) {}
 
 // Test-friendly exports (no impact in Electron runtime)
 try {

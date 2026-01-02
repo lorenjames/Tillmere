@@ -42,6 +42,7 @@ if (document.readyState === 'loading') {
 const DRAWER_DENOMS = [100, 50, 20, 10, 5, 1, 0.25, 0.1, 0.05, 0.01];
 let __drawerState = null;
 let __managerMode = false;
+let __authRole = 'cashier';
 let __closingDenominationTargets = {};
 let __openingPrefillCounts = null;
 let __pendingOpeningSubmission = null;
@@ -1055,24 +1056,27 @@ async function submitDailyTotals() {
 }
 
 // ---- History (manager only) ----
-function readManagerModeStateFromStorage() {
+const ROLE_ORDER = { cashier: 1, manager: 2, admin: 3 };
+function normalizeRole(role) {
+  const key = String(role || '').trim().toLowerCase();
+  return ROLE_ORDER[key] ? key : 'cashier';
+}
+function roleRank(role) {
+  return ROLE_ORDER[normalizeRole(role)];
+}
+async function loadAuthRole() {
   try {
-    const enabled = localStorage.getItem('managerModeEnabled') === '1';
-    const expires = Math.max(0, Number(localStorage.getItem('managerModeExpiresAt') || '0'));
-    if (enabled && expires && Date.now() > expires) {
-      localStorage.removeItem('managerModeEnabled');
-      localStorage.removeItem('managerModeExpiresAt');
-      return { enabled: false, expiresAt: 0 };
-    }
-    return { enabled, expiresAt: expires };
+    const user = await invoke('auth:me');
+    __authRole = normalizeRole(user?.role);
+    __managerMode = roleRank(__authRole) >= roleRank('manager');
   } catch (_) {
-    return { enabled: false, expiresAt: 0 };
+    __authRole = 'cashier';
+    __managerMode = false;
   }
 }
 
 function syncManagerModeFromStorage() {
-  const state = readManagerModeStateFromStorage();
-  __managerMode = state.enabled;
+  __managerMode = roleRank(__authRole) >= roleRank('manager');
   try {
     const card = document.getElementById('drawerHistoryCard');
     if (card) card.style.display = __managerMode ? '' : 'none';
@@ -1215,6 +1219,7 @@ window.addEventListener('load', async () => {
   try { document.getElementById('drawerSubmitConfirmBtn')?.addEventListener('click', submitDailyTotals); } catch (_) { }
   try { document.getElementById('drawerOpenNoteSubmitBtn')?.addEventListener('click', submitOpeningWithNote); } catch (_) { }
   try { document.getElementById('drawerPrintDepositBtn')?.addEventListener('click', printDepositReport); } catch (_) { }
+  await loadAuthRole();
   syncManagerModeFromStorage();
   try { document.getElementById('historyFilterBtn')?.addEventListener('click', loadDrawerHistory); } catch (_) { }
   try {
@@ -1251,23 +1256,6 @@ window.addEventListener('load', async () => {
     if (st && st.textContent.trim().toLowerCase() === 'loading...') refreshDrawerState();
   }, 1000);
 });
-
-window.addEventListener('storage', (event) => {
-  if (event.key === 'managerModeEnabled' || event.key === 'managerModeExpiresAt') {
-    syncManagerModeFromStorage();
-  }
-});
-
-try {
-  if (api?.hasIpc && typeof api.on === 'function') {
-    api.on('app:prepareQuit', () => {
-      try {
-        localStorage.removeItem('managerModeEnabled');
-        localStorage.removeItem('managerModeExpiresAt');
-      } catch (_) {}
-    });
-  }
-} catch (_) {}
 
 // Surface script errors in UI
 window.addEventListener('error', (e) => {

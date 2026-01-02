@@ -409,8 +409,6 @@ async function setCashierPin(name, pin, currentPin) {
 async function resetCashierPin(name) {
     const cashierName = String(name || '').trim();
     if (!cashierName) throw createError(400, 'Cashier name is required.');
-    const currentSettings = await loadSettings();
-    if (!currentSettings.developerMode) throw createError(403, 'Developer Mode must be enabled to reset PINs.');
     const pool = getPool();
     if (!pool) {
         const list = (readCashiers() || []).map(normalizeCashierRecord);

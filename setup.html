@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tillmere Setup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="./css/bootstrap.css" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #1f2933;
+      --muted: #52606d;
+      --paper: #f3efe7;
+      --card: #ffffff;
+      --accent: #2f6b57;
+      --accent-dark: #1f4a3b;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #fff8f0 0%, #f1ece4 55%, #e6dfd6 100%);
+      color: var(--ink);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .setup-card {
+      width: 100%;
+      max-width: 520px;
+      background: var(--card);
+      border-radius: 18px;
+      box-shadow: 0 20px 45px rgba(0,0,0,0.12);
+      border: 1px solid rgba(0,0,0,0.08);
+      padding: 28px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: var(--accent);
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+    }
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .btn-primary:hover {
+      background: var(--accent-dark);
+      border-color: var(--accent-dark);
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="setup-card">
+    <div class="brand">
+      <div class="brand-mark">T</div>
+      <div>
+        <h1 class="h4 mb-1">Tillmere Setup</h1>
+        <div class="hint">Create the first admin account</div>
+      </div>
+    </div>
+    <form id="setupForm">
+      <div class="mb-3">
+        <label for="displayName" class="form-label">Display Name</label>
+        <input type="text" class="form-control" id="displayName" autocomplete="name" />
+      </div>
+      <div class="mb-3">
+        <label for="username" class="form-label">Admin Username</label>
+        <input type="text" class="form-control" id="username" autocomplete="username" required />
+      </div>
+      <div class="mb-3">
+        <label for="password" class="form-label">Admin Password</label>
+        <input type="password" class="form-control" id="password" autocomplete="new-password" required />
+      </div>
+      <div class="mb-3">
+        <label for="confirmPassword" class="form-label">Confirm Password</label>
+        <input type="password" class="form-control" id="confirmPassword" autocomplete="new-password" required />
+      </div>
+      <div id="setupError" class="text-danger small mb-3" style="display:none;"></div>
+      <button type="submit" class="btn btn-primary w-100">Create Admin</button>
+    </form>
+  </div>
+  <script defer src="./js/setup.js"></script>
+</body>
+</html>

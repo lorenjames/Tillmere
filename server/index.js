@@ -142,10 +142,17 @@ app.use(session({
 app.use(async (req, res, next) => {
     try {
         if (req.path.startsWith('/api')) return next();
-        if (req.path === '/login.html' || req.path === '/setup.html') return next();
         if (isPublicAsset(req)) return next();
         const usersExist = await hasUsers();
         const user = userFromSession(req);
+        if (req.path === '/setup.html') {
+            if (usersExist) return res.redirect('/login.html');
+            return next();
+        }
+        if (req.path === '/login.html') {
+            if (!usersExist) return res.redirect('/setup.html');
+            return next();
+        }
         if (!usersExist && isHtmlRequest(req)) {
             return res.redirect('/setup.html');
         }
@@ -358,7 +365,7 @@ app.put('/api/cashiers', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/cashiers/:name/pin', async (req, res) => {
+app.post('/api/cashiers/:name/pin', requireRole('manager'), async (req, res) => {
     try {
         const payload = req.body || {};
         const result = await setCashierPin(req.params.name, payload.pin, payload.currentPin);
@@ -367,7 +374,7 @@ app.post('/api/cashiers/:name/pin', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.delete('/api/cashiers/:name/pin', async (req, res) => {
+app.delete('/api/cashiers/:name/pin', requireRole('admin'), async (req, res) => {
     try {
         const result = await resetCashierPin(req.params.name);
         res.json(result || { ok: true });
@@ -425,7 +432,7 @@ app.post('/api/giftcards/lookup', (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings', async (req, res) => {
+app.post('/api/settings', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveSettingsPatch(req.body);
         res.json(saved);
@@ -433,7 +440,7 @@ app.post('/api/settings', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/tax', async (req, res) => {
+app.post('/api/settings/tax', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveTaxSettings(req.body?.taxRate);
         res.json(saved);
@@ -441,7 +448,7 @@ app.post('/api/settings/tax', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/gift-card-surcharge', async (req, res) => {
+app.post('/api/settings/gift-card-surcharge', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveGiftCardSurcharge(req.body?.giftCardSurchargeRate);
         res.json(saved);
@@ -449,7 +456,7 @@ app.post('/api/settings/gift-card-surcharge', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/silent', async (req, res) => {
+app.post('/api/settings/silent', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveSilentSettings(req.body || {});
         res.json(saved);
@@ -457,7 +464,7 @@ app.post('/api/settings/silent', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/branding', async (req, res) => {
+app.post('/api/settings/branding', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveBrandingSettings(req.body || {});
         res.json(saved);
@@ -465,7 +472,7 @@ app.post('/api/settings/branding', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/discount-reasons', async (req, res) => {
+app.post('/api/settings/discount-reasons', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveDiscountReasons(req.body?.discountReasons || req.body || []);
         res.json(saved);
@@ -473,7 +480,7 @@ app.post('/api/settings/discount-reasons', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/denomination-targets', async (req, res) => {
+app.post('/api/settings/denomination-targets', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveDenominationTargets(req.body?.denominationTargets || req.body || {});
         res.json(saved);
@@ -481,7 +488,7 @@ app.post('/api/settings/denomination-targets', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/tax-exempt-orgs', async (req, res) => {
+app.post('/api/settings/tax-exempt-orgs', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveTaxExemptOrgs(req.body?.taxExemptOrgs || req.body || []);
         res.json(saved);
@@ -489,7 +496,7 @@ app.post('/api/settings/tax-exempt-orgs', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/vendor-promotions', async (req, res) => {
+app.post('/api/settings/vendor-promotions', requireRole('manager'), async (req, res) => {
     try {
         const saved = await saveVendorPromotions(req.body?.vendorPromotions || req.body || []);
         res.json(saved);
@@ -497,7 +504,7 @@ app.post('/api/settings/vendor-promotions', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/developer-mode', async (req, res) => {
+app.post('/api/settings/developer-mode', requireRole('admin'), async (req, res) => {
     try {
         const saved = await saveDeveloperMode(req.body || {});
         res.json(saved);
@@ -505,7 +512,7 @@ app.post('/api/settings/developer-mode', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/customer-display', async (req, res) => {
+app.post('/api/settings/customer-display', requireRole('manager'), async (req, res) => {
     try {
         const enabled = !!req.body?.customerDisplayEnabled;
         const saved = await saveSettingsPatch({ customerDisplayEnabled: enabled });
@@ -514,7 +521,7 @@ app.post('/api/settings/customer-display', async (req, res) => {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/settings/manager-mode', async (req, res) => {
+app.post('/api/settings/manager-mode', requireRole('admin'), async (req, res) => {
     try {
         const ok = validateManagerPassword(req.body?.password || '');
         if (!ok) return res.status(403).json({ error: 'Invalid manager password.' });
@@ -527,12 +534,59 @@ app.post('/api/settings/manager-mode', async (req, res) => {
 app.get('/api/app-config/status', (_req, res) => {
     res.json(getAppConfigStatus());
 });
-app.post('/api/app-config/passwords', (req, res) => {
+app.post('/api/app-config/passwords', requireRole('admin'), (req, res) => {
     try {
         const result = changePasswords(req.body || {});
         res.json(result || { ok: true });
     } catch (error) {
         res.status(error?.status || 500).json({ error: error?.message || String(error), code: error?.code });
+    }
+});
+
+app.get('/api/admin/users', requireRole('admin'), async (_req, res) => {
+    try {
+        const users = await listUsers();
+        res.json(Array.isArray(users) ? users : []);
+    } catch (error) {
+        res.status(error?.status || 500).json({ error: error?.message || String(error) });
+    }
+});
+
+app.post('/api/admin/users', requireRole('admin'), async (req, res) => {
+    try {
+        const created = await createUser(req.body || {});
+        res.json(created);
+    } catch (error) {
+        res.status(error?.status || 500).json({ error: error?.message || String(error) });
+    }
+});
+
+app.put('/api/admin/users/:id', requireRole('admin'), async (req, res) => {
+    try {
+        const nextRole = String(req.body?.role || '').trim().toLowerCase();
+        if (nextRole === 'admin') {
+            // allow promotion without checks
+        } else {
+            const adminCount = await countAdmins();
+            const userId = Number(req.params.id);
+            const currentUser = await listUsers().then(list => list.find(u => Number(u.id) === userId));
+            if (currentUser?.role === 'admin' && adminCount <= 1) {
+                return res.status(409).json({ error: 'At least one admin account is required.' });
+            }
+        }
+        const updated = await updateUser(req.params.id, req.body || {});
+        res.json(updated);
+    } catch (error) {
+        res.status(error?.status || 500).json({ error: error?.message || String(error) });
+    }
+});
+
+app.post('/api/admin/users/:id/password', requireRole('admin'), async (req, res) => {
+    try {
+        await resetPassword(req.params.id, req.body?.password || '');
+        res.json({ ok: true });
+    } catch (error) {
+        res.status(error?.status || 500).json({ error: error?.message || String(error) });
     }
 });
 
@@ -605,7 +659,7 @@ app.get('/api/drawer/list', async (req, res) => {
     }
 });
 
-app.get('/api/backup/export', async (_req, res) => {
+app.get('/api/backup/export', requireRole('admin'), async (_req, res) => {
     try {
         const vendors = await listVendors();
         const cashiers = await listCashiers();
@@ -623,7 +677,7 @@ app.get('/api/backup/export', async (_req, res) => {
         res.status(500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/backup/import', async (req, res) => {
+app.post('/api/backup/import', requireRole('admin'), async (req, res) => {
     try {
         const payload = req.body || {};
         const vendors = Array.isArray(payload.vendors) ? payload.vendors : [];

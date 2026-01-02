@@ -205,6 +205,8 @@ const getGiftCardFeeForReceipt = (r, giftCardSaleTotal) => {
 
 let __managerMode = false;
 let taxExemptRows = [];
+const ROLE_ORDER = { cashier: 1, manager: 2, admin: 3 };
+let __authRole = 'cashier';
 const toMoneyNumber = n => {
     const num = Number(n);
     return Number.isFinite(num) ? Math.round(num * 100) / 100 : 0;
@@ -237,24 +239,26 @@ function getReturnTotal(r) {
     return toMoneyNumber(returnSubtotal + returnTax);
 }
 
-function readManagerModeStateFromStorage() {
+function normalizeRole(role) {
+    const key = String(role || '').trim().toLowerCase();
+    return ROLE_ORDER[key] ? key : 'cashier';
+}
+function roleRank(role) {
+    return ROLE_ORDER[normalizeRole(role)];
+}
+async function loadAuthRole() {
     try {
-        const enabled = localStorage.getItem('managerModeEnabled') === '1';
-        const expires = Math.max(0, Number(localStorage.getItem('managerModeExpiresAt') || '0'));
-        if (enabled && expires && Date.now() > expires) {
-            localStorage.removeItem('managerModeEnabled');
-            localStorage.removeItem('managerModeExpiresAt');
-            return { enabled: false, expiresAt: 0 };
-        }
-        return { enabled, expiresAt: expires };
+        const user = await invoke('auth:me');
+        __authRole = normalizeRole(user?.role);
+        __managerMode = roleRank(__authRole) >= roleRank('manager');
     } catch (_) {
-        return { enabled: false, expiresAt: 0 };
+        __authRole = 'cashier';
+        __managerMode = false;
     }
 }
 
 function syncManagerModeUI() {
-    const state = readManagerModeStateFromStorage();
-    __managerMode = !!state.enabled;
+    __managerMode = roleRank(__authRole) >= roleRank('manager');
     const card = document.getElementById('taxExemptCard');
     const locked = document.getElementById('taxExemptLockedCard');
     if (card) card.style.display = __managerMode ? '' : 'none';
@@ -294,6 +298,7 @@ function getReceiptEffectiveDate(r) {
 
 /** RENAMED: avoid conflict with Bootstrap's global `window.bootstrap` */
 async function initReports() {
+    await loadAuthRole();
     const [v, r] = await Promise.all([
         invoke('vendors:load'),
         invoke('receipts:load')
@@ -1867,11 +1872,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 
     syncManagerModeUI();
-    window.addEventListener('storage', (event) => {
-        if (event.key === 'managerModeEnabled' || event.key === 'managerModeExpiresAt') {
-            syncManagerModeUI();
-        }
-    });
 });
 
 // Initialize data after full load; do NOT call something named `bootstrap` here

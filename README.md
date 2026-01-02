@@ -30,6 +30,13 @@ Planned tidy-up (optional):
 
 - `MIDDLETONS_API_BASE`: Base URL for the web API (defaults to the current browser origin when running in web mode).
 - `MIDDLETONS_DATA_DIR`: Data directory used by the web server for JSON storage fallback (defaults to `./data`).
+- `SESSION_SECRET`: Secret used to sign login sessions (required for web login security).
+
+## Authentication & Roles
+
+- On first run in web mode, visit `setup.html` to create the initial admin.
+- Roles: `cashier`, `manager`, `admin` (admin manages users and resets passwords).
+- Sessions expire after 4 hours of inactivity or on logout.
 
 ## Data Locations
 
