@@ -222,12 +222,27 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+const SESSION_COOKIE_NAME = 'connect.sid';
+const SESSION_COOKIE_OPTIONS = {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: String(process.env.NODE_ENV || '').toLowerCase() === 'production',
+    path: '/'
+};
+
 app.post('/api/auth/logout', (req, res) => {
     try {
-        req.session.destroy(() => {
+        const finish = () => {
+            try { res.clearCookie(SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS); } catch (_) { }
             res.json({ ok: true });
-        });
+        };
+        if (req.session && typeof req.session.destroy === 'function') {
+            req.session.destroy(() => finish());
+            return;
+        }
+        finish();
     } catch (error) {
+        try { res.clearCookie(SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS); } catch (_) { }
         res.status(500).json({ error: error?.message || String(error) });
     }
 });
