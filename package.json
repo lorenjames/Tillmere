@@ -10,6 +10,7 @@
         "migrate:db": "node server/migrate.js",
         "import:receipts": "node server/import-receipts.js",
         "import:backup": "node server/import-backup.js",
+        "import:giftcards": "node server/import-giftcards.js",
         "test": "jest",
         "test:watch": "jest --watchAll",
         "build:win": "electron-builder --win nsis",

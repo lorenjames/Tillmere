@@ -456,41 +456,41 @@ app.get('/api/settings', async (_req, res) => {
     }
 });
 
-app.get('/api/giftcards', (_req, res) => {
+app.get('/api/giftcards', async (_req, res) => {
     try {
-        const data = loadGiftCards();
+        const data = await loadGiftCards();
         res.json(data || { books: [], cards: [], transactions: [] });
     } catch (error) {
         res.status(500).json({ error: error?.message || String(error) });
     }
 });
-app.post('/api/giftcards/books', (req, res) => {
+app.post('/api/giftcards/books', async (req, res) => {
     try {
-        const result = addGiftCardBook(req.body || {});
+        const result = await addGiftCardBook(req.body || {});
         res.json(result || { ok: true });
     } catch (error) {
         res.status(error?.status || 500).json({ error: error?.message || String(error), code: error?.code });
     }
 });
-app.post('/api/giftcards/sell', (req, res) => {
+app.post('/api/giftcards/sell', async (req, res) => {
     try {
-        const result = sellGiftCard(req.body || {});
+        const result = await sellGiftCard(req.body || {});
         res.json(result || { ok: true });
     } catch (error) {
         res.status(error?.status || 500).json({ error: error?.message || String(error), code: error?.code, balance: error?.balance });
     }
 });
-app.post('/api/giftcards/redeem', (req, res) => {
+app.post('/api/giftcards/redeem', async (req, res) => {
     try {
-        const result = redeemGiftCard(req.body || {});
+        const result = await redeemGiftCard(req.body || {});
         res.json(result || { ok: true });
     } catch (error) {
         res.status(error?.status || 500).json({ error: error?.message || String(error), code: error?.code, balance: error?.balance });
     }
 });
-app.post('/api/giftcards/lookup', (req, res) => {
+app.post('/api/giftcards/lookup', async (req, res) => {
     try {
-        const result = lookupGiftCard(req.body || {});
+        const result = await lookupGiftCard(req.body || {});
         res.json(result || null);
     } catch (error) {
         res.status(error?.status || 500).json({ error: error?.message || String(error) });
@@ -729,7 +729,7 @@ app.get('/api/backup/export', requireRole('admin'), async (_req, res) => {
         const cashiers = await listCashiers();
         const receipts = await listReceipts();
         const settings = await loadSettings();
-        const giftCards = loadGiftCards();
+        const giftCards = await loadGiftCards();
         res.json({
             vendors: Array.isArray(vendors) ? vendors : [],
             cashiers: Array.isArray(cashiers) ? cashiers : [],
@@ -762,7 +762,7 @@ app.post('/api/backup/import', requireRole('admin'), async (req, res) => {
             }
         }
         if (giftCards) {
-            saveGiftCards(giftCards);
+            await saveGiftCards(giftCards);
         }
         res.json({
             ok: true,
