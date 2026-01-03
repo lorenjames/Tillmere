@@ -9,6 +9,16 @@ const invoke = (...args) => {
   return api.invoke(...args);
 };
 
+async function ensureAuthenticatedOrRedirect() {
+  try {
+    await invoke('auth:me');
+  } catch (_) {
+    try { window.location.replace('login.html'); } catch (_) { window.location.href = 'login.html'; }
+  }
+}
+ensureAuthenticatedOrRedirect();
+
+
 function wireCloseAppLink() {
   const closeAppLink = document.getElementById('closeAppLink');
   if (!api?.hasIpc) {

@@ -8,6 +8,16 @@ const invoke = (...args) => {
   }
   return api.invoke(...args);
 };
+
+async function ensureAuthenticatedOrRedirect() {
+  try {
+    await invoke('auth:me');
+  } catch (_) {
+    try { window.location.replace('login.html'); } catch (_) { window.location.href = 'login.html'; }
+  }
+}
+ensureAuthenticatedOrRedirect();
+
 const canEditReceipts = !!api;
 
 function wireCloseAppLink() {
