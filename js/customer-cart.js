@@ -29,6 +29,18 @@ async function closeIfLoggedOut() {
   }
 }
 
+let __logoutWatchTimer = null;
+function startLogoutPolling() {
+  try {
+    if (__logoutWatchTimer) return;
+    __logoutWatchTimer = setInterval(closeIfLoggedOut, 3000);
+    window.addEventListener('beforeunload', () => {
+      try { clearInterval(__logoutWatchTimer); } catch (_) { }
+      __logoutWatchTimer = null;
+    });
+  } catch (_) { }
+}
+
 const state = {
   bodyEl: null,
   titleEl: null,
@@ -99,6 +111,7 @@ const DEFAULT_CAROUSEL_SLIDES = [
 
 watchLogoutSignal();
 closeIfLoggedOut();
+startLogoutPolling();
 
 /* Customer carousel logic disabled
 const carouselState = {
