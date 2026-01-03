@@ -20,64 +20,6 @@ ensureAuthenticatedOrRedirect();
 
 
 
-
-
-let __suppressUnloadPrompt = false;
-let __suppressUnloadTimer = null;
-function suppressUnloadPromptTemporarily() {
-  try {
-    __suppressUnloadPrompt = true;
-    if (__suppressUnloadTimer) clearTimeout(__suppressUnloadTimer);
-    __suppressUnloadTimer = setTimeout(() => { __suppressUnloadPrompt = false; }, 2000);
-  } catch (_) { }
-}
-function isSameOriginNavHref(href) {
-  try {
-    if (!href || href.startsWith('#')) return false;
-    const url = new URL(href, window.location.href);
-    return url.origin === window.location.origin;
-  } catch (_) { return false; }
-}
-function markInternalNavigation(event) {
-  try {
-    const anchor = event?.target?.closest ? event.target.closest('a[href]') : null;
-    if (anchor && isSameOriginNavHref(anchor.getAttribute('href'))) {
-      suppressUnloadPromptTemporarily();
-      return;
-    }
-    const navEl = event?.target?.closest ? event.target.closest('[data-allow-nav],[data-nav]') : null;
-    if (navEl) suppressUnloadPromptTemporarily();
-  } catch (_) { }
-}
-function markFormNavigation(event) {
-  try {
-    const form = event?.target;
-    if (form && form.tagName === 'FORM') suppressUnloadPromptTemporarily();
-  } catch (_) { }
-}
-function markKeyNavigation(event) {
-  try {
-    const key = event?.key;
-    if (key !== 'Enter' && key !== ' ') return;
-    const anchor = event?.target?.closest ? event.target.closest('a[href]') : null;
-    if (anchor && isSameOriginNavHref(anchor.getAttribute('href'))) {
-      suppressUnloadPromptTemporarily();
-    }
-  } catch (_) { }
-}
-function shouldConfirmClose() {
-  return !__suppressUnloadPrompt;
-}
-try {
-  document.addEventListener('click', suppressUnloadPromptTemporarily, true);
-  document.addEventListener('pointerdown', suppressUnloadPromptTemporarily, true);
-  document.addEventListener('click', markInternalNavigation, true);
-  document.addEventListener('pointerdown', markInternalNavigation, true);
-  document.addEventListener('submit', markFormNavigation, true);
-  document.addEventListener('keydown', markKeyNavigation, true);
-  window.addEventListener('pageshow', () => { __suppressUnloadPrompt = false; });
-} catch (_) { }
-
 function requestLogoutOnClose() {
   try {
     if (navigator.sendBeacon) {
@@ -94,17 +36,12 @@ function requestLogoutOnClose() {
   } catch (_) { }
 }
 
-function confirmLogoutOnClose() {
+function confirmLogoutOnCloseRemoved {
   try {
-    window.addEventListener('beforeunload', (event) => {
-      if (!shouldConfirmClose()) return;
-      event.preventDefault();
-      event.returnValue = '';
-    });
+    
     window.addEventListener('unload', () => { requestLogoutOnClose(); });
   } catch (_) { }
 }
-confirmLogoutOnClose();
 
 const canEditReceipts = !!api;
 
@@ -746,7 +683,6 @@ async function openReceiptWindowCompact(r, opts = {}) {
     }
     ${getGreyscalePrintCss()}
   </style>`;
-
 
   const vendorTotals = {};
   const returnQtyByKey = {};
@@ -1948,7 +1884,6 @@ async function openReceiptWindow(r, opts = {}) {
         ${r.returnInfo?.when ? ` <span class="label">on ${new Date(r.returnInfo.when).toLocaleString()}</span>` : ''}
         </div>`
     : '';
-
 
   const displayDate = r.displayDate || (r.datetime ? new Date(r.datetime).toLocaleString() : '');
   const html = `

@@ -23,64 +23,6 @@ ensureAuthenticatedOrRedirect();
 
 
 
-
-
-let __suppressUnloadPrompt = false;
-let __suppressUnloadTimer = null;
-function suppressUnloadPromptTemporarily() {
-  try {
-    __suppressUnloadPrompt = true;
-    if (__suppressUnloadTimer) clearTimeout(__suppressUnloadTimer);
-    __suppressUnloadTimer = setTimeout(() => { __suppressUnloadPrompt = false; }, 2000);
-  } catch (_) { }
-}
-function isSameOriginNavHref(href) {
-  try {
-    if (!href || href.startsWith('#')) return false;
-    const url = new URL(href, window.location.href);
-    return url.origin === window.location.origin;
-  } catch (_) { return false; }
-}
-function markInternalNavigation(event) {
-  try {
-    const anchor = event?.target?.closest ? event.target.closest('a[href]') : null;
-    if (anchor && isSameOriginNavHref(anchor.getAttribute('href'))) {
-      suppressUnloadPromptTemporarily();
-      return;
-    }
-    const navEl = event?.target?.closest ? event.target.closest('[data-allow-nav],[data-nav]') : null;
-    if (navEl) suppressUnloadPromptTemporarily();
-  } catch (_) { }
-}
-function markFormNavigation(event) {
-  try {
-    const form = event?.target;
-    if (form && form.tagName === 'FORM') suppressUnloadPromptTemporarily();
-  } catch (_) { }
-}
-function markKeyNavigation(event) {
-  try {
-    const key = event?.key;
-    if (key !== 'Enter' && key !== ' ') return;
-    const anchor = event?.target?.closest ? event.target.closest('a[href]') : null;
-    if (anchor && isSameOriginNavHref(anchor.getAttribute('href'))) {
-      suppressUnloadPromptTemporarily();
-    }
-  } catch (_) { }
-}
-function shouldConfirmClose() {
-  return !__suppressUnloadPrompt;
-}
-try {
-  document.addEventListener('click', suppressUnloadPromptTemporarily, true);
-  document.addEventListener('pointerdown', suppressUnloadPromptTemporarily, true);
-  document.addEventListener('click', markInternalNavigation, true);
-  document.addEventListener('pointerdown', markInternalNavigation, true);
-  document.addEventListener('submit', markFormNavigation, true);
-  document.addEventListener('keydown', markKeyNavigation, true);
-  window.addEventListener('pageshow', () => { __suppressUnloadPrompt = false; });
-} catch (_) { }
-
 function requestLogoutOnClose() {
   try {
     if (navigator.sendBeacon) {
@@ -1666,7 +1608,6 @@ function findCashierStrict(cashiers, input) {
   const safe = Array.isArray(cashiers) ? cashiers : [];
   return safe.find(c => norm(c.name || '') === s) || null;
 }
-
 
 // Choose the closest vendor match for partial input.
 function bestVendorMatch(vendors, input) {
@@ -3529,14 +3470,8 @@ window.addEventListener('load', async () => {
 
   // Persist tabs on leave/hidden (but not when quitting the app)
   try {
-    window.addEventListener('beforeunload', (event) => {
+    window.addEventListener('beforeunload', () => {
       try { if (!__isQuitting) __persistTabs(); } catch (_) { }
-      try {
-        if (event && shouldConfirmClose()) {
-          event.preventDefault();
-          event.returnValue = '';
-        }
-      } catch (_) { }
     });
     window.addEventListener('pagehide', () => { try { if (!__isQuitting) __persistTabs(); } catch (_) { } });
     document.addEventListener('visibilitychange', () => { try { if (document.hidden && !__isQuitting) __persistTabs(); } catch (_) { } });
