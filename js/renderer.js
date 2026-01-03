@@ -38,6 +38,16 @@ function openCustomerCartWindow() {
   }
   return opened || null;
 }
+function closeCustomerCartWindow() {
+  try {
+    const existing = window.__customerCartWindow;
+    if (existing && !existing.closed) existing.close();
+  } catch (_) { }
+  try {
+    const named = window.open('', CUSTOMER_CART_WINDOW_NAME);
+    if (named && named !== window && !named.closed) named.close();
+  } catch (_) { }
+}
 
 function wireCloseAppLink() {
   const closeAppLink = document.getElementById('closeAppLink');
@@ -3443,7 +3453,10 @@ window.addEventListener('load', async () => {
 
   // Persist tabs on leave/hidden (but not when quitting the app)
   try {
-    window.addEventListener('beforeunload', () => { try { if (!__isQuitting) __persistTabs(); } catch (_) { } });
+    window.addEventListener('beforeunload', () => {
+      try { closeCustomerCartWindow(); } catch (_) { }
+      try { if (!__isQuitting) __persistTabs(); } catch (_) { }
+    });
     window.addEventListener('pagehide', () => { try { if (!__isQuitting) __persistTabs(); } catch (_) { } });
     document.addEventListener('visibilitychange', () => { try { if (document.hidden && !__isQuitting) __persistTabs(); } catch (_) { } });
   } catch (_) { }
@@ -3452,6 +3465,7 @@ window.addEventListener('load', async () => {
   try {
     api?.on?.('app:prepareQuit', () => {
       try { __isQuitting = true; } catch (_) { }
+      try { closeCustomerCartWindow(); } catch (_) { }
       try { invoke('auth:logout'); } catch (_) { }
     });
   } catch (_) { }
