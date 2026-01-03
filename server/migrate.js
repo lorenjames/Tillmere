@@ -41,7 +41,13 @@ async function run() {
         const sql = fs.readFileSync(full, 'utf-8');
         if (!sql.trim()) continue;
         try {
-            await pool.query(sql);
+            const statements = sql
+                .split(';')
+                .map(stmt => stmt.trim())
+                .filter(Boolean);
+            for (const statement of statements) {
+                await pool.query(statement);
+            }
             await pool.query('INSERT INTO migrations (name, applied_at) VALUES (?, NOW());', [file]);
             console.log(`[migrate] applied ${file}`);
         } catch (err) {
