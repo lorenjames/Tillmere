@@ -21,6 +21,23 @@ async function ensureAuthenticatedOrRedirect() {
 }
 ensureAuthenticatedOrRedirect();
 
+
+let __suppressUnloadPrompt = false;
+function markInternalNavigation(event) {
+  try {
+    const anchor = event?.target?.closest ? event.target.closest('a[href]') : null;
+    if (!anchor) return;
+    const href = anchor.getAttribute('href');
+    if (!href || href.startsWith('#')) return;
+    const url = new URL(href, window.location.href);
+    if (url.origin === window.location.origin) __suppressUnloadPrompt = true;
+  } catch (_) { }
+}
+function shouldConfirmClose() {
+  return !__suppressUnloadPrompt;
+}
+try { document.addEventListener('click', markInternalNavigation, true); } catch (_) { }
+
 function requestLogoutOnClose() {
   try {
     if (navigator.sendBeacon) {
@@ -3470,10 +3487,9 @@ window.addEventListener('load', async () => {
   // Persist tabs on leave/hidden (but not when quitting the app)
   try {
     window.addEventListener('beforeunload', (event) => {
-      try { closeCustomerCartWindow(); } catch (_) { }
       try { if (!__isQuitting) __persistTabs(); } catch (_) { }
       try {
-        if (event) {
+        if (event && shouldConfirmClose()) {
           event.preventDefault();
           event.returnValue = '';
         }
@@ -3481,7 +3497,10 @@ window.addEventListener('load', async () => {
     });
     window.addEventListener('pagehide', () => { try { if (!__isQuitting) __persistTabs(); } catch (_) { } });
     document.addEventListener('visibilitychange', () => { try { if (document.hidden && !__isQuitting) __persistTabs(); } catch (_) { } });
-    window.addEventListener('unload', () => { try { requestLogoutOnClose(); } catch (_) { } });
+    window.addEventListener('unload', () => {
+      try { closeCustomerCartWindow(); } catch (_) { }
+      try { requestLogoutOnClose(); } catch (_) { }
+    });
   } catch (_) { }
 
   // Mark quitting so beforeunload can prompt appropriately

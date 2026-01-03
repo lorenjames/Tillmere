@@ -19,6 +19,23 @@ async function ensureAuthenticatedOrRedirect() {
 ensureAuthenticatedOrRedirect();
 
 
+let __suppressUnloadPrompt = false;
+function markInternalNavigation(event) {
+  try {
+    const anchor = event?.target?.closest ? event.target.closest('a[href]') : null;
+    if (!anchor) return;
+    const href = anchor.getAttribute('href');
+    if (!href || href.startsWith('#')) return;
+    const url = new URL(href, window.location.href);
+    if (url.origin === window.location.origin) __suppressUnloadPrompt = true;
+  } catch (_) { }
+}
+function shouldConfirmClose() {
+  return !__suppressUnloadPrompt;
+}
+try { document.addEventListener('click', markInternalNavigation, true); } catch (_) { }
+
+
 function requestLogoutOnClose() {
   try {
     if (navigator.sendBeacon) {
@@ -38,6 +55,7 @@ function requestLogoutOnClose() {
 function confirmLogoutOnClose() {
   try {
     window.addEventListener('beforeunload', (event) => {
+      if (!shouldConfirmClose()) return;
       event.preventDefault();
       event.returnValue = '';
     });
