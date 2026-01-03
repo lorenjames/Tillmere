@@ -150,8 +150,11 @@ try {
 const sessionCookie = {
     httpOnly: true,
     sameSite: 'lax',
-    secure: String(process.env.NODE_ENV || '').toLowerCase() === 'production'
+    secure: String(process.env.NODE_ENV || '').toLowerCase() === 'production',
+    path: '/'
 };
+const cookieDomain = String(process.env.SESSION_COOKIE_DOMAIN || '').trim();
+if (cookieDomain) sessionCookie.domain = cookieDomain;
 const maxAgeEnv = Number(process.env.SESSION_MAX_AGE_MS || '');
 if (Number.isFinite(maxAgeEnv) && maxAgeEnv > 0) {
     sessionCookie.maxAge = maxAgeEnv;
@@ -223,17 +226,20 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 const SESSION_COOKIE_NAME = 'connect.sid';
-const SESSION_COOKIE_OPTIONS = {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: String(process.env.NODE_ENV || '').toLowerCase() === 'production',
-    path: '/'
-};
+function clearSessionCookie(res) {
+    const options = { ...sessionCookie };
+    try { res.clearCookie(SESSION_COOKIE_NAME, options); } catch (_) { }
+    if (options.domain) {
+        const hostOnly = { ...options };
+        delete hostOnly.domain;
+        try { res.clearCookie(SESSION_COOKIE_NAME, hostOnly); } catch (_) { }
+    }
+}
 
 app.post('/api/auth/logout', (req, res) => {
     try {
         const finish = () => {
-            try { res.clearCookie(SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS); } catch (_) { }
+            try { clearSessionCookie(res); } catch (_) { }
             res.json({ ok: true });
         };
         if (req.session && typeof req.session.destroy === 'function') {
@@ -242,7 +248,7 @@ app.post('/api/auth/logout', (req, res) => {
         }
         finish();
     } catch (error) {
-        try { res.clearCookie(SESSION_COOKIE_NAME, SESSION_COOKIE_OPTIONS); } catch (_) { }
+        try { clearSessionCookie(res); } catch (_) { }
         res.status(500).json({ error: error?.message || String(error) });
     }
 });
