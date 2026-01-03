@@ -252,6 +252,22 @@ app.post('/api/auth/logout', (req, res) => {
         res.status(500).json({ error: error?.message || String(error) });
     }
 });
+app.get('/api/auth/logout', (req, res) => {
+    try {
+        const finish = () => {
+            try { clearSessionCookie(res); } catch (_) { }
+            res.redirect('/login.html');
+        };
+        if (req.session && typeof req.session.destroy === 'function') {
+            req.session.destroy(() => finish());
+            return;
+        }
+        finish();
+    } catch (error) {
+        try { clearSessionCookie(res); } catch (_) { }
+        res.status(500).json({ error: error?.message || String(error) });
+    }
+});
 
 app.post('/api/setup', async (req, res) => {
     try {
