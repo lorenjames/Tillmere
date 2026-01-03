@@ -8,6 +8,27 @@ const invoke = (...args) => {
   return api.invoke(...args);
 };
 
+function closeSelf() {
+  try { window.close(); } catch (_) { }
+}
+
+function watchLogoutSignal() {
+  try {
+    window.addEventListener('storage', (event) => {
+      if (event?.key === 'app:logout') closeSelf();
+    });
+  } catch (_) { }
+}
+
+async function closeIfLoggedOut() {
+  try {
+    const resp = await fetch('/api/auth/me', { credentials: 'include' });
+    if (!resp.ok) closeSelf();
+  } catch (_) {
+    closeSelf();
+  }
+}
+
 const state = {
   bodyEl: null,
   titleEl: null,
@@ -75,6 +96,9 @@ const DEFAULT_CAROUSEL_SLIDES = [
     image: './assets/Dolly Purrton.png'
   }
 ];
+
+watchLogoutSignal();
+closeIfLoggedOut();
 
 /* Customer carousel logic disabled
 const carouselState = {

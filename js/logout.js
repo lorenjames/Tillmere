@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
   link.addEventListener('click', async (event) => {
     event.preventDefault();
     closeCustomerCartWindow();
+    try { localStorage.setItem('app:logout', String(Date.now())); } catch (_) { }
     try {
       await fetch('/api/auth/logout', {
         method: 'POST',
