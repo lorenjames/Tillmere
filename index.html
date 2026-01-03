@@ -7,6 +7,9 @@
     <style>body{visibility:hidden;}</style>
     <script>
         (function () {
+            function showBody() {
+                try { document.body.style.visibility = ''; } catch (_) { }
+            }
             try {
                 fetch('/api/auth/me', { credentials: 'include' })
                     .then((resp) => {
@@ -14,9 +17,11 @@
                             window.location.replace('login.html');
                             return;
                         }
-                        document.addEventListener('DOMContentLoaded', () => {
-                            document.body.style.visibility = '';
-                        });
+                        if (document.readyState === 'loading') {
+                            document.addEventListener('DOMContentLoaded', showBody);
+                        } else {
+                            showBody();
+                        }
                     })
                     .catch(() => {
                         window.location.replace('login.html');
