@@ -1444,36 +1444,16 @@ function setupEntryDiscountControls() {
 }
 function installNavigationGuards() {
   try {
-    // Confirm app quit; allow normal navigation away from POS.
-    window.addEventListener('beforeunload', (e) => {
+    // Track dirty carts for next session without prompting.
+    window.addEventListener('beforeunload', () => {
       try {
-        // If the app is quitting, show a confirm that names the first tab with items
-        if (typeof __isQuitting !== 'undefined' && __isQuitting) {
-          try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
-          let dirtyTitle = '';
-          try {
-            for (const [id, st] of __carts.entries()) {
-              if (Array.isArray(st?.items) && st.items.length > 0) { dirtyTitle = st.title || 'Current Sale'; break; }
-            }
-          } catch (_) { }
-          if (dirtyTitle) {
-            const ok = window.confirm(`There are still items in the cart on tab "${dirtyTitle}". Are you sure you want to close?`);
-            if (!ok) {
-              e.preventDefault();
-              try { __isQuitting = false; } catch (_) { }
-              try { if (api?.hasIpc) send('app:cancelQuit'); } catch (_) { }
-              return;
-            }
-          }
-          // Proceed with quit; clear persisted tabs so they do not carry to next session
+        if (__isQuitting) {
           try { localStorage.removeItem(__TABS_STORAGE_KEY); } catch (_) { }
-          return; // allow unload
+          return;
         }
-
         if (__hasDirtyCarts()) {
           try { sessionStorage.setItem('posDirtyNavToast', '1'); } catch (_) { }
         }
-        return;
       } catch (_) { }
     });
   } catch (_) { }
