@@ -22,21 +22,46 @@ async function ensureAuthenticatedOrRedirect() {
 ensureAuthenticatedOrRedirect();
 
 
+
 let __suppressUnloadPrompt = false;
+let __suppressUnloadTimer = null;
+function suppressUnloadPromptTemporarily() {
+  try {
+    __suppressUnloadPrompt = true;
+    if (__suppressUnloadTimer) clearTimeout(__suppressUnloadTimer);
+    __suppressUnloadTimer = setTimeout(() => { __suppressUnloadPrompt = false; }, 1500);
+  } catch (_) { }
+}
 function markInternalNavigation(event) {
   try {
     const anchor = event?.target?.closest ? event.target.closest('a[href]') : null;
-    if (!anchor) return;
-    const href = anchor.getAttribute('href');
-    if (!href || href.startsWith('#')) return;
-    const url = new URL(href, window.location.href);
-    if (url.origin === window.location.origin) __suppressUnloadPrompt = true;
+    if (anchor) {
+      const href = anchor.getAttribute('href');
+      if (href && !href.startsWith('#')) {
+        const url = new URL(href, window.location.href);
+        if (url.origin === window.location.origin) {
+          suppressUnloadPromptTemporarily();
+          return;
+        }
+      }
+    }
+    const navEl = event?.target?.closest ? event.target.closest('[data-allow-nav],[data-nav]') : null;
+    if (navEl) suppressUnloadPromptTemporarily();
+  } catch (_) { }
+}
+function markFormNavigation(event) {
+  try {
+    const form = event?.target;
+    if (form && form.tagName === 'FORM') suppressUnloadPromptTemporarily();
   } catch (_) { }
 }
 function shouldConfirmClose() {
   return !__suppressUnloadPrompt;
 }
-try { document.addEventListener('click', markInternalNavigation, true); } catch (_) { }
+try {
+  document.addEventListener('click', markInternalNavigation, true);
+  document.addEventListener('submit', markFormNavigation, true);
+} catch (_) { }
 
 function requestLogoutOnClose() {
   try {
