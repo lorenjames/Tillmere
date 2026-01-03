@@ -3443,6 +3443,7 @@ window.addEventListener('load', async () => {
   try {
     api?.on?.('app:prepareQuit', () => {
       try { __isQuitting = true; } catch (_) { }
+      try { invoke('auth:logout'); } catch (_) { }
     });
   } catch (_) { }
 
