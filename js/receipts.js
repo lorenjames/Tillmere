@@ -21,13 +21,14 @@ ensureAuthenticatedOrRedirect();
 
 
 
+
 let __suppressUnloadPrompt = false;
 let __suppressUnloadTimer = null;
 function suppressUnloadPromptTemporarily() {
   try {
     __suppressUnloadPrompt = true;
     if (__suppressUnloadTimer) clearTimeout(__suppressUnloadTimer);
-    __suppressUnloadTimer = setTimeout(() => { __suppressUnloadPrompt = false; }, 5000);
+    __suppressUnloadTimer = setTimeout(() => { __suppressUnloadPrompt = false; }, 2000);
   } catch (_) { }
 }
 function isSameOriginNavHref(href) {
@@ -68,6 +69,8 @@ function shouldConfirmClose() {
   return !__suppressUnloadPrompt;
 }
 try {
+  document.addEventListener('click', suppressUnloadPromptTemporarily, true);
+  document.addEventListener('pointerdown', suppressUnloadPromptTemporarily, true);
   document.addEventListener('click', markInternalNavigation, true);
   document.addEventListener('pointerdown', markInternalNavigation, true);
   document.addEventListener('submit', markFormNavigation, true);
