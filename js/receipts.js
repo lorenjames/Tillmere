@@ -18,33 +18,6 @@ async function ensureAuthenticatedOrRedirect() {
 }
 ensureAuthenticatedOrRedirect();
 
-function suppressLeavePrompt() {
-  try {
-    window.addEventListener('beforeunload', (event) => {
-      try { event.returnValue = undefined; } catch (_) { }
-      try { event.stopImmediatePropagation(); } catch (_) { }
-    }, true);
-  } catch (_) { }
-}
-suppressLeavePrompt();
-
-
-    fetch('/api/auth/logout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      keepalive: true
-    }).catch(() => { });
-  } catch (_) { }
-}
-
-function confirmLogoutOnCloseRemoved {
-  try {
-    
-    
-  } catch (_) { }
-}
-
 const canEditReceipts = !!api;
 
 function wireCloseAppLink() {
@@ -685,6 +658,7 @@ async function openReceiptWindowCompact(r, opts = {}) {
     }
     ${getGreyscalePrintCss()}
   </style>`;
+
 
   const vendorTotals = {};
   const returnQtyByKey = {};
@@ -1886,6 +1860,7 @@ async function openReceiptWindow(r, opts = {}) {
         ${r.returnInfo?.when ? ` <span class="label">on ${new Date(r.returnInfo.when).toLocaleString()}</span>` : ''}
         </div>`
     : '';
+
 
   const displayDate = r.displayDate || (r.datetime ? new Date(r.datetime).toLocaleString() : '');
   const html = `

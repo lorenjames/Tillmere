@@ -18,33 +18,6 @@ async function ensureAuthenticatedOrRedirect() {
 }
 ensureAuthenticatedOrRedirect();
 
-function suppressLeavePrompt() {
-  try {
-    window.addEventListener('beforeunload', (event) => {
-      try { event.returnValue = undefined; } catch (_) { }
-      try { event.stopImmediatePropagation(); } catch (_) { }
-    }, true);
-  } catch (_) { }
-}
-suppressLeavePrompt();
-
-
-    fetch('/api/auth/logout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      keepalive: true
-    }).catch(() => { });
-  } catch (_) { }
-}
-
-function confirmLogoutOnCloseRemoved {
-  try {
-    
-    
-  } catch (_) { }
-}
-
 const hasIpc = !!api?.hasIpc;
 console.log('[reports] script loaded');
 window.addEventListener('error', e => console.error('[reports] error:', e.message));
@@ -332,6 +305,7 @@ function getReceiptEffectiveDate(r) {
     return null;
 }
 
+
 /** RENAMED: avoid conflict with Bootstrap's global `window.bootstrap` */
 async function initReports() {
     await loadAuthRole();
@@ -601,6 +575,7 @@ function renderGiftCardSummary({ from, to }) {
     }
     body.appendChild(frag);
 }
+
 
 // Detailed Sales by Vendor (respects same date filters)
 function runDetailedReport() {
@@ -986,6 +961,7 @@ function runDetailedReport() {
         alert('Open failed: ' + (e?.message || e));
     }
 }
+
 
 // Print Detailed: cover page + vendors, each on its own page
 function printDetailedReport() {
@@ -1497,6 +1473,8 @@ function printTaxExemptReport() {
         alert('Print failed: ' + (err?.message || err));
     }
 }
+
+
 
 // Expose for inline use/debug
 window.runReport = runReport;

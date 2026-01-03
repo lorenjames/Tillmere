@@ -21,26 +21,6 @@ async function ensureAuthenticatedOrRedirect() {
 }
 ensureAuthenticatedOrRedirect();
 
-function suppressLeavePrompt() {
-  try {
-    window.addEventListener('beforeunload', (event) => {
-      try { event.returnValue = undefined; } catch (_) { }
-      try { event.stopImmediatePropagation(); } catch (_) { }
-    }, true);
-  } catch (_) { }
-}
-suppressLeavePrompt();
-
-
-    fetch('/api/auth/logout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      keepalive: true
-    }).catch(() => { });
-  } catch (_) { }
-}
-
 const CUSTOMER_CART_WINDOW_NAME = 'middletonsCustomerCart';
 function openCustomerCartWindow() {
   if (api?.hasIpc) return null;
@@ -1446,16 +1426,36 @@ function setupEntryDiscountControls() {
 }
 function installNavigationGuards() {
   try {
-    // Track dirty carts for next session without prompting.
-    window.addEventListener('beforeunload', () => {
+    // Confirm app quit; allow normal navigation away from POS.
+    window.addEventListener('beforeunload', (e) => {
       try {
-        if (__isQuitting) {
+        // If the app is quitting, show a confirm that names the first tab with items
+        if (typeof __isQuitting !== 'undefined' && __isQuitting) {
+          try { if (__activeCartId) __carts.set(__activeCartId, __snapshotFromUI()); } catch (_) { }
+          let dirtyTitle = '';
+          try {
+            for (const [id, st] of __carts.entries()) {
+              if (Array.isArray(st?.items) && st.items.length > 0) { dirtyTitle = st.title || 'Current Sale'; break; }
+            }
+          } catch (_) { }
+          if (dirtyTitle) {
+            const ok = window.confirm(`There are still items in the cart on tab "${dirtyTitle}". Are you sure you want to close?`);
+            if (!ok) {
+              e.preventDefault();
+              try { __isQuitting = false; } catch (_) { }
+              try { if (api?.hasIpc) send('app:cancelQuit'); } catch (_) { }
+              return;
+            }
+          }
+          // Proceed with quit; clear persisted tabs so they do not carry to next session
           try { localStorage.removeItem(__TABS_STORAGE_KEY); } catch (_) { }
-          return;
+          return; // allow unload
         }
+
         if (__hasDirtyCarts()) {
           try { sessionStorage.setItem('posDirtyNavToast', '1'); } catch (_) { }
         }
+        return;
       } catch (_) { }
     });
   } catch (_) { }
@@ -1590,6 +1590,7 @@ function findCashierStrict(cashiers, input) {
   const safe = Array.isArray(cashiers) ? cashiers : [];
   return safe.find(c => norm(c.name || '') === s) || null;
 }
+
 
 // Choose the closest vendor match for partial input.
 function bestVendorMatch(vendors, input) {
@@ -3453,13 +3454,11 @@ window.addEventListener('load', async () => {
   // Persist tabs on leave/hidden (but not when quitting the app)
   try {
     window.addEventListener('beforeunload', () => {
+      try { closeCustomerCartWindow(); } catch (_) { }
       try { if (!__isQuitting) __persistTabs(); } catch (_) { }
     });
     window.addEventListener('pagehide', () => { try { if (!__isQuitting) __persistTabs(); } catch (_) { } });
     document.addEventListener('visibilitychange', () => { try { if (document.hidden && !__isQuitting) __persistTabs(); } catch (_) { } });
-    window.addEventListener('unload', () => {
-      try { closeCustomerCartWindow(); } catch (_) { }
-    });
   } catch (_) { }
 
   // Mark quitting so beforeunload can prompt appropriately

@@ -18,32 +18,6 @@ async function ensureAuthenticatedOrRedirect() {
 }
 ensureAuthenticatedOrRedirect();
 
-function suppressLeavePrompt() {
-  try {
-    window.addEventListener('beforeunload', (event) => {
-      try { event.returnValue = undefined; } catch (_) { }
-      try { event.stopImmediatePropagation(); } catch (_) { }
-    }, true);
-  } catch (_) { }
-}
-suppressLeavePrompt();
-
-
-    fetch('/api/auth/logout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      keepalive: true
-    }).catch(() => { });
-  } catch (_) { }
-}
-
-function confirmLogoutOnCloseRemoved {
-  try {
-    
-    
-  } catch (_) { }
-}
 
 function wireCloseAppLink() {
     const closeAppLink = document.getElementById('closeAppLink');

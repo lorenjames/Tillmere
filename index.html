@@ -4,19 +4,39 @@
 <head>
     <meta charset="UTF-8" />
     <title>Middleton’s POS</title>
+    <style>body{visibility:hidden;}</style>
     <script>
         (function () {
+            let resolved = false;
+            function showBody() {
+                try { document.body.style.visibility = ''; } catch (_) { }
+            }
+            const fallback = setTimeout(() => {
+                if (!resolved) window.location.replace('login.html');
+            }, 1500);
             try {
                 fetch('/api/auth/me', { credentials: 'include' })
                     .then((resp) => {
+                        resolved = true;
+                        clearTimeout(fallback);
                         if (!resp.ok) {
                             window.location.replace('login.html');
+                            return;
+                        }
+                        if (document.readyState === 'loading') {
+                            document.addEventListener('DOMContentLoaded', showBody);
+                        } else {
+                            showBody();
                         }
                     })
                     .catch(() => {
+                        resolved = true;
+                        clearTimeout(fallback);
                         window.location.replace('login.html');
                     });
             } catch (_) {
+                resolved = true;
+                clearTimeout(fallback);
                 window.location.replace('login.html');
             }
         }());
