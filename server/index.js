@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const MySQLStore = require('connect-mysql2')(session);
+const mysql2 = require('mysql2');
 const path = require('path');
 const { getPool } = require('./db');
 const { resolveDataDir } = require('./storage');
@@ -116,16 +117,35 @@ function requireRole(minRole) {
 app.use(express.json({ limit: '50mb' }));
 
 const pool = getPool();
-const sessionStore = pool
-    ? new MySQLStore(
-        {
-            clearExpired: true,
-            checkExpirationInterval: 15 * 60 * 1000,
-            expiration: 4 * 60 * 60 * 1000
-        },
-        pool
-    )
-    : null;
+const sessionOptions = {
+    clearExpired: true,
+    checkExpirationInterval: 15 * 60 * 1000,
+    expiration: 4 * 60 * 60 * 1000
+};
+function buildSessionDbConfig() {
+    const url = String(process.env.MYSQL_URL || '').trim();
+    if (url) return { uri: url };
+    const host = String(process.env.MYSQL_HOST || '').trim();
+    const user = String(process.env.MYSQL_USER || '').trim();
+    const password = String(process.env.MYSQL_PASSWORD || '').trim();
+    const database = String(process.env.MYSQL_DATABASE || '').trim();
+    if (!host || !user || !database) return null;
+    return { host, user, password, database };
+}
+let sessionStore = null;
+try {
+    const cfg = buildSessionDbConfig();
+    if (cfg) {
+        const sessionPool = mysql2.createPool({
+            ...cfg,
+            connectionLimit: 5
+        });
+        sessionStore = new MySQLStore(sessionOptions, sessionPool);
+    }
+} catch (err) {
+    console.error('[session] MySQL store unavailable, falling back to memory store.', err);
+    sessionStore = null;
+}
 
 const sessionCookie = {
     httpOnly: true,
