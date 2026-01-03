@@ -18,7 +18,6 @@ async function ensureAuthenticatedOrRedirect() {
 }
 ensureAuthenticatedOrRedirect();
 
-
 function suppressLeavePrompt() {
   try {
     window.addEventListener('beforeunload', (event) => {
@@ -30,14 +29,6 @@ function suppressLeavePrompt() {
 suppressLeavePrompt();
 
 
-
-function requestLogoutOnClose() {
-  try {
-    if (navigator.sendBeacon) {
-      const blob = new Blob([], { type: 'application/json' });
-      navigator.sendBeacon('/api/auth/logout', blob);
-      return;
-    }
     fetch('/api/auth/logout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -50,7 +41,7 @@ function requestLogoutOnClose() {
 function confirmLogoutOnCloseRemoved {
   try {
     
-    window.addEventListener('unload', () => { requestLogoutOnClose(); });
+    
   } catch (_) { }
 }
 
@@ -1506,7 +1497,6 @@ function printTaxExemptReport() {
         alert('Print failed: ' + (err?.message || err));
     }
 }
-
 
 // Expose for inline use/debug
 window.runReport = runReport;

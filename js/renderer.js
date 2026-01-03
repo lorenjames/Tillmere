@@ -21,7 +21,6 @@ async function ensureAuthenticatedOrRedirect() {
 }
 ensureAuthenticatedOrRedirect();
 
-
 function suppressLeavePrompt() {
   try {
     window.addEventListener('beforeunload', (event) => {
@@ -33,14 +32,6 @@ function suppressLeavePrompt() {
 suppressLeavePrompt();
 
 
-
-function requestLogoutOnClose() {
-  try {
-    if (navigator.sendBeacon) {
-      const blob = new Blob([], { type: 'application/json' });
-      navigator.sendBeacon('/api/auth/logout', blob);
-      return;
-    }
     fetch('/api/auth/logout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -3468,7 +3459,6 @@ window.addEventListener('load', async () => {
     document.addEventListener('visibilitychange', () => { try { if (document.hidden && !__isQuitting) __persistTabs(); } catch (_) { } });
     window.addEventListener('unload', () => {
       try { closeCustomerCartWindow(); } catch (_) { }
-      try { requestLogoutOnClose(); } catch (_) { }
     });
   } catch (_) { }
 
