@@ -23,27 +23,29 @@ ensureAuthenticatedOrRedirect();
 
 
 
+
 let __suppressUnloadPrompt = false;
 let __suppressUnloadTimer = null;
 function suppressUnloadPromptTemporarily() {
   try {
     __suppressUnloadPrompt = true;
     if (__suppressUnloadTimer) clearTimeout(__suppressUnloadTimer);
-    __suppressUnloadTimer = setTimeout(() => { __suppressUnloadPrompt = false; }, 1500);
+    __suppressUnloadTimer = setTimeout(() => { __suppressUnloadPrompt = false; }, 5000);
   } catch (_) { }
+}
+function isSameOriginNavHref(href) {
+  try {
+    if (!href || href.startsWith('#')) return false;
+    const url = new URL(href, window.location.href);
+    return url.origin === window.location.origin;
+  } catch (_) { return false; }
 }
 function markInternalNavigation(event) {
   try {
     const anchor = event?.target?.closest ? event.target.closest('a[href]') : null;
-    if (anchor) {
-      const href = anchor.getAttribute('href');
-      if (href && !href.startsWith('#')) {
-        const url = new URL(href, window.location.href);
-        if (url.origin === window.location.origin) {
-          suppressUnloadPromptTemporarily();
-          return;
-        }
-      }
+    if (anchor && isSameOriginNavHref(anchor.getAttribute('href'))) {
+      suppressUnloadPromptTemporarily();
+      return;
     }
     const navEl = event?.target?.closest ? event.target.closest('[data-allow-nav],[data-nav]') : null;
     if (navEl) suppressUnloadPromptTemporarily();
@@ -55,12 +57,25 @@ function markFormNavigation(event) {
     if (form && form.tagName === 'FORM') suppressUnloadPromptTemporarily();
   } catch (_) { }
 }
+function markKeyNavigation(event) {
+  try {
+    const key = event?.key;
+    if (key !== 'Enter' && key !== ' ') return;
+    const anchor = event?.target?.closest ? event.target.closest('a[href]') : null;
+    if (anchor && isSameOriginNavHref(anchor.getAttribute('href'))) {
+      suppressUnloadPromptTemporarily();
+    }
+  } catch (_) { }
+}
 function shouldConfirmClose() {
   return !__suppressUnloadPrompt;
 }
 try {
   document.addEventListener('click', markInternalNavigation, true);
+  document.addEventListener('pointerdown', markInternalNavigation, true);
   document.addEventListener('submit', markFormNavigation, true);
+  document.addEventListener('keydown', markKeyNavigation, true);
+  window.addEventListener('pageshow', () => { __suppressUnloadPrompt = false; });
 } catch (_) { }
 
 function requestLogoutOnClose() {
