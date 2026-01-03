@@ -19,6 +19,17 @@ async function ensureAuthenticatedOrRedirect() {
 ensureAuthenticatedOrRedirect();
 
 
+function suppressLeavePrompt() {
+  try {
+    window.addEventListener('beforeunload', (event) => {
+      try { event.returnValue = undefined; } catch (_) { }
+      try { event.stopImmediatePropagation(); } catch (_) { }
+    }, true);
+  } catch (_) { }
+}
+suppressLeavePrompt();
+
+
 
 function requestLogoutOnClose() {
   try {
