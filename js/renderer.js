@@ -12,6 +12,15 @@ const send = (...args) => {
   try { if (api && typeof api.send === 'function') api.send(...args); } catch (_) { }
 };
 
+async function ensureAuthenticatedOrRedirect() {
+  try {
+    await invoke('auth:me');
+  } catch (_) {
+    try { window.location.replace('login.html'); } catch (_) { window.location.href = 'login.html'; }
+  }
+}
+ensureAuthenticatedOrRedirect();
+
 const CUSTOMER_CART_WINDOW_NAME = 'middletonsCustomerCart';
 function openCustomerCartWindow() {
   if (api?.hasIpc) return null;
