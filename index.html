@@ -7,7 +7,7 @@
     <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"> -->
     <link href="./css/bootstrap.css" rel="stylesheet">
     <!-- Experimental wallpaper (remove this link to rollback) -->
-    <link href="./css/brickwall.css" rel="stylesheet">
+    <!-- <link href="./css/brickwall.css" rel="stylesheet"> -->
     <!-- Preload wallpaper to avoid visible reloads on navigation -->
     <link rel="preload" as="image" href="./assets/brickwall.jpg">
     <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -30,7 +30,10 @@
         }
 
         /* Quantity picker popover */
-        #qtyPickerWrap { position: relative; }
+        #qtyPickerWrap {
+            position: relative;
+        }
+
         #qtyPickerPopover {
             position: absolute;
             right: 0;
@@ -41,11 +44,13 @@
             border-radius: 12px;
             background: #fff;
         }
+
         #qtyPickerPopover .qty-grid {
             display: grid;
             grid-template-columns: repeat(6, minmax(0, 1fr));
             gap: 6px;
         }
+
         #qtyPickerPopover .qty-btn {
             font-weight: 700;
             padding: 8px 0;
@@ -54,16 +59,23 @@
             background: #f8f9fa;
             transition: background .15s, transform .1s;
         }
+
         #qtyPickerPopover .qty-btn:hover {
             background: #eef2f7;
         }
+
         #qtyPickerPopover .qty-btn:active {
             transform: translateY(1px);
         }
+
         #qtyPickerPopover .qty-meta {
             font-size: .85rem;
         }
-        .qty-input { min-width: 110px; }
+
+        .qty-input {
+            min-width: 110px;
+        }
+
         .tax-exempt-datalist {
             appearance: none;
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='10' viewBox='0 0 16 10'%3E%3Cpath d='M1.5 1.5l6.5 6.5 6.5-6.5' fill='none' stroke='%236c757d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -86,18 +98,23 @@
                 <a class="nav-link" href="reports.html">Reports</a>
                 <div class="nav-item dropdown me-2">
                     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown"
-                        aria-expanded="false" aria-label="Configuration" title="Configuration"><span class="config-hamburger" aria-hidden="true">&#9776;</span></a>
+                        aria-expanded="false" aria-label="Configuration" title="Configuration"><span
+                            class="config-hamburger" aria-hidden="true">&#9776;</span></a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
                         <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
                         <li><a class="dropdown-item" href="schedule.html">Schedule</a></li>
                         <li><a class="dropdown-item" href="giftcards.html">Gift Cards</a></li>
-                        <li><a class="dropdown-item" href="opening.html" data-allow-nav="true">Opening / Closing</a></li>
-            <li><a class="dropdown-item" href="settings.html">Settings</a></li>
-            <li><a class="dropdown-item" href="#" id="userGuideLink">User Guide</a></li>
-            <li><a class="dropdown-item" href="#" id="logoutLink">Logout</a></li>
-            <li><hr class="dropdown-divider"></li>
-            <li><button class="dropdown-item text-danger" type="button" id="closeAppLink">Close App</button></li>
+                        <li><a class="dropdown-item" href="opening.html" data-allow-nav="true">Opening / Closing</a>
+                        </li>
+                        <li><a class="dropdown-item" href="settings.html">Settings</a></li>
+                        <li><a class="dropdown-item" href="#" id="userGuideLink">User Guide</a></li>
+                        <li><a class="dropdown-item" href="#" id="logoutLink">Logout</a></li>
+                        <li>
+                            <hr class="dropdown-divider">
+                        </li>
+                        <li><button class="dropdown-item text-danger" type="button" id="closeAppLink">Close App</button>
+                        </li>
                     </ul>
                 </div>
 
@@ -189,8 +206,8 @@
                                 <label for="itemQty" class="form-label">Qty</label>
                                 <div id="qtyPickerWrap">
                                     <div class="input-group">
-                                        <input type="number" id="itemQty" class="form-control qty-input" min="1" step="1"
-                                            value="1" inputmode="numeric" aria-haspopup="true"
+                                        <input type="number" id="itemQty" class="form-control qty-input" min="1"
+                                            step="1" value="1" inputmode="numeric" aria-haspopup="true"
                                             aria-expanded="false" aria-controls="qtyPickerPopover">
                                         <button class="btn btn-outline-secondary" type="button" id="qtyPickerToggle"
                                             aria-label="Choose quantity" aria-expanded="false"
@@ -222,7 +239,8 @@
                                             <button type="button" class="btn btn-outline-secondary btn-sm"
                                                 data-value="50">50</button>
                                         </div>
-                                        <div class="d-flex justify-content-between align-items-center qty-meta px-2 pb-2 pt-0">
+                                        <div
+                                            class="d-flex justify-content-between align-items-center qty-meta px-2 pb-2 pt-0">
                                             <span class="text-muted">Tap a number or type manually.</span>
                                             <button type="button" class="btn btn-link btn-sm text-decoration-none"
                                                 id="qtyPickerClose">Close</button>
@@ -269,7 +287,8 @@
                                 <button class="btn btn-primary w-100" onclick="addItem()">Add Item</button>
                             </div>
                             <div class="col-12">
-                                <button class="btn btn-outline-primary w-100" onclick="addGiftCardSaleItem()">Sell Gift Card</button>
+                                <button class="btn btn-outline-primary w-100" onclick="addGiftCardSaleItem()">Sell Gift
+                                    Card</button>
                             </div>
                             <div class="col-12 mt-2">
                                 <button class="btn btn-outline-secondary w-100" onclick="clearItemEntry()"
@@ -347,8 +366,8 @@
                         <div id="giftCardFields" class="mt-3 d-none">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <label for="giftCardNumber" class="form-label mb-0">Gift Card #</label>
-                                <input type="text" id="giftCardNumber" class="form-control"
-                                    placeholder="Card number" style="max-width: 220px;">
+                                <input type="text" id="giftCardNumber" class="form-control" placeholder="Card number"
+                                    style="max-width: 220px;">
                             </div>
                             <div class="d-flex justify-content-between align-items-center">
                                 <label for="giftCardAmount" class="form-label mb-0">Redeem Amount ($):</label>
@@ -381,7 +400,8 @@
                             <label class="form-check-label" for="receiptWanted">Print receipt?</label>
                         </div>
 
-                        <button id="printSaveBtn" class="btn btn-success w-100 mt-3" onclick="printReceipt()">Print &amp; Save</button>
+                        <button id="printSaveBtn" class="btn btn-success w-100 mt-3" onclick="printReceipt()">Print
+                            &amp; Save</button>
                     </div>
                 </div>
             </div>
@@ -608,10 +628,12 @@
                     </div>
                     <div class="modal-body">
                         <p class="mb-1">Cancel this sale and clear all fields?</p>
-                        <p class="text-muted small mb-0">Items, payments, backdating, and tax selections will be removed. This cannot be undone.</p>
+                        <p class="text-muted small mb-0">Items, payments, backdating, and tax selections will be
+                            removed. This cannot be undone.</p>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-outline-secondary" data-role="cancel" data-bs-dismiss="modal">Keep Sale</button>
+                        <button type="button" class="btn btn-outline-secondary" data-role="cancel"
+                            data-bs-dismiss="modal">Keep Sale</button>
                         <button type="button" class="btn btn-danger" id="cancelSaleConfirmBtn">Yes, Cancel Sale</button>
                     </div>
                 </div>
@@ -629,8 +651,8 @@
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="noTaxName" class="form-label">Name / Organization</label>
-                            <input type="text" id="noTaxName" class="form-control tax-exempt-datalist" list="taxExemptOrgList"
-                                placeholder="e.g., Lincoln Public Schools">
+                            <input type="text" id="noTaxName" class="form-control tax-exempt-datalist"
+                                list="taxExemptOrgList" placeholder="e.g., Lincoln Public Schools">
                             <datalist id="taxExemptOrgList"></datalist>
                         </div>
                         <div class="mb-2">
@@ -664,7 +686,8 @@
                     </div>
                     <div class="mb-2">
                         <label for="drawerOpenPin" class="form-label">PIN</label>
-                        <input type="password" id="drawerOpenPin" class="form-control" inputmode="numeric" placeholder="Enter PIN">
+                        <input type="password" id="drawerOpenPin" class="form-control" inputmode="numeric"
+                            placeholder="Enter PIN">
                     </div>
                     <div class="mb-3">
                         <div class="fw-semibold mb-1">Denominations</div>
@@ -674,7 +697,8 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="submitDrawerOpening()">Submit Opening</button>
+                    <button type="button" class="btn btn-primary" onclick="submitDrawerOpening()">Submit
+                        Opening</button>
                 </div>
             </div>
         </div>
@@ -695,7 +719,8 @@
                     </div>
                     <div class="mb-2">
                         <label for="drawerClosePin" class="form-label">PIN</label>
-                        <input type="password" id="drawerClosePin" class="form-control" inputmode="numeric" placeholder="Enter PIN">
+                        <input type="password" id="drawerClosePin" class="form-control" inputmode="numeric"
+                            placeholder="Enter PIN">
                     </div>
                     <div class="mb-3">
                         <div class="fw-semibold mb-1">Denominations</div>
@@ -705,7 +730,8 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="submitDrawerClosing()">Submit Closing</button>
+                    <button type="button" class="btn btn-primary" onclick="submitDrawerClosing()">Submit
+                        Closing</button>
                 </div>
             </div>
         </div>
@@ -721,7 +747,8 @@
                 </div>
                 <div class="modal-body">
                     <label for="drawerApprovePassword" class="form-label">Manager password</label>
-                    <input type="password" id="drawerApprovePassword" class="form-control" placeholder="Enter manager password">
+                    <input type="password" id="drawerApprovePassword" class="form-control"
+                        placeholder="Enter manager password">
                     <div class="form-text">Records lock after approval.</div>
                 </div>
                 <div class="modal-footer">
@@ -817,7 +844,8 @@
                     <textarea id="posReturnReasonInput" class="form-control" rows="3"
                         placeholder="e.g., customer changed mind, damaged item"></textarea>
 
-                    <div id="posReturnHint" class="small text-muted mt-2">Provide the receipt ID, a reason, and cashier responsible for the return.</div>
+                    <div id="posReturnHint" class="small text-muted mt-2">Provide the receipt ID, a reason, and cashier
+                        responsible for the return.</div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" id="posReturnCancelBtn">Cancel</button>
@@ -845,7 +873,8 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Later</button>
-                    <button type="button" class="btn btn-primary" id="giftCardReminderActivateBtn">Activate Gift Cards</button>
+                    <button type="button" class="btn btn-primary" id="giftCardReminderActivateBtn">Activate Gift
+                        Cards</button>
                 </div>
             </div>
         </div>
@@ -866,7 +895,8 @@
                         </div>
                         <div class="col-6">
                             <label for="activateAmount" class="form-label">Amount ($)</label>
-                            <input type="number" id="activateAmount" class="form-control" step="0.01" min="0" placeholder="0.00">
+                            <input type="number" id="activateAmount" class="form-control" step="0.01" min="0"
+                                placeholder="0.00">
                         </div>
                         <div class="col-6">
                             <label for="activateCashier" class="form-label">Cashier</label>
@@ -874,7 +904,8 @@
                         </div>
                         <div class="col-12">
                             <label for="activateReceipt" class="form-label">Receipt # (optional)</label>
-                            <input type="text" id="activateReceipt" class="form-control" placeholder="e.g., MID-20251231-121314">
+                            <input type="text" id="activateReceipt" class="form-control"
+                                placeholder="e.g., MID-20251231-121314">
                         </div>
                         <div class="col-12">
                             <label for="activateNote" class="form-label">Note (optional)</label>
@@ -904,7 +935,8 @@
                     <div class="row g-2" id="giftCardSaleFields">
                         <div class="col-12">
                             <label for="giftCardSaleAmount" class="form-label">Amount ($)</label>
-                            <input type="number" class="form-control" id="giftCardSaleAmount" step="0.01" min="0" placeholder="0.00">
+                            <input type="number" class="form-control" id="giftCardSaleAmount" step="0.01" min="0"
+                                placeholder="0.00">
                         </div>
                         <div class="col-12">
                             <label for="giftCardSaleSelect" class="form-label">Available Card</label>
@@ -925,9 +957,6 @@
     <script src="js/api-client.js"></script>
     <script src="js/logout.js"></script>
     <script src="js/renderer.js"></script>
-    </body>
+</body>
 
 </html>
-
-
-
