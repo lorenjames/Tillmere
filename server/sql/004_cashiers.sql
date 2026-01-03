@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS cashiers (
+  pk BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(128) NOT NULL,
+  active TINYINT(1) DEFAULT 1,
+  pinHash VARCHAR(128),
+  pinSalt VARCHAR(64),
+  importKey VARCHAR(64),
+  data JSON NOT NULL,
+  UNIQUE KEY idx_cashiers_name (name)
+);

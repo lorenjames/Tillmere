@@ -1,0 +1,60 @@
+{
+    "name": "middletons-pos",
+    "version": "1.5.5",
+    "description": "POS system for Middleton's Antiques & Uniques",
+    "author": "Loren Craig-Mohebali",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron .",
+        "start:web": "node server/index.js",
+        "migrate:db": "node server/migrate.js",
+        "import:receipts": "node server/import-receipts.js",
+        "import:backup": "node server/import-backup.js",
+        "test": "jest",
+        "test:watch": "jest --watchAll",
+        "build:win": "electron-builder --win nsis",
+        "build:dir": "electron-builder --dir",
+        "format": "prettier --write \"**/*.{js,jsx,ts,tsx,html,css,json,md}\""
+    },
+    "build": {
+        "appId": "com.middletons.pos",
+        "productName": "Middletons POS",
+        "directories": {
+            "output": "dist"
+        },
+        "files": [
+            "**/*",
+            "!dist/**"
+        ],
+        "win": {
+            "target": "nsis",
+            "icon": "assets/MiddletonsAppIconNEW.png"
+        },
+        "nsis": {
+            "oneClick": true,
+            "perMachine": false,
+            "allowElevation": false,
+            "allowToChangeInstallationDirectory": false
+        }
+    },
+    "devDependencies": {
+        "electron": "^32.0.0",
+        "electron-builder": "^24.13.3",
+        "jest": "^29.7.0",
+        "jest-environment-jsdom": "^29.7.0",
+        "prettier": "^3.3.3",
+        "test": "^3.3.0"
+    },
+    "dependencies": {
+        "better-sqlite3": "^11.10.0",
+        "bcryptjs": "^2.4.3",
+        "bootstrap": "^5.3.8",
+        "bootswatch": "^5.3.8",
+        "connect-mysql2": "^2.2.6",
+        "dotenv": "^16.4.5",
+        "express": "^4.19.2",
+        "express-session": "^1.18.1",
+        "mysql2": "^3.11.0",
+        "square": "^43.2.1"
+    }
+}

@@ -1,0 +1,32 @@
+# Node / npm
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+out/
+
+# OS / IDE noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Electron builder cache (local)
+/.cache/
+**/electron-builder.yml
+
+# Env / secrets (if any added later)
+.env
+.env.local
+
+# Local backups and temp data
+backups/
+tmp_renderer.js
+renderer_backup.js
+receipts_tmp.txt
+
+logs/activity.log

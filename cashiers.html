@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Manage Cashiers - Middleton’s</title>
+    <!-- <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"> -->
+    <link href="./css/bootstrap.css" rel="stylesheet">
+    <!-- Experimental wallpaper (remove this link to rollback) -->
+    <link href="./css/brickwall.css" rel="stylesheet">
+    <!-- Preload wallpaper to avoid visible reloads on navigation -->
+    <link rel="preload" as="image" href="./assets/brickwall.jpg">
+    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <style>
+        /* body background is provided by css/brickwall.css; keep minimal overrides here */
+    </style>
+</head>
+
+<body>
+    <nav class="navbar navbar-expand-lg bg-primary" data-bs-theme="dark">
+        <div class="container-fluid">
+            <span class="navbar-brand">Middleton’s Antiques & Uniques</span>
+            <div class="navbar-nav">
+                <a class="nav-link" href="index.html">POS</a>
+                <a class="nav-link" href="receipts.html">Receipts</a>
+                <a class="nav-link" href="reports.html">Reports</a>
+                <div class="nav-item dropdown me-2">
+                    <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Configuration" title="Configuration"><span class="config-hamburger" aria-hidden="true">&#9776;</span></a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
+                        <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
+                        <li><a class="dropdown-item" href="schedule.html">Schedule</a></li>
+                        <li><a class="dropdown-item" href="giftcards.html">Gift Cards</a></li>
+                        <li><a class="dropdown-item" href="opening.html" data-allow-nav="true">Opening / Closing</a></li>
+                        <li><a class="dropdown-item" href="settings.html">Settings</a></li>
+                        <li><a class="dropdown-item" href="#" id="userGuideLink">User Guide</a></li>
+                        <li><a class="dropdown-item" href="#" id="logoutLink">Logout</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button class="dropdown-item text-danger" type="button" id="closeAppLink">Close App</button></li>
+                    </ul>
+        </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container py-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Cashier Management</h5>
+                <div class="row g-2 align-items-end">
+                    <div class="col-9 col-md-9">
+                        <label for="newCashier" class="form-label">Cashier Name</label>
+                        <input type="text" id="newCashier" class="form-control" placeholder="e.g., Oliver">
+                    </div>
+                    <div class="col-3 col-md-3 d-grid">
+                        <label class="form-label invisible">Add</label>
+                        <button class="btn btn-primary" onclick="addCashier()">Add</button>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="table-responsive">
+                    <table class="table table-striped align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Cashier / PIN</th>
+                                <th style="width:220px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cashierTable"></tbody>
+                    </table>
+                </div>
+                
+                <!-- Edit Cashier Modal -->
+                <div class="modal fade" id="cashierEditModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Edit Cashier</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <label for="edit_cashier_name" class="form-label">Cashier Name</label>
+                                <input id="edit_cashier_name" class="form-control" placeholder="e.g., Oliver">
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="cashier_edit_save_btn">Save Changes</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Set PIN Modal -->
+    <div class="modal fade" id="cashierPinModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="pinModalTitle">Set PIN</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 d-none" id="pinModalCurrentWrap">
+                        <label for="pinModalCurrent" class="form-label">Current PIN</label>
+                        <input type="password" id="pinModalCurrent" class="form-control" inputmode="numeric" pattern="\\d{4,8}" maxlength="8" autocomplete="current-password">
+                        <div class="form-text">Required when changing an existing PIN.</div>
+                    </div>
+                    <label for="pinModalValue" class="form-label">PIN (4-8 digits)</label>
+                    <input type="password" id="pinModalValue" class="form-control mb-3" inputmode="numeric" pattern="\\d{4,8}" maxlength="8" autocomplete="new-password">
+                    <label for="pinModalConfirm" class="form-label">Confirm PIN</label>
+                    <input type="password" id="pinModalConfirm" class="form-control" inputmode="numeric" pattern="\\d{4,8}" maxlength="8" autocomplete="new-password">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="cashier_pin_save_btn">Save PIN</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>window.MIDDLETONS_API_BASE = 'https://middletons.tillmere.com';</script>
+    <script src="js/api-client.js"></script>
+    <script src="js/logout.js"></script>
+    <script src="js/cashiers.js"></script>
+</body>
+
+</html>
+
+

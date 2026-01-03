@@ -1,0 +1,36 @@
+{
+  "taxRate": 0.05,
+  "giftCardSurchargeRate": 0.03,
+  "developerMode": true,
+  "backupDir": "",
+  "silentPrint": true,
+  "printerName": "HP-123",
+  "greyscalePrint": false,
+  "bizName": "Middleton's Antiques & Uniques",
+  "bizAddress": "1615 S 17th St, Lincoln, NE 68502",
+  "bizPhone": "531-500-0135",
+  "logoPath": "",
+  "dailyDrawerTotal": 0,
+  "drawerDenominationTargets": {
+    "1": 0,
+    "5": 0,
+    "10": 0,
+    "20": 0,
+    "50": 0,
+    "100": 0,
+    "0.25": 0,
+    "0.1": 0,
+    "0.05": 0,
+    "0.01": 0
+  },
+  "discountReasons": [
+    "Store Promo",
+    "Vendor Promo",
+    "Dolly Purrton Promo",
+    "Vendor Approved",
+    "Store Approved"
+  ],
+  "vendorPromotions": [],
+  "developerModeExpiresAt": 1767325719366,
+  "taxExemptOrgs": []
+}

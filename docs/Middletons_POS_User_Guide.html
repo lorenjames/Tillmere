@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Middleton's POS User Guide</title>
+  <style>
+    :root {
+      --ink: #1f2933;
+      --muted: #52606d;
+      --paper: #f5f2eb;
+      --card: #ffffff;
+      --accent: #b45309;
+      --accent-2: #0f766e;
+      --border: rgba(31, 41, 51, 0.12);
+      --shadow: 0 14px 28px rgba(31, 41, 51, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+      line-height: 1.6;
+    }
+    header {
+      padding: 48px 24px 24px;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto 64px;
+      padding: 0 24px 48px;
+    }
+    .hero {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px 28px 20px;
+      box-shadow: var(--shadow);
+    }
+    .hero-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .hero-logo {
+      max-width: 220px;
+      width: 100%;
+      height: auto;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #fff;
+      padding: 8px;
+    }
+    .hero-text {
+      flex: 1 1 320px;
+      min-width: 240px;
+    }
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 2.1rem;
+      letter-spacing: 0.02em;
+      font-family: "Georgia", "Times New Roman", serif;
+    }
+    .hero p {
+      margin: 6px 0;
+      color: var(--muted);
+    }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .badge {
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(180, 83, 9, 0.12);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.85rem;
+    }
+    .toc {
+      margin-top: 24px;
+      background: #fff;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+    }
+    .toc h2 { margin: 0 0 10px; font-size: 1.1rem; }
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .toc a {
+      display: block;
+      padding: 8px 10px;
+      border-radius: 10px;
+      text-decoration: none;
+      color: var(--ink);
+      background: rgba(15, 118, 110, 0.08);
+      font-weight: 600;
+    }
+    .toc a:hover { background: rgba(15, 118, 110, 0.16); }
+    .section {
+      margin-top: 28px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 22px 24px;
+      box-shadow: var(--shadow);
+    }
+    .section h2 {
+      margin: 0 0 6px;
+      font-size: 1.4rem;
+      color: var(--accent-2);
+    }
+    .section p { margin: 8px 0 0; color: var(--muted); }
+    .section ul { margin: 10px 0 0 18px; padding: 0; }
+    .section li { margin: 6px 0; }
+    .subtle {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .two-col {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 12px;
+    }
+    .callout {
+      border: 1px dashed rgba(180, 83, 9, 0.4);
+      border-radius: 12px;
+      padding: 12px 14px;
+      background: rgba(251, 191, 36, 0.12);
+      font-weight: 600;
+    }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 36px;
+    }
+    @media (max-width: 720px) {
+      header { padding: 32px 18px 16px; }
+      .wrap { padding: 0 18px 36px; }
+      .hero h1 { font-size: 1.7rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="hero">
+        <div class="hero-header">
+          <div class="hero-text">
+            <h1>Middleton's POS User Guide</h1>
+            <p>A complete walkthrough of every feature in the system.</p>
+            <p class="subtle">Use this guide for daily sales, manager workflows, reporting, and troubleshooting.</p>
+          </div>
+          <img class="hero-logo" src="../assets/NEW_MiddletonsColor.PNG" alt="Middleton's Antiques & Uniques logo">
+        </div>
+        <div class="badge-row">
+          <div class="badge">POS</div>
+          <div class="badge">Receipts</div>
+          <div class="badge">Reports</div>
+          <div class="badge">Gift Cards</div>
+          <div class="badge">Opening and Closing</div>
+          <div class="badge">Configuration</div>
+        </div>
+      </div>
+
+      <div class="toc">
+        <h2>Quick Jump</h2>
+        <div class="toc-grid">
+          <a href="#navigation">Navigation</a>
+          <a href="#pos">POS (Sales)</a>
+          <a href="#receipts">Receipts</a>
+          <a href="#reports">Reports</a>
+          <a href="#giftcards">Gift Cards</a>
+          <a href="#opening">Opening and Closing</a>
+          <a href="#schedule">Schedule</a>
+          <a href="#vendors">Vendors</a>
+          <a href="#cashiers">Cashiers</a>
+          <a href="#settings">Settings</a>
+          <a href="#backups">Backups</a>
+          <a href="#close">Close App</a>
+          <a href="#tips">Tips</a>
+        </div>
+      </div>
+
+      <section class="section" id="navigation">
+        <h2>Navigation and Basics</h2>
+        <ol>
+          <li>Use the top bar to switch between POS, Receipts, and Reports.</li>
+          <li>Select the hamburger menu (Configuration) for setup tasks: Vendors, Cashiers, Schedule, Gift Cards, Opening and Closing, Settings, User Guide, and Close App.</li>
+          <li>If you try to leave POS with items in the cart, confirm the warning to avoid losing a sale.</li>
+          <li>Use Clear buttons in filters to reset a screen quickly.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="pos">
+        <h2>POS (Sales)</h2>
+        <div class="two-col">
+          <div>
+            <h3 class="subtle">Start a sale</h3>
+            <ol>
+              <li>Select Cashier from the dropdown.</li>
+              <li>Select Payment type: Cash, Card, Check, or Gift Card.</li>
+              <li>Optional: enable Back-date sale and select a Sale Date.</li>
+              <li>Optional: enable No Tax and enter purchaser name and tax ID in the modal.</li>
+              <li>Optional: enable Split tender if two payment types are used.</li>
+            </ol>
+            <h3 class="subtle">Add items</h3>
+            <ol>
+              <li>Enter Item name.</li>
+              <li>Enter Price and Qty (use the picker for common quantities).</li>
+              <li>Enter Vendor name or code and pick from suggestions.</li>
+              <li>Optional: choose a Discount type, enter Value, and select a Reason.</li>
+              <li>Optional: add a Comment for notes like condition.</li>
+              <li>Click Add Item to place it in the cart.</li>
+            </ol>
+          </div>
+          <div>
+            <h3 class="subtle">Review and adjust</h3>
+            <ol>
+              <li>Review Subtotal, Tax, and Total as they update.</li>
+              <li>Edit or remove any line item from the cart table.</li>
+              <li>For Cash: enter Cash Received and confirm Change Due.</li>
+              <li>For Gift Card payments: enter the card number and redeem amount.</li>
+              <li>For Split tender: select the second payment type and amount.</li>
+            </ol>
+            <h3 class="subtle">Finish the sale</h3>
+            <ol>
+              <li>Click Print and Save to record the sale.</li>
+              <li>Print the receipt or allow silent printing if enabled.</li>
+              <li>The cart clears after printing.</li>
+              <li>If a gift card was sold, open Gift Cards to activate it.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="callout" style="margin-top:12px;">
+          Gift card reminder: after a sale with gift cards, you are prompted to activate them on the Gift Cards page.
+        </div>
+      </section>
+
+      <section class="section" id="receipts">
+        <h2>Receipts</h2>
+        <h3 class="subtle">Search and filter</h3>
+        <ol>
+          <li>Enter a search term (receipt number, item, vendor, cashier).</li>
+          <li>Set From and To dates if needed.</li>
+          <li>Choose Cashier, Payment, and Void filters.</li>
+          <li>Click Apply. Use Clear Filters to reset.</li>
+        </ol>
+        <h3 class="subtle">View or print</h3>
+        <ol>
+          <li>Click View to open a receipt preview.</li>
+          <li>Click Print to print another copy.</li>
+        </ol>
+        <h3 class="subtle">Void a receipt</h3>
+        <ol>
+          <li>Click Void on the receipt row.</li>
+          <li>Select the cashier and enter a reason.</li>
+          <li>Confirm to mark the receipt as voided.</li>
+        </ol>
+        <h3 class="subtle">Record a return</h3>
+        <ol>
+          <li>Click Return on a receipt.</li>
+          <li>Choose Entire Receipt or select specific items.</li>
+          <li>Enter a reason and confirm.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="reports">
+        <h2>Reports</h2>
+        <h3 class="subtle">Sales per Vendor</h3>
+        <ol>
+          <li>Set From and To dates.</li>
+          <li>Optionally choose a Vendor.</li>
+          <li>Click Run Report.</li>
+          <li>Use Export CSV to save a spreadsheet.</li>
+          <li>Use Print for summary or Print Detailed for per-vendor detail.</li>
+        </ol>
+        <h3 class="subtle">Credit card fee summary</h3>
+        <ol>
+          <li>Review the 5 percent fee table after running a report.</li>
+          <li>Use it for reference when settling vendor fees.</li>
+        </ol>
+        <h3 class="subtle">Tax Exempt Sales (Manager Mode)</h3>
+        <ol>
+          <li>Enable Manager Mode in Settings.</li>
+          <li>Set the date range and click Run.</li>
+          <li>Export or Print as needed.</li>
+        </ol>
+        <h3 class="subtle">Backup and Restore (Developer Mode)</h3>
+        <ol>
+          <li>Enable Developer Mode in Settings.</li>
+          <li>Use Backup Data to save a full JSON file.</li>
+          <li>Use Restore Data to load a previous backup (replaces current data).</li>
+        </ol>
+      </section>
+
+      <section class="section" id="giftcards">
+        <h2>Gift Cards</h2>
+        <h3 class="subtle">Create a book</h3>
+        <ol>
+          <li>Enter an optional Book Label.</li>
+          <li>Enter Prefix (example: GC-).</li>
+          <li>Set Pad Length if you want zero-padding.</li>
+          <li>Enter Start and End numbers.</li>
+          <li>Click Add Book to generate cards.</li>
+        </ol>
+        <h3 class="subtle">Activate a card</h3>
+        <ol>
+          <li>Find the card in the Available list and click Activate.</li>
+          <li>Enter Amount, Cashier, optional Receipt, and Note.</li>
+          <li>Click Activate to move it to Active status.</li>
+        </ol>
+        <h3 class="subtle">Lookup balance</h3>
+        <ol>
+          <li>Enter the Gift Card number in Lookup Balance.</li>
+          <li>Click Lookup to see balance and history.</li>
+        </ol>
+        <h3 class="subtle">Inventory overview</h3>
+        <ol>
+          <li>Review Available, Active, and Redeemed counts.</li>
+          <li>Use the book summary to see remaining cards by book.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="opening">
+        <h2>Opening and Closing (Cash Drawer)</h2>
+        <h3 class="subtle">Opening</h3>
+        <ol>
+          <li>Click Opening.</li>
+          <li>Select the cashier.</li>
+          <li>Enter counts for each denomination.</li>
+          <li>Click Submit Opening.</li>
+          <li>If prompted, add a note explaining changes.</li>
+        </ol>
+        <h3 class="subtle">Closing</h3>
+        <ol>
+          <li>Click Closing.</li>
+          <li>Select the cashier and enter counts.</li>
+          <li>Review the deposit amount shown.</li>
+          <li>Click Submit Closing.</li>
+        </ol>
+        <h3 class="subtle">Verify deposit</h3>
+        <ol>
+          <li>Confirm the deposit totals.</li>
+          <li>Enter the deposit number.</li>
+          <li>Click Confirm Deposit.</li>
+        </ol>
+        <h3 class="subtle">Submit daily totals</h3>
+        <ol>
+          <li>Click Submit Daily Totals.</li>
+          <li>Review closing totals, deposit amount, and notes.</li>
+          <li>Click Verify and Submit.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="schedule">
+        <h2>Schedule</h2>
+        <h3 class="subtle">Week view</h3>
+        <ol>
+          <li>Use Prev Week or Next Week to navigate.</li>
+          <li>Assign cashiers to shifts for each day.</li>
+        </ol>
+        <h3 class="subtle">Monthly coverage</h3>
+        <ol>
+          <li>Review the monthly calendar summary.</li>
+          <li>Click Print Calendar to print.</li>
+        </ol>
+        <h3 class="subtle">Configure hours</h3>
+        <ol>
+          <li>Click Configure Hours.</li>
+          <li>Add or edit Base Shifts.</li>
+          <li>Set Store Hours for each day.</li>
+          <li>Add Special Hours for holidays or exceptions.</li>
+          <li>Save Configuration.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="vendors">
+        <h2>Vendors</h2>
+        <ol>
+          <li>Open Configuration and choose Manage Vendors.</li>
+          <li>Enter vendor name and optional code.</li>
+          <li>Click Add Vendor.</li>
+          <li>Edit or delete a vendor using the actions in the list.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="cashiers">
+        <h2>Cashiers</h2>
+        <ol>
+          <li>Open Configuration and choose Manage Cashiers.</li>
+          <li>Enter the cashier name.</li>
+          <li>Click Add Cashier.</li>
+          <li>Edit or remove a cashier from the list.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="settings">
+        <h2>Settings</h2>
+        <h3 class="subtle">Enable Manager Mode</h3>
+        <ol>
+          <li>Click Enable Manager Mode.</li>
+          <li>Enter the manager password.</li>
+          <li>Manager-only sections become visible.</li>
+        </ol>
+        <h3 class="subtle">Sales Tax and Gift Card Surcharge</h3>
+        <ol>
+          <li>Enter the Tax Rate percent and click Save.</li>
+          <li>Enter the Gift Card Surcharge percent and click Save.</li>
+        </ol>
+        <h3 class="subtle">Denomination Targets</h3>
+        <ol>
+          <li>Enter target counts for each denomination.</li>
+          <li>Click Save Denomination Targets.</li>
+        </ol>
+        <h3 class="subtle">Discount Reasons</h3>
+        <ol>
+          <li>Edit the reasons list (one per line).</li>
+          <li>Click Save Reasons.</li>
+        </ol>
+        <h3 class="subtle">Vendor Promotions</h3>
+        <ol>
+          <li>Click Manage to add promotions.</li>
+          <li>Choose vendor, discount type and value, and dates.</li>
+          <li>Add, edit, or delete promotions as needed.</li>
+        </ol>
+        <h3 class="subtle">Developer Mode</h3>
+        <ol>
+          <li>Click Enable Developer Mode.</li>
+          <li>Use it only when a manager or support requests it.</li>
+        </ol>
+        <h3 class="subtle">Passwords</h3>
+        <ol>
+          <li>Click Change Passwords.</li>
+          <li>Enter current and new passwords, then Save.</li>
+        </ol>
+        <h3 class="subtle">Printing</h3>
+        <ol>
+          <li>Enable Silent Print to send receipts directly to a printer.</li>
+          <li>Select a specific printer or leave System Default.</li>
+          <li>Enable Greyscale to force black and white receipts.</li>
+          <li>Click Save.</li>
+        </ol>
+        <h3 class="subtle">Branding</h3>
+        <ol>
+          <li>Enter business name, address, and phone.</li>
+          <li>Upload a logo if desired.</li>
+          <li>Click Save Branding.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="backups">
+        <h2>Backups</h2>
+        <h3 class="subtle">Automatic</h3>
+        <ol>
+          <li>Automatic backups run when the app closes.</li>
+          <li>Keep manual backups in a separate folder for safety.</li>
+        </ol>
+        <h3 class="subtle">Manual backup</h3>
+        <ol>
+          <li>Enable Developer Mode in Settings.</li>
+          <li>Open Reports and click Backup Data.</li>
+          <li>Choose a folder and filename.</li>
+        </ol>
+        <h3 class="subtle">Restore</h3>
+        <ol>
+          <li>Enable Developer Mode in Settings.</li>
+          <li>Open Reports and click Restore Data.</li>
+          <li>Select the backup file and confirm.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="close">
+        <h2>Close App</h2>
+        <ol>
+          <li>Open the hamburger menu (Configuration).</li>
+          <li>Click Close App.</li>
+          <li>The app closes and performs an automatic backup.</li>
+        </ol>
+      </section>
+
+      <section class="section" id="tips">
+        <h2>Troubleshooting and Tips</h2>
+        <ol>
+          <li>If printing fails, confirm the printer selection in Settings and retry Print and Save.</li>
+          <li>For tax exempt sales, always enter purchaser name and tax ID.</li>
+          <li>Use manual backups regularly for extra safety.</li>
+          <li>If data looks incorrect, stop and consult a manager before restoring a backup.</li>
+          <li>For web deployments, verify `.env` includes `MIDDLETONS_API_BASE` and `MIDDLETONS_DATA_DIR`.</li>
+        </ol>
+      </section>
+
+      <footer>
+        Middleton's POS - User Guide
+      </footer>
+    </div>
+  </header>
+</body>
+</html>

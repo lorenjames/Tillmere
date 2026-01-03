@@ -1,0 +1,18 @@
+/* Experimental wallpaper theme: brick wall background */
+/* Remove the <link> that includes this file to rollback. */
+
+html, body {
+  height: 100%;
+}
+
+body {
+  /* Subtle overlay to keep content readable over the image */
+  background: linear-gradient(rgba(255,255,255,0.85), rgba(255,255,255,0.85)),
+              url('../assets/brickwall.jpg') center/cover no-repeat fixed;
+}
+
+/* Optional: ensure cards remain crisp atop the textured background */
+.card {
+  background-color: #ffffff; /* keep cards solid white */
+}
+

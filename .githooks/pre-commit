@@ -1,0 +1,21 @@
+#!/bin/sh
+# Prevent committing files larger than 50MB
+MAX_SIZE=$((50 * 1024 * 1024))
+FAIL=0
+
+for file in $(git diff --cached --name-only); do
+  if [ -f "$file" ]; then
+    size=$(wc -c <"$file")
+    if [ "$size" -gt "$MAX_SIZE" ]; then
+      echo "Error: $file exceeds 50MB ($size bytes)." >&2
+      FAIL=1
+    fi
+  fi
+done
+
+if [ "$FAIL" -ne 0 ]; then
+  echo "Commit aborted. Remove large files from the commit or use Git LFS." >&2
+  exit 1
+fi
+
+exit 0

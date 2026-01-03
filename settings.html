@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Settings - Middleton's</title>
+    <link href="./css/bootstrap.css" rel="stylesheet">
+    <!-- Experimental wallpaper (remove this link to rollback) -->
+    <link href="./css/brickwall.css" rel="stylesheet">
+    <!-- Preload wallpaper to avoid visible reloads on navigation -->
+    <link rel="preload" as="image" href="./assets/brickwall.jpg">
+  <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <style>
+    /* Safety: prevent stray Bootstrap backdrops from blocking input focus */
+    .modal-backdrop, .offcanvas-backdrop { pointer-events: none !important; }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg bg-primary" data-bs-theme="dark">
+    <div class="container-fluid">
+      <span class="navbar-brand">Middleton's Antiques & Uniques</span>
+      <div class="navbar-nav">
+        <a class="nav-link" href="index.html">POS</a>
+        <a class="nav-link" href="receipts.html">Receipts</a>
+        <a class="nav-link" href="reports.html">Reports</a>
+        <div class="nav-item dropdown me-2">
+          <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Configuration" title="Configuration"><span class="config-hamburger" aria-hidden="true">&#9776;</span></a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item" href="vendors.html">Manage Vendors</a></li>
+                        <li><a class="dropdown-item" href="cashiers.html">Manage Cashiers</a></li>
+                        <li><a class="dropdown-item" href="schedule.html">Schedule</a></li>
+                        <li><a class="dropdown-item" href="giftcards.html">Gift Cards</a></li>
+                        <li><a class="dropdown-item" href="opening.html" data-allow-nav="true">Opening / Closing</a></li>
+                        <li><a class="dropdown-item" href="settings.html">Settings</a></li>
+                        <li><a class="dropdown-item" href="#" id="userGuideLink">User Guide</a></li>
+                        <li><a class="dropdown-item" href="#" id="logoutLink">Logout</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><button class="dropdown-item text-danger" type="button" id="closeAppLink">Close App</button></li>
+                    </ul>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4">
+    <div class="row g-1 mb-2">
+      <div class="col-12">
+        <div class="card shadow-sm border-warning">
+          <div class="card-body d-flex flex-column flex-md-row align-items-md-center justify-content-between">
+            <div>
+              <h5 class="card-title mb-1">Access</h5>
+              <div class="text-muted small">Signed in to Tillmere POS.</div>
+              <div class="mt-2"><span id="accessRoleBadge" class="badge bg-secondary">Loading</span></div>
+            </div>
+            <div class="d-grid d-md-block mt-3 mt-md-0">
+              <button class="btn btn-outline-danger" id="logoutBtn">Logout</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-1 mb-2" data-requires-admin style="display:none;">
+      <div class="col-12">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-3">User Management</h5>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead class="table-light">
+                  <tr>
+                    <th>Username</th>
+                    <th>Display Name</th>
+                    <th>Role</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="usersTableBody"></tbody>
+              </table>
+            </div>
+            <div class="mt-3">
+              <h6 class="mb-2">Add User</h6>
+              <form id="createUserForm" class="row g-2">
+                <div class="col-12 col-md-3">
+                  <input type="text" class="form-control" id="newUserUsername" placeholder="Username" required>
+                </div>
+                <div class="col-12 col-md-3">
+                  <input type="text" class="form-control" id="newUserDisplayName" placeholder="Display name">
+                </div>
+                <div class="col-12 col-md-2">
+                  <select class="form-select" id="newUserRole">
+                    <option value="cashier">Cashier</option>
+                    <option value="manager">Manager</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div class="col-12 col-md-2">
+                  <input type="password" class="form-control" id="newUserPassword" placeholder="Password" required>
+                </div>
+                <div class="col-12 col-md-2 d-grid">
+                  <button class="btn btn-primary" type="submit">Create</button>
+                </div>
+              </form>
+              <div id="userAdminError" class="text-danger small mt-2" style="display:none;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row row-cols-1 g-1 gy-1">
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Sales Tax</h5>
+            <div class="row g-2 align-items-end">
+              <div class="col-8 col-md-6">
+                <label for="taxRatePct" class="form-label">Tax Rate (%)</label>
+                <input type="number" step="0.01" min="0" id="taxRatePct" class="form-control" placeholder="e.g., 7.25">
+              </div>
+              <div class="col-4 col-md-3 d-grid">
+                <label class="form-label invisible">Save</label>
+                <button id="saveBtn" class="btn btn-primary">Save</button>
+              </div>
+            </div>
+            <div class="text-muted small mt-2">This rate is used on the POS screen to compute tax.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Gift Card Surcharge</h5>
+            <div class="row g-2 align-items-end">
+              <div class="col-8 col-md-6">
+                <label for="giftCardSurchargePct" class="form-label">Surcharge Rate (%)</label>
+                <input type="number" step="0.01" min="0" id="giftCardSurchargePct" class="form-control" placeholder="e.g., 3.00">
+              </div>
+              <div class="col-4 col-md-3 d-grid">
+                <label class="form-label invisible">Save</label>
+                <button id="saveGiftCardSurchargeBtn" class="btn btn-primary">Save</button>
+              </div>
+            </div>
+            <div class="text-muted small mt-2">Applied to gift card sales when payment includes Card.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h5 class="card-title mb-1">Denomination Targets</h5>
+                <div class="text-muted small">Specify the counts you plan to keep in the drawer for each denomination. Deposit counts auto-fill in Closing if you exceed these values.</div>
+              </div>
+              <div class="fw-semibold fs-6 text-end">
+                Cash Drawer Target<br>
+                <span class="fs-4" id="denomTargetTotal">$0.00</span>
+              </div>
+            </div>
+            <div id="denomTargetInputs" class="denom-target-inputs mt-3"></div>
+            <div class="d-grid d-md-flex justify-content-md-end mt-3">
+              <button id="saveDenomTargetsBtn" class="btn btn-primary">Save Denomination Targets</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="col">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+              <div>
+                <h5 class="card-title mb-1">Customer Display</h5>
+                <div class="text-muted small">Show the customer cart on a secondary monitor.</div>
+              </div>
+              <div class="d-flex flex-column align-items-start gap-2">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="customerDisplayEnabled">
+                  <label class="form-check-label" for="customerDisplayEnabled">Open on app launch</label>
+                </div>
+                <button class="btn btn-outline-primary btn-sm" id="refreshCustomerDisplayBtn">Refresh Customer Display</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <h5 class="card-title mb-1">Vendor Promotions</h5>
+                <div class="text-muted small">Auto-applied vendor discounts on POS for current-date sales.</div>
+              </div>
+              <button id="openVendorPromosBtn" class="btn btn-primary btn-sm">Manage</button>
+            </div>
+            <div class="small text-muted mt-3" id="vendorPromoSummary">No promotions configured.</div>
+            <div class="table-responsive mt-3">
+              <table class="table table-sm align-middle mb-1" id="vendorPromoInline">
+                <thead class="table-light">
+                  <tr>
+                    <th>Vendor</th>
+                    <th>Discount</th>
+                    <th>Dates</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div class="text-muted small" id="vendorPromoInlineEmpty">Manage promotions to show them here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Discount Reasons</h5>
+            <label for="discountReasonsInput" class="form-label">Reasons (one per line)</label>
+            <textarea id="discountReasonsInput" class="form-control" rows="5" placeholder="Store Promo&#10;Vendor Promo&#10;Dolly Purrton Promo&#10;Vendor Approved&#10;Store Approved"></textarea>
+            <div class="form-text">These reasons appear as a dropdown on the POS screen whenever a discount is applied.</div>
+            <div class="d-grid d-md-flex justify-content-md-end mt-3">
+              <button id="saveDiscountReasonsBtn" class="btn btn-primary">Save Reasons</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" data-requires-manager style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-1">Tax Exempt Organizations</h5>
+            <div class="text-muted small">Saved organizations appear as suggestions on the POS tax exemption screen.</div>
+            <div class="row g-2 align-items-end mt-2">
+              <div class="col-12 col-md-5">
+                <label for="taxOrgName" class="form-label">Name / Organization</label>
+                <input type="text" id="taxOrgName" class="form-control" placeholder="e.g., Lincoln Public Schools">
+              </div>
+              <div class="col-12 col-md-4">
+                <label for="taxOrgId" class="form-label">Tax ID (alphanumeric)</label>
+                <input type="text" id="taxOrgId" class="form-control" placeholder="e.g., EXEMPT1234">
+                <div class="form-text">Letters and numbers only; no spaces or symbols.</div>
+              </div>
+              <div class="col-12 col-md-3 d-grid">
+                <label class="form-label invisible">Save</label>
+                <button id="saveTaxOrgBtn" class="btn btn-primary">Add Organization</button>
+              </div>
+            </div>
+            <div class="d-flex justify-content-end mt-2">
+              <button id="cancelTaxOrgEditBtn" class="btn btn-outline-secondary btn-sm" style="display:none;">Cancel Edit</button>
+            </div>
+            <div class="table-responsive mt-3">
+              <table class="table table-sm align-middle mb-1" id="taxOrgTable">
+                <thead class="table-light">
+                  <tr>
+                    <th>Name / Organization</th>
+                    <th>Tax ID</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div class="text-muted small" id="taxOrgEmpty">No organizations added yet.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" data-requires-developer style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Printing</h5>
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="silentPrint">
+              <label class="form-check-label" for="silentPrint">Silent Print to Default Printer</label>
+            </div>
+            <div class="form-check mt-2">
+              <input class="form-check-input" type="checkbox" id="greyscalePrint">
+              <label class="form-check-label" for="greyscalePrint">Force Greyscale (B/W) Receipts</label>
+            </div>
+            <div class="mt-3">
+              <label for="printerSelect" class="form-label">Printer</label>
+              <select id="printerSelect" class="form-select">
+                <option value="">System Default</option>
+              </select>
+              <div class="text-muted small mt-1">Select a specific printer, or leave as System Default.</div>
+            </div>
+            <div class="text-muted small mt-2">When Silent Print is enabled, Print &amp; Save sends the receipt directly to the selected (or default) printer without a preview dialog.</div>
+            <div class="text-muted small mt-1">Greyscale applies to receipt prints and previews.</div>
+            <div class="mt-3">
+              <button id="savePrintBtn" class="btn btn-primary">Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col" id="brandingCard" style="display:none;">
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-3">Branding</h5>
+            <div class="mb-3">
+              <label for="bizName" class="form-label">Business Name</label>
+              <input type="text" id="bizName" class="form-control" placeholder="Your business name">
+            </div>
+            <div class="mb-3">
+              <label for="bizAddress" class="form-label">Street Address</label>
+              <input type="text" id="bizAddress" class="form-control" placeholder="Street, City, State ZIP">
+            </div>
+            <div class="mb-3">
+              <label for="bizPhone" class="form-label">Phone</label>
+              <input type="text" id="bizPhone" class="form-control" placeholder="(555) 555-5555">
+            </div>
+            <div class="mb-3">
+              <label for="logoInput" class="form-label">Logo for Receipts and Reports</label>
+              <input type="file" id="logoInput" class="form-control" accept="image/*">
+              <div class="form-text">If omitted, the built-in Middleton's logo is used.</div>
+              <div class="mt-2 d-flex align-items-center gap-2">
+                <div class="small text-muted">Current logo:</div>
+                <img id="logoPreview" src="" alt="Current logo preview" style="max-height:40px;border-radius:6px;display:none;">
+              </div>
+            </div>
+            <div class="d-grid d-md-flex justify-content-md-end">
+              <button id="saveBrandingBtn" class="btn btn-primary">Save Branding</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-muted small mt-4 text-center">
+      App Version: <span id="appVersion">v</span>
+    </div>
+  </main>
+
+  <!-- Vendor Promotions Modal -->
+  <div class="modal fade" id="vendorPromoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Vendor Promotions</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-info py-2 small" role="alert">
+            Promotions auto-apply as discounts on the POS page when the vendor matches and today is within the promo dates. They are skipped for back-dated sales.
+          </div>
+          <form id="vendorPromoForm" class="row g-3">
+            <div class="col-12">
+              <label for="promoVendorSelect" class="form-label">Vendor</label>
+              <select id="promoVendorSelect" class="form-select" required>
+                <option value="" disabled selected>Select vendor</option>
+              </select>
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="promoType" class="form-label">Discount Type</label>
+              <select id="promoType" class="form-select">
+                <option value="percent">Percent off (%)</option>
+                <option value="amount">Amount off ($)</option>
+              </select>
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="promoValue" class="form-label">Value</label>
+              <input type="number" step="0.01" min="0" id="promoValue" class="form-control" placeholder="0.00">
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="promoStart" class="form-label">Start Date</label>
+              <input type="date" id="promoStart" class="form-control" min="">
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="promoEnd" class="form-label">End Date</label>
+              <input type="date" id="promoEnd" class="form-control" min="">
+            </div>
+          </form>
+          <div class="table-responsive mt-4">
+            <table class="table table-sm align-middle" id="vendorPromoTable">
+              <thead class="table-light">
+                <tr>
+                  <th>Vendor</th>
+                  <th>Discount</th>
+                  <th>Dates</th>
+                  <th style="width: 140px;"></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="text-muted small" id="vendorPromoEmpty">No promotions yet.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" id="saveVendorPromoBtn">Add Promotion</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vendor Promotion Edit Modal -->
+  <div class="modal fade" id="vendorPromoEditModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Promotion</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="vendorPromoEditForm" class="row g-3">
+            <div class="col-12">
+              <label for="editPromoVendorSelect" class="form-label">Vendor</label>
+              <select id="editPromoVendorSelect" class="form-select" required>
+                <option value="" disabled selected>Select vendor</option>
+              </select>
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="editPromoType" class="form-label">Discount Type</label>
+              <select id="editPromoType" class="form-select">
+                <option value="percent">Percent off (%)</option>
+                <option value="amount">Amount off ($)</option>
+              </select>
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="editPromoValue" class="form-label">Value</label>
+              <input type="number" step="0.01" min="0" id="editPromoValue" class="form-control" placeholder="0.00">
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="editPromoStart" class="form-label">Start Date</label>
+              <input type="date" id="editPromoStart" class="form-control" min="">
+            </div>
+            <div class="col-6 col-lg-3">
+              <label for="editPromoEnd" class="form-label">End Date</label>
+              <input type="date" id="editPromoEnd" class="form-control" min="">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="updateVendorPromoBtn">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vendor Promotion Delete Confirm -->
+  <div class="modal fade" id="vendorPromoDeleteModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Delete Promotion</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-1">Are you sure you want to delete this vendor promotion?</p>
+          <div class="text-muted small" id="vendorPromoDeleteLabel"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirmVendorPromoDeleteBtn">Delete Promotion</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>window.MIDDLETONS_API_BASE = 'https://middletons.tillmere.com';</script>
+  <script src="js/api-client.js"></script>
+  <script src="js/logout.js"></script>
+  <script src="js/settings.js"></script>
+</body>
+</html>
+
+
