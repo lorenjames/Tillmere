@@ -33,6 +33,14 @@ function openCustomerCartWindow() {
     return existing;
   }
   try {
+    const named = window.open('', CUSTOMER_CART_WINDOW_NAME);
+    if (named && named !== window && !named.closed) {
+      window.__customerCartWindow = named;
+      try { named.focus(); } catch (_) { }
+      return named;
+    }
+  } catch (_) { }
+  try {
     if (sessionStorage.getItem(CUSTOMER_CART_OPEN_KEY) === '1') {
       return existing || null;
     }
@@ -3462,7 +3470,6 @@ window.addEventListener('load', async () => {
   // Persist tabs on leave/hidden (but not when quitting the app)
   try {
     window.addEventListener('beforeunload', () => {
-      try { closeCustomerCartWindow(); } catch (_) { }
       try { if (!__isQuitting) __persistTabs(); } catch (_) { }
     });
     window.addEventListener('pagehide', () => { try { if (!__isQuitting) __persistTabs(); } catch (_) { } });
