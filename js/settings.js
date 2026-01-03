@@ -1314,8 +1314,20 @@ async function saveCustomerDisplaySettings(enabled) {
   }
 }
 
+function openCustomerDisplayWindow() {
+  if (api?.hasIpc) return null;
+  const url = 'customer-cart.html';
+  const features = 'popup=yes,width=1280,height=720,menubar=no,toolbar=no,location=no,status=no';
+  const opened = window.open(url, 'middletonsCustomerCart', features);
+  if (opened) {
+    try { opened.focus(); } catch (_) { }
+  }
+  return opened || null;
+}
+
 async function refreshCustomerDisplay() {
   try {
+    openCustomerDisplayWindow();
     await invoke('customer-cart:refresh');
     showToast('Customer display refreshed.', { type: 'success' });
   } catch (e) {

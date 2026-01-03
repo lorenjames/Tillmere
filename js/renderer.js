@@ -12,6 +12,24 @@ const send = (...args) => {
   try { if (api && typeof api.send === 'function') api.send(...args); } catch (_) { }
 };
 
+const CUSTOMER_CART_WINDOW_NAME = 'middletonsCustomerCart';
+function openCustomerCartWindow() {
+  if (api?.hasIpc) return null;
+  const url = 'customer-cart.html';
+  const features = 'popup=yes,width=1280,height=720,menubar=no,toolbar=no,location=no,status=no';
+  const existing = window.__customerCartWindow;
+  if (existing && !existing.closed) {
+    try { existing.focus(); } catch (_) { }
+    return existing;
+  }
+  const opened = window.open(url, CUSTOMER_CART_WINDOW_NAME, features);
+  if (opened) {
+    window.__customerCartWindow = opened;
+    try { opened.focus(); } catch (_) { }
+  }
+  return opened || null;
+}
+
 function wireCloseAppLink() {
   const closeAppLink = document.getElementById('closeAppLink');
   if (!api?.hasIpc) {
@@ -35,10 +53,14 @@ function wireCloseAppLink() {
     });
   }
 }
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', wireCloseAppLink);
-} else {
+function handleDomReady() {
   wireCloseAppLink();
+  openCustomerCartWindow();
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', handleDomReady);
+} else {
+  handleDomReady();
 }
 
 // ---------- Globals ----------
