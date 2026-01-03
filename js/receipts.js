@@ -18,6 +18,34 @@ async function ensureAuthenticatedOrRedirect() {
 }
 ensureAuthenticatedOrRedirect();
 
+
+function requestLogoutOnClose() {
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([], { type: 'application/json' });
+      navigator.sendBeacon('/api/auth/logout', blob);
+      return;
+    }
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      keepalive: true
+    }).catch(() => { });
+  } catch (_) { }
+}
+
+function confirmLogoutOnClose() {
+  try {
+    window.addEventListener('beforeunload', (event) => {
+      event.preventDefault();
+      event.returnValue = '';
+    });
+    window.addEventListener('unload', () => { requestLogoutOnClose(); });
+  } catch (_) { }
+}
+confirmLogoutOnClose();
+
 const canEditReceipts = !!api;
 
 function wireCloseAppLink() {

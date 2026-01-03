@@ -21,6 +21,22 @@ async function ensureAuthenticatedOrRedirect() {
 }
 ensureAuthenticatedOrRedirect();
 
+function requestLogoutOnClose() {
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([], { type: 'application/json' });
+      navigator.sendBeacon('/api/auth/logout', blob);
+      return;
+    }
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      keepalive: true
+    }).catch(() => { });
+  } catch (_) { }
+}
+
 const CUSTOMER_CART_WINDOW_NAME = 'middletonsCustomerCart';
 function openCustomerCartWindow() {
   if (api?.hasIpc) return null;
@@ -3453,12 +3469,19 @@ window.addEventListener('load', async () => {
 
   // Persist tabs on leave/hidden (but not when quitting the app)
   try {
-    window.addEventListener('beforeunload', () => {
+    window.addEventListener('beforeunload', (event) => {
       try { closeCustomerCartWindow(); } catch (_) { }
       try { if (!__isQuitting) __persistTabs(); } catch (_) { }
+      try {
+        if (event) {
+          event.preventDefault();
+          event.returnValue = '';
+        }
+      } catch (_) { }
     });
     window.addEventListener('pagehide', () => { try { if (!__isQuitting) __persistTabs(); } catch (_) { } });
     document.addEventListener('visibilitychange', () => { try { if (document.hidden && !__isQuitting) __persistTabs(); } catch (_) { } });
+    window.addEventListener('unload', () => { try { requestLogoutOnClose(); } catch (_) { } });
   } catch (_) { }
 
   // Mark quitting so beforeunload can prompt appropriately
