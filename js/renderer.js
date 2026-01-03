@@ -22,6 +22,7 @@ async function ensureAuthenticatedOrRedirect() {
 ensureAuthenticatedOrRedirect();
 
 const CUSTOMER_CART_WINDOW_NAME = 'middletonsCustomerCart';
+const CUSTOMER_CART_OPEN_KEY = 'customerCartWindowOpened';
 function openCustomerCartWindow() {
   if (api?.hasIpc) return null;
   const url = 'customer-cart.html';
@@ -31,10 +32,16 @@ function openCustomerCartWindow() {
     try { existing.focus(); } catch (_) { }
     return existing;
   }
+  try {
+    if (sessionStorage.getItem(CUSTOMER_CART_OPEN_KEY) === '1') {
+      return existing || null;
+    }
+  } catch (_) { }
   const opened = window.open(url, CUSTOMER_CART_WINDOW_NAME, features);
   if (opened) {
     window.__customerCartWindow = opened;
     try { opened.focus(); } catch (_) { }
+    try { sessionStorage.setItem(CUSTOMER_CART_OPEN_KEY, '1'); } catch (_) { }
   }
   return opened || null;
 }
@@ -47,6 +54,7 @@ function closeCustomerCartWindow() {
     const named = window.open('', CUSTOMER_CART_WINDOW_NAME);
     if (named && named !== window && !named.closed) named.close();
   } catch (_) { }
+  try { sessionStorage.removeItem(CUSTOMER_CART_OPEN_KEY); } catch (_) { }
 }
 
 function wireCloseAppLink() {
