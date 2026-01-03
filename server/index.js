@@ -127,18 +127,23 @@ const sessionStore = pool
     )
     : null;
 
+const sessionCookie = {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: String(process.env.NODE_ENV || '').toLowerCase() === 'production'
+};
+const maxAgeEnv = Number(process.env.SESSION_MAX_AGE_MS || '');
+if (Number.isFinite(maxAgeEnv) && maxAgeEnv > 0) {
+    sessionCookie.maxAge = maxAgeEnv;
+}
+
 app.use(session({
     secret: SESSION_SECRET || 'tillmere-dev-secret',
     resave: false,
     saveUninitialized: false,
-    rolling: true,
+    rolling: !!sessionCookie.maxAge,
     store: sessionStore || undefined,
-    cookie: {
-        httpOnly: true,
-        sameSite: 'lax',
-        maxAge: 4 * 60 * 60 * 1000,
-        secure: String(process.env.NODE_ENV || '').toLowerCase() === 'production'
-    }
+    cookie: sessionCookie
 }));
 
 app.use(async (req, res, next) => {
